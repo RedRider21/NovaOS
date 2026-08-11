@@ -469,7 +469,10 @@ const NovaApps = (() => {
               <button class="btn" id="opnew" style="margin-top:10px;width:auto;padding:10px 16px">Apri in una nuova scheda</button></div>
           </div>`;
         root.querySelector(".back-btn").onclick = drawHome;
-        const openReal = () => { try { window.open(u, "_blank", "noopener"); } catch(e){} };
+        const openReal = () => {
+          if (window.NovaNative && window.NovaNative.openBrowser) { try { window.NovaNative.openBrowser(u); return; } catch(e){} }
+          try { window.open(u, "_blank", "noopener"); } catch(e){}
+        };
         root.querySelector("#newtab").onclick = openReal;
         root.querySelector("#opnew").onclick = openReal;
         const frame = root.querySelector("#frame");

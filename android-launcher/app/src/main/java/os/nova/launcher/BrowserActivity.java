@@ -1,7 +1,9 @@
 package os.nova.launcher;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Message;
 import android.view.Gravity;
@@ -9,12 +11,15 @@ import android.view.View;
 import android.view.ViewGroup.LayoutParams;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 /**
  * Browser nativo di NovaOS: una WebView a SCHERMO INTERO (navigazione top-level).
@@ -53,6 +58,12 @@ public class BrowserActivity extends Activity {
         ulp.leftMargin = 12; ulp.rightMargin = 12;
         urlBar.setLayoutParams(ulp);
 
+        Button chrome = new Button(this);
+        chrome.setText("⧉");                       // apre nel browser di sistema (Chrome)
+        chrome.setBackgroundColor(Color.TRANSPARENT);
+        chrome.setTextColor(Color.WHITE);
+        chrome.setOnClickListener(v -> openInSystemBrowser(web.getUrl()));
+
         Button reload = new Button(this);
         reload.setText("⟳");
         reload.setBackgroundColor(Color.TRANSPARENT);
@@ -61,6 +72,7 @@ public class BrowserActivity extends Activity {
 
         bar.addView(close);
         bar.addView(urlBar);
+        bar.addView(chrome);
         bar.addView(reload);
 
         web = buildWebView();
@@ -104,6 +116,16 @@ public class BrowserActivity extends Activity {
             @Override public void onPageStarted(WebView vw, String url, android.graphics.Bitmap f) {
                 if (urlBar != null) urlBar.setText(url);
             }
+            // se il sito blocca la pagina principale (X-Frame-Options/COOP/ERR_BLOCKED_BY_RESPONSE,
+            // ecc.), la WebView non può mostrarla: la apriamo nel browser di sistema (Chrome).
+            @Override public void onReceivedError(WebView vw, WebResourceRequest req, WebResourceError err) {
+                if (req != null && req.isForMainFrame()) {
+                    String u = req.getUrl() != null ? req.getUrl().toString() : vw.getUrl();
+                    Toast.makeText(BrowserActivity.this, "Il sito blocca la vista incorporata: apro in Chrome", Toast.LENGTH_SHORT).show();
+                    openInSystemBrowser(u);
+                    finish();
+                }
+            }
         });
         v.setWebChromeClient(new WebChromeClient() {
             // apre i popup (finestre di login) dentro la stessa WebView invece di scartarli
@@ -118,6 +140,20 @@ public class BrowserActivity extends Activity {
             }
         });
         return v;
+    }
+
+    /** Apre l'URL nel browser di sistema (Chrome), fuori da NovaOS. */
+    private void openInSystemBrowser(String url) {
+        if (url == null || url.isEmpty()) return;
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            i.addCategory(Intent.CATEGORY_BROWSABLE);
+            // evita di riaprire NovaOS stesso: preferisci un vero browser
+            i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
+        } catch (Exception e) {
+            Toast.makeText(this, "Nessun browser disponibile sul dispositivo", Toast.LENGTH_SHORT).show();
+        }
     }
 
     @Override public void onBackPressed() {
