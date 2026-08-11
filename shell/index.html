@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0f17">
+  <title>NovaOS</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-theme="dark">
+
+  <!-- Contenitore device: simula il telaio dello smartphone su desktop.
+       Sull'emulatore/telefono occupa tutto lo schermo. -->
+  <div id="device">
+
+    <!-- BOOT -->
+    <section id="boot" class="screen active">
+      <div class="boot-logo">
+        <svg class="boot-mark" viewBox="0 0 120 120" role="img" aria-label="NovaOS">
+          <defs>
+            <linearGradient id="novaGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%"  stop-color="#5b8cff"/>
+              <stop offset="55%" stop-color="#8a63ff"/>
+              <stop offset="100%" stop-color="#c15bff"/>
+            </linearGradient>
+            <radialGradient id="novaGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%"  stop-color="#ffffff" stop-opacity=".9"/>
+              <stop offset="60%" stop-color="#8a63ff" stop-opacity=".25"/>
+              <stop offset="100%" stop-color="#8a63ff" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <!-- alone luminoso -->
+          <circle class="nova-glow" cx="60" cy="60" r="56" fill="url(#novaGlow)"/>
+          <!-- anello orbitale -->
+          <circle class="nova-ring" cx="60" cy="60" r="42" fill="none"
+                  stroke="url(#novaGrad)" stroke-width="3"
+                  stroke-linecap="round" stroke-dasharray="150 90"/>
+          <!-- corpo -->
+          <circle class="nova-core" cx="60" cy="60" r="30" fill="url(#novaGrad)"/>
+          <!-- scintilla a 4 punte (la "nova") -->
+          <path class="nova-spark" fill="#ffffff"
+                d="M60 34 C62 50, 70 58, 86 60 C70 62, 62 70, 60 86 C58 70, 50 62, 34 60 C50 58, 58 50, 60 34 Z"/>
+        </svg>
+        <span class="boot-name">Nova<span class="boot-name-os">OS</span></span>
+        <span class="boot-tag">powered by web</span>
+      </div>
+      <div class="boot-spinner"></div>
+    </section>
+
+    <!-- LOCKSCREEN -->
+    <section id="lockscreen" class="screen">
+      <div class="statusbar" data-statusbar></div>
+      <div class="lock-clock">
+        <div class="lock-time">--:--</div>
+        <div class="lock-date">--</div>
+      </div>
+      <div class="lock-notifs" id="lock-notifs"></div>
+
+      <!-- hint di swipe (blocco: nessuno / scorrimento) -->
+      <div class="lock-hint" id="lock-hint">
+        <div class="lock-arrow"></div>
+        <span>Scorri verso l'alto per sbloccare</span>
+      </div>
+
+      <!-- tastierino PIN (blocco: PIN) -->
+      <div class="pinpad hidden" id="pinpad">
+        <div class="pin-label" id="pin-label">Inserisci il PIN</div>
+        <div class="pin-dots" id="pin-dots"></div>
+        <div class="pin-keys" id="pin-keys"></div>
+      </div>
+    </section>
+
+    <!-- HOME -->
+    <section id="home" class="screen">
+      <div class="statusbar" data-statusbar></div>
+
+      <div class="home-clock">
+        <div class="home-time">--:--</div>
+        <div class="home-date">--</div>
+      </div>
+
+      <div class="app-grid" id="app-grid"></div>
+
+      <div class="dock" id="dock"></div>
+    </section>
+
+    <!-- APP RUNTIME: qui vengono montate le app -->
+    <section id="app-view" class="screen">
+      <div class="statusbar statusbar--app" data-statusbar></div>
+      <div class="app-frame" id="app-frame"></div>
+    </section>
+
+    <!-- CENTRO NOTIFICHE (tendina) -->
+    <div id="shade" class="shade">
+      <div class="shade-handle"></div>
+      <div class="shade-top">
+        <span class="shade-time" id="shade-time"></span>
+        <button class="shade-ico" id="shade-settings" aria-label="Impostazioni">⚙️</button>
+      </div>
+      <div class="shade-quick" id="shade-quick"></div>
+      <div class="shade-notifs" id="shade-notifs">
+        <div class="shade-empty">Nessuna notifica</div>
+      </div>
+    </div>
+    <div id="shade-scrim" class="scrim"></div>
+
+    <!-- overlay luminosità (impostazioni display) -->
+    <div id="bright-overlay" class="bright-overlay"></div>
+
+    <!-- BARRA DI NAVIGAZIONE (gesture / pulsanti) -->
+    <div id="navbar" class="navbar">
+      <button class="nav-btn" data-nav="back" aria-label="Indietro"></button>
+      <button class="nav-btn nav-btn--home" data-nav="home" aria-label="Home"></button>
+      <button class="nav-btn" data-nav="recents" aria-label="App recenti"></button>
+    </div>
+
+  </div>
+
+  <script src="js/apps.js"></script>
+  <script src="js/os.js"></script>
+</body>
+</html>

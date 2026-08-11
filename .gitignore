@@ -1,0 +1,13 @@
+# Artefatti di build APK (rigenerabili con android-launcher/build-apk.sh)
+android-launcher/build/
+
+# Copia della shell impacchettata negli assets (generata: cp -r shell/* .../assets/www/)
+android-launcher/app/src/main/assets/www/
+
+# File di test/harness temporanei
+shell/_t*.html
+_t*.html
+
+# Sistema
+.DS_Store
+*.log

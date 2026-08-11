@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Overlay di configurazione AOSP per NovaOS.
+  Imposta il launcher NovaOS come Home di sistema e alcune policy di default.
+  Percorso replicato dentro device/nova/novaos/overlay/ come richiede AOSP.
+-->
+<resources>
+    <!-- Componente Home predefinita del sistema -->
+    <string name="default_wallpaper_component" translatable="false"></string>
+    <string name="config_defaultHome" translatable="false">os.nova.launcher/os.nova.launcher.MainActivity</string>
+
+    <!-- Avvio diretto sulla shell, niente setup wizard di Google -->
+    <bool name="config_enableCarLauncher">false</bool>
+
+    <!-- Timeout schermo di default (ms) coerente con le Impostazioni di NovaOS -->
+    <integer name="def_screen_off_timeout">30000</integer>
+
+    <!-- Consenti alla shell WebView di controllare barra di stato/navigazione -->
+    <bool name="config_showNavigationBar">true</bool>
+</resources>

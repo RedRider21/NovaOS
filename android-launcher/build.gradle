@@ -1,0 +1,6 @@
+// Progetto root del launcher NovaOS.
+// Apri questa cartella (android-launcher/) con Android Studio e premi Run,
+// oppure da terminale: ./gradlew installDebug con l'emulatore avviato.
+plugins {
+    id 'com.android.application' version '8.5.0' apply false
+}
