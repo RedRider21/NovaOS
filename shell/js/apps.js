@@ -133,6 +133,12 @@ const NovaApps = (() => {
       const now = () => new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"});
       const color = n => `hsl(${[...n].reduce((s,c)=>s+c.charCodeAt(0),0)%360} 55% 50%)`;
       const initials = n => n.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
+      // ricava il numero per l'SMS: se il nome è già un numero lo usa, altrimenti dalla Rubrica
+      const resolveNumber = name => {
+        if (/^[+\d][\d\s]{4,}$/.test(name)) return name.replace(/\s/g,"");
+        const c = os.store.get("contacts", []).find(x => x.name === name);
+        return c ? c.phone.replace(/\s/g,"") : null;
+      };
 
       // risposta automatica contestuale (demo)
       const autoReply = (txt) => {
@@ -144,37 +150,57 @@ const NovaApps = (() => {
       };
 
       const drawList = () => {
-        const names = Object.keys(threads);
         root.innerHTML = `<div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
             <div class="app-title">Messaggi</div><button class="btn" id="new" style="width:auto;padding:10px 16px">✍️ Nuovo</button></div>
-          <div class="list">${names.length?names.map(n=>{const l=last(threads[n]);return `
+          <div style="padding:0 16px 10px"><input id="q" placeholder="Cerca nelle conversazioni" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px;color:var(--text);font-size:15px;outline:none"></div>
+          <div class="list" id="mlist"></div>`;
+        const drawRows = (filter="") => {
+          const f = filter.trim().toLowerCase();
+          const names = Object.keys(threads).sort((a,b)=>{
+            const la=last(threads[a]), lb=last(threads[b]);
+            return (lb?lb[3]||0:0)-(la?la[3]||0:0);   // per timestamp se disponibile
+          }).filter(n => !f || n.toLowerCase().includes(f) || (last(threads[n])&&last(threads[n])[1].toLowerCase().includes(f)));
+          const box = root.querySelector("#mlist");
+          box.innerHTML = names.length?names.map(n=>{const l=last(threads[n]);return `
             <div class="card tappable" data-n="${n}"><div class="c-ico" style="background:${color(n)}">${initials(n)}</div>
-            <div class="c-body"><div class="c-title">${n}</div><div class="c-sub">${l?(l[0]==='out'?'Tu: ':'')+l[1]:'—'}</div></div>
+            <div class="c-body"><div class="c-title">${n}</div><div class="c-sub">${l?(l[0]==='out'?'Tu: ':'')+esc(l[1]):'—'}</div></div>
             <div style="color:var(--text-dim);font-size:12px">${l?l[2]:''}</div></div>`;}).join("")
-            :`<div style="text-align:center;color:var(--text-dim);padding:40px">Nessuna conversazione</div>`}</div>`;
+            :`<div style="text-align:center;color:var(--text-dim);padding:40px">${f?'Nessun risultato':'Nessuna conversazione'}</div>`;
+          box.querySelectorAll("[data-n]").forEach(el => el.onclick = () => drawThread(el.dataset.n));
+        };
+        drawRows();
+        root.querySelector("#q").oninput = e => drawRows(e.target.value);
         root.querySelector("#new").onclick = drawNew;
-        root.querySelectorAll("[data-n]").forEach(el => el.onclick = () => drawThread(el.dataset.n));
       };
+      const esc = s => (s==null?"":String(s)).replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
 
       const drawNew = () => {
         const contacts = os.store.get("contacts", []);
         root.innerHTML = `<div class="back-bar"><button class="back-btn"></button><div class="back-title">Nuovo messaggio</div></div>
           <div style="padding:0 16px 8px"><input id="to" placeholder="A: nome o numero" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:12px 14px;color:var(--text);font-size:15px;outline:none"></div>
-          ${contacts.length?`<div class="section-label">Contatti</div><div class="group">${contacts.map(c=>`
-            <div class="item" data-c="${c.name}"><div class="i-ico" style="background:${color(c.name)}">${initials(c.name)}</div>
-              <div class="i-body"><div class="i-title">${c.name}</div><div class="i-sub">${c.phone}</div></div></div>`).join("")}</div>`:''}
+          <div class="section-label">Contatti</div><div class="group" id="clist"></div>
           <div style="padding:16px"><button class="btn" id="ok">Avvia conversazione</button></div>`;
         root.querySelector(".back-btn").onclick = drawList;
         const open = name => { name=name.trim(); if(!name) return; if(!threads[name]) threads[name]=[]; save(); drawThread(name); };
+        const drawContacts = (filter="") => {
+          const f = filter.trim().toLowerCase();
+          const rows = contacts.filter(c => !f || c.name.toLowerCase().includes(f) || (c.phone||"").replace(/\s/g,"").includes(f.replace(/\s/g,"")));
+          root.querySelector("#clist").innerHTML = rows.length ? rows.map(c=>`
+            <div class="item" data-c="${c.name}"><div class="i-ico" style="background:${color(c.name)}">${initials(c.name)}</div>
+              <div class="i-body"><div class="i-title">${c.name}</div><div class="i-sub">${c.phone}</div></div></div>`).join("")
+            : `<div class="item"><div class="i-sub" style="padding:6px">Nessun contatto</div></div>`;
+          root.querySelectorAll("[data-c]").forEach(el => el.onclick = () => open(el.dataset.c));
+        };
+        drawContacts();
+        root.querySelector("#to").oninput = e => drawContacts(e.target.value);
         root.querySelector("#ok").onclick = () => open(root.querySelector("#to").value);
-        root.querySelectorAll("[data-c]").forEach(el => el.onclick = () => open(el.dataset.c));
       };
 
       const drawThread = (name) => {
         const msgs = threads[name];
         const bubbles = () => msgs.map(([dir,txt,t])=>`
           <div style="display:flex;flex-direction:column;align-items:${dir==='out'?'flex-end':'flex-start'};padding:2px 12px">
-            <div style="max-width:76%;padding:9px 14px;border-radius:16px;font-size:15px;background:${dir==='out'?'var(--accent)':'var(--surface)'};color:${dir==='out'?'#fff':'var(--text)'}">${txt}</div>
+            <div style="max-width:76%;padding:9px 14px;border-radius:16px;font-size:15px;background:${dir==='out'?'var(--accent)':'var(--surface)'};color:${dir==='out'?'#fff':'var(--text)'};white-space:pre-wrap;word-break:break-word">${esc(txt)}</div>
             <div style="font-size:10px;color:var(--text-dim);margin:1px 6px">${t||''}</div>
           </div>`).join("");
         root.innerHTML = `
@@ -191,17 +217,25 @@ const NovaApps = (() => {
         root.querySelector("#delc").onclick = () => { if(confirm("Eliminare la conversazione con "+name+"?")){ delete threads[name]; save(); drawList(); } };
         const th = root.querySelector("#thread"); th.scrollTop = th.scrollHeight;
         const input = root.querySelector("#msg");
+        const nativeSms = window.NovaNative && window.NovaNative.sendSms;
         const send = () => {
           const v = input.value.trim(); if(!v) return;
-          msgs.push(["out",v,now()]); save(); input.value="";
+          msgs.push(["out",v,now(),Date.now()]); save(); input.value="";
           th.innerHTML = bubbles(); th.scrollTop = th.scrollHeight;
-          setTimeout(()=>{ msgs.push(["in",autoReply(v),now()]); save();
-            th.innerHTML = bubbles(); th.scrollTop = th.scrollHeight;
-            os.notify({ app:"messages", title:name, text:last(msgs)[1] });
-          }, 900);
+          if (nativeSms) {
+            // invio SMS reale sul dispositivo (nessuna risposta simulata)
+            const num = resolveNumber(name);
+            if (num) { try { window.NovaNative.sendSms(num, v); os.notify({app:"messages",title:name,text:"SMS inviato"}); } catch(e){ os.notify({app:"messages",title:name,text:"Invio SMS non riuscito"}); } }
+            else os.notify({ app:"messages", title:name, text:"Nessun numero valido per l'invio" });
+          } else {
+            setTimeout(()=>{ msgs.push(["in",autoReply(v),now(),Date.now()]); save();
+              th.innerHTML = bubbles(); th.scrollTop = th.scrollHeight;
+              os.notify({ app:"messages", title:name, text:last(msgs)[1] });
+            }, 900);
+          }
         };
         root.querySelector("#send").onclick = send;
-        input.onkeydown = e => { if(e.key==="Enter") send(); };
+        input.onkeydown = e => { if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); send(); } };
       };
 
       drawList();
@@ -212,8 +246,16 @@ const NovaApps = (() => {
     render(root, os) {
       root.innerHTML = `
         <div style="height:100%;display:flex;flex-direction:column;background:#000">
+          <div style="display:flex;align-items:center;justify-content:center;gap:22px;padding:12px 0 6px;background:#000">
+            <button id="grid" class="cam-top" title="Griglia">⊞</button>
+            <button id="timer" class="cam-top" title="Autoscatto">⏱️<span id="timer-lbl" style="font-size:11px;margin-left:2px">off</span></button>
+          </div>
           <div style="flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center">
             <video id="cam" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover"></video>
+            <div id="grid-ov" style="position:absolute;inset:0;pointer-events:none;display:none;
+              background-image:linear-gradient(rgba(255,255,255,.35) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.35) 1px,transparent 1px);
+              background-size:33.33% 33.33%"></div>
+            <div id="count" style="position:absolute;color:#fff;font-size:96px;font-weight:200;text-shadow:0 2px 20px rgba(0,0,0,.6);display:none"></div>
             <div id="flash" style="position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none"></div>
             <div id="cam-msg" style="position:absolute;color:#fff;text-align:center;padding:24px;font-size:14px;display:none"></div>
           </div>
@@ -224,9 +266,14 @@ const NovaApps = (() => {
           </div>
           <input id="pick" type="file" accept="image/*" hidden>
           <canvas id="cv" hidden></canvas>
+          <style>.cam-top{background:rgba(255,255,255,.12);border:none;color:#fff;font-size:15px;padding:7px 12px;border-radius:16px;cursor:pointer;display:flex;align-items:center}</style>
         </div>`;
       const video = root.querySelector("#cam"), msg = root.querySelector("#cam-msg"), flash = root.querySelector("#flash");
-      let stream = null, cams = [], curCam = 0, facing = "environment";
+      let stream = null, cams = [], curCam = 0, facing = "environment", timerSec = 0;
+      // griglia
+      root.querySelector("#grid").onclick = () => { const g = root.querySelector("#grid-ov"); g.style.display = g.style.display==="none" ? "block" : "none"; };
+      // autoscatto: off -> 3s -> 10s -> off
+      root.querySelector("#timer").onclick = () => { timerSec = timerSec===0?3:timerSec===3?10:0; root.querySelector("#timer-lbl").textContent = timerSec?timerSec+"s":"off"; };
 
       const updateThumb = async () => {
         const all = await os.photos.all();
@@ -240,6 +287,7 @@ const NovaApps = (() => {
           if (stream) stream.getTracks().forEach(t=>t.stop());
           stream = await navigator.mediaDevices.getUserMedia(constraints || { video:{ facingMode: facing }, audio:false });
           video.srcObject = stream; video.style.display = ""; msg.style.display = "none";
+          video.style.transform = facing==="user" ? "scaleX(-1)" : "";   // specchio per selfie
           // enumera le camere solo dopo il permesso (così i label esistono)
           if (!cams.length) { try { cams = (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==="videoinput"); } catch {} }
           root.querySelector("#flip").style.display = (cams.length>1 || true) ? "" : "none";
@@ -257,13 +305,36 @@ const NovaApps = (() => {
         os.notify({ app:"camera", title:"Foto salvata", text:"Trovi lo scatto nella Galleria." });
       };
 
-      root.querySelector("#shot").onclick = () => {
-        if (!stream) { root.querySelector("#pick").click(); return; }
+      const capture = () => {
         const cv = root.querySelector("#cv");
         cv.width = video.videoWidth || 720; cv.height = video.videoHeight || 960;
         cv.getContext("2d").drawImage(video, 0, 0, cv.width, cv.height);
         flash.animate([{opacity:.9},{opacity:0}], {duration:300});
+        os.vibrate && os.vibrate(15);
         save(cv.toDataURL("image/jpeg", 0.9));
+      };
+      let counting = false;
+      const shotBtn = root.querySelector("#shot");
+      const pressShot = () => shotBtn.animate(
+        [{transform:"scale(1)",background:"rgba(255,255,255,.25)"},
+         {transform:"scale(.86)",background:"rgba(255,255,255,.85)",offset:.4},
+         {transform:"scale(1)",background:"rgba(255,255,255,.25)"}],
+        {duration:260, easing:"ease-out"});
+      shotBtn.onclick = () => {
+        pressShot();
+        if (!stream) { root.querySelector("#pick").click(); return; }
+        if (counting) return;
+        if (!timerSec) { capture(); return; }
+        // conto alla rovescia autoscatto
+        counting = true;
+        const el = root.querySelector("#count"); el.style.display = "block";
+        let left = timerSec;
+        el.textContent = left;
+        const tick = setInterval(() => {
+          left--;
+          if (left <= 0) { clearInterval(tick); el.style.display = "none"; counting = false; capture(); }
+          else { el.textContent = left; }
+        }, 1000);
       };
       root.querySelector("#flip").onclick = () => {
         if (cams.length > 1) { curCam = (curCam+1) % cams.length; start({ video:{ deviceId:{ exact: cams[curCam].deviceId } }, audio:false }); }
@@ -297,20 +368,34 @@ const NovaApps = (() => {
           cv.width=img.width*s; cv.height=img.height*s; cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);
           res(cv.toDataURL("image/jpeg",0.8)); }; img.src=src; });
 
+      const row = c => `<div class="item" data-id="${c.id}"><div class="i-ico" style="${avatarBg(c)}">${avatarTxt(c)}</div>
+          <div class="i-body"><div class="i-title">${c.name}${c.fav?' <span style="color:#ffcf3f">★</span>':''}</div><div class="i-sub">${c.phone}</div></div><div class="chev"></div></div>`;
+
       const drawList = () => {
-        const cs = sorted();
         root.innerHTML = `<div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
             <div><div class="app-title">Rubrica</div><div class="app-sub">${list.length} contatti</div></div>
             <button class="btn" id="add" style="width:auto;padding:10px 16px">+ Nuovo</button></div>
-          <div style="padding:0 16px 10px"><input id="q" placeholder="Cerca" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px;color:var(--text);font-size:15px;outline:none"></div>
-          <div class="group" id="clist"></div><div style="height:80px"></div>`;
+          <div style="padding:0 16px 10px"><input id="q" placeholder="Cerca per nome o numero" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px;color:var(--text);font-size:15px;outline:none"></div>
+          <div id="clist"></div><div style="height:80px"></div>`;
         const drawRows = (filter="") => {
           const box = root.querySelector("#clist");
-          const rows = cs.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()));
-          box.innerHTML = rows.length ? rows.map(c=>`
-            <div class="item" data-id="${c.id}"><div class="i-ico" style="${avatarBg(c)}">${avatarTxt(c)}</div>
-              <div class="i-body"><div class="i-title">${c.name}</div><div class="i-sub">${c.phone}</div></div><div class="chev"></div></div>`).join("")
-            : `<div class="item"><div class="i-sub" style="padding:6px">Nessun contatto</div></div>`;
+          const f = filter.trim().toLowerCase();
+          const all = sorted().filter(c => c.name.toLowerCase().includes(f) || (c.phone||"").replace(/\s/g,"").includes(f.replace(/\s/g,"")));
+          if (!all.length) { box.innerHTML = `<div class="group"><div class="item"><div class="i-sub" style="padding:6px">Nessun contatto</div></div></div>`; return; }
+          let html = "";
+          if (!f) {
+            const favs = all.filter(c => c.fav);
+            if (favs.length) html += `<div class="section-label">Preferiti</div><div class="group">${favs.map(row).join("")}</div>`;
+          }
+          // sezioni alfabetiche
+          let cur = null;
+          all.forEach(c => {
+            const L = (c.name[0]||"#").toUpperCase();
+            if (L !== cur) { if (cur !== null) html += `</div>`; html += `<div class="section-label">${L}</div><div class="group">`; cur = L; }
+            html += row(c);
+          });
+          if (cur !== null) html += `</div>`;
+          box.innerHTML = html;
           box.querySelectorAll("[data-id]").forEach(el => el.onclick = () => drawDetail(+el.dataset.id));
         };
         drawRows();
@@ -321,6 +406,7 @@ const NovaApps = (() => {
       const drawDetail = (id) => {
         const c = list.find(x=>x.id===id);
         root.innerHTML = `<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1">Contatto</div>
+            <button id="fav" title="Preferito" style="background:none;border:none;color:${c.fav?'#ffcf3f':'var(--text-dim)'};font-size:20px;cursor:pointer;margin-right:6px">${c.fav?'★':'☆'}</button>
             <button id="edit" style="background:none;border:none;color:var(--accent);font-size:15px;cursor:pointer">Modifica</button></div>
           <div style="text-align:center;padding:10px 16px 20px">
             <div style="width:88px;height:88px;border-radius:50%;margin:0 auto 12px;${avatarBg(c)};display:flex;align-items:center;justify-content:center;font-size:38px;color:#fff">${avatarTxt(c)}</div>
@@ -337,6 +423,7 @@ const NovaApps = (() => {
           <button class="btn ghost" id="del" style="margin:16px;color:var(--danger)">Elimina contatto</button>
           <style>.cbtn{width:56px;height:56px;border-radius:50%;border:none;color:#fff;font-size:22px;cursor:pointer}</style>`;
         root.querySelector(".back-btn").onclick = drawList;
+        root.querySelector("#fav").onclick = () => { c.fav = !c.fav; save(); drawDetail(id); };
         root.querySelector("#edit").onclick = () => drawEdit(id);
         root.querySelector("#call").onclick = () => {
           const num = c.phone.replace(/\s/g,"");
@@ -1380,7 +1467,9 @@ const NovaApps = (() => {
         if (cache[key]) return cache[key];
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}`
           + `&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,apparent_temperature`
-          + `&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=7`;
+          + `&hourly=temperature_2m,weather_code,precipitation_probability`
+          + `&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max`
+          + `&timezone=auto&forecast_days=7`;
         const r = await fetch(url); if (!r.ok) throw new Error("meteo");
         const d = await r.json(); cache[key] = d; return d;
       };
@@ -1403,13 +1492,14 @@ const NovaApps = (() => {
           <div id="c-panel"></div>
           <div id="wx-main" style="text-align:center;padding:24px"><div style="color:var(--text-dim)">Caricamento previsioni…</div>
             <div class="boot-spinner" style="margin:16px auto"></div></div>
+          <div id="wx-hourly"></div>
           <div id="wx-days"></div>
-          <div class="section-label">Le mie città</div>
+          <div class="section-label" style="display:flex;justify-content:space-between;align-items:center"><span>Le mie città</span><button id="geoloc" style="background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0">📍 Posizione attuale</button></div>
           <div class="group" id="wx-cities"></div>
           <div style="height:80px"></div>
           <style>.inline-panel{background:var(--surface);border-radius:14px;margin:10px 16px;padding:14px;display:flex;gap:10px}
             .inline-panel input{flex:1;background:var(--surface-2);border:none;border-radius:10px;padding:11px;color:var(--text);outline:none}</style>`;
-        bindAdd(); drawCitiesList();
+        bindAdd(); drawCitiesList(); bindGeo();
         try {
           const d = await fetchWeather(c);
           const cur = d.current, [ic,txt] = WMO(cur.weather_code);
@@ -1418,12 +1508,38 @@ const NovaApps = (() => {
             <div style="font-size:76px;font-weight:200;line-height:1.1">${Math.round(cur.temperature_2m)}°</div>
             <div style="font-size:40px">${ic}</div><div style="font-size:17px">${txt}</div>
             <div style="color:var(--text-dim);margin-top:8px">Percepita ${Math.round(cur.apparent_temperature)}° · Umidità ${cur.relative_humidity_2m}% · Vento ${Math.round(cur.wind_speed_10m)} km/h</div>`;
+          // fascia oraria: prossime 24 ore a partire dall'ora corrente
+          if (d.hourly && d.hourly.time) {
+            const nowH = new Date();
+            let start = d.hourly.time.findIndex(t => new Date(t) >= nowH);
+            if (start < 0) start = 0;
+            const slots = d.hourly.time.slice(start, start+24);
+            root.querySelector("#wx-hourly").innerHTML =
+              `<div class="section-label">Prossime ore</div>
+               <div style="display:flex;gap:6px;overflow-x:auto;padding:0 16px 6px;scrollbar-width:none;touch-action:pan-x;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch">`
+              + slots.map((t,k)=>{const idx=start+k;const [hi]=WMO(d.hourly.weather_code[idx]);
+                const pp=d.hourly.precipitation_probability?d.hourly.precipitation_probability[idx]:null;
+                return `<div style="flex:0 0 auto;min-width:52px;text-align:center;background:var(--surface);border-radius:12px;padding:8px 4px">
+                  <div style="font-size:11px;color:var(--text-dim)">${k===0?"Ora":new Date(t).getHours()+""}</div>
+                  <div style="font-size:20px;margin:2px 0">${hi}</div>
+                  <div style="font-weight:600;font-variant-numeric:tabular-nums">${Math.round(d.hourly.temperature_2m[idx])}°</div>
+                  ${pp!=null?`<div style="font-size:10px;color:#4aa3ff">${pp}%</div>`:''}</div>`;}).join("")
+              + `</div>`;
+          }
           root.querySelector("#wx-days").innerHTML = `<div class="section-label">Prossimi giorni</div><div class="group">`
             + d.daily.time.map((t,i)=>{const [di]=WMO(d.daily.weather_code[i]);
-              return `<div class="item"><div class="i-body"><div class="i-title">${i===0?"Oggi":dayName(t)}</div></div>
+              const pp=d.daily.precipitation_probability_max?d.daily.precipitation_probability_max[i]:null;
+              return `<div class="item"><div class="i-body"><div class="i-title">${i===0?"Oggi":dayName(t)}</div>${pp?`<div class="i-sub" style="color:#4aa3ff">💧 ${pp}%</div>`:''}</div>
                 <div style="font-size:20px;margin-right:14px">${di}</div>
                 <div style="font-variant-numeric:tabular-nums;color:var(--text-dim);margin-right:8px">${Math.round(d.daily.temperature_2m_min[i])}°</div>
                 <div style="font-variant-numeric:tabular-nums;font-weight:600">${Math.round(d.daily.temperature_2m_max[i])}°</div></div>`;}).join("") + `</div>`;
+          // alba / tramonto
+          if (d.daily.sunrise && d.daily.sunset) {
+            const hm = iso => new Date(iso).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"});
+            root.querySelector("#wx-days").innerHTML += `<div class="group" style="margin-top:8px"><div class="item">
+              <div class="i-body"><div class="i-title">🌅 Alba</div></div><div style="margin-right:14px">${hm(d.daily.sunrise[0])}</div></div>
+              <div class="item"><div class="i-body"><div class="i-title">🌇 Tramonto</div></div><div style="margin-right:14px">${hm(d.daily.sunset[0])}</div></div></div>`;
+          }
         } catch(e) {
           root.querySelector("#wx-main").innerHTML = `<div style="font-size:20px">${c.name}</div>
             <div style="color:var(--text-dim);padding:20px">⚠️ Impossibile caricare le previsioni.<br>Verifica la connessione a internet.</div>`;
@@ -1439,6 +1555,22 @@ const NovaApps = (() => {
         box.querySelectorAll("[data-delc]").forEach(b=>b.onclick=(e)=>{e.stopPropagation();cities.splice(+b.dataset.delc,1);if(sel>=cities.length)sel=0;save();draw();});
         cities.forEach(async (ci,i)=>{ try{ const d=await fetchWeather(ci); const el=root.querySelector("#mini-"+i);
           if(el){const [mi]=WMO(d.current.weather_code); el.textContent=`${mi} ${Math.round(d.current.temperature_2m)}°`;} }catch{} });
+      };
+
+      const bindGeo = () => {
+        const geoBtn = root.querySelector("#geoloc"); if (!geoBtn) return;
+        geoBtn.onclick = () => {
+          if (!navigator.geolocation) { os.notify({app:"weather",title:"Meteo",text:"Geolocalizzazione non disponibile"}); return; }
+          geoBtn.textContent = "📍 Individuazione…";
+          navigator.geolocation.getCurrentPosition(async pos => {
+            const lat = pos.coords.latitude, lon = pos.coords.longitude;
+            let name = "La mia posizione";
+            try { const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=it`);
+              const j = await r.json(); name = j.city || j.locality || j.principalSubdivision || name; } catch {}
+            if (!cities.some(ci => Math.abs(ci.lat-lat)<0.05 && Math.abs(ci.lon-lon)<0.05)) { cities.unshift({ name, lat, lon }); save(); }
+            sel = 0; draw();
+          }, () => { geoBtn.textContent = "📍 Posizione attuale"; os.notify({app:"weather",title:"Meteo",text:"Posizione non disponibile (permesso negato?)"}); }, { timeout:10000 });
+        };
       };
 
       const bindAdd = () => {

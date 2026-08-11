@@ -2,6 +2,7 @@ package os.nova.launcher;
 
 import android.app.Activity;
 import android.app.role.RoleManager;
+import android.content.ClipData;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.telecom.Call;
@@ -163,6 +164,25 @@ public class MainActivity extends Activity {
             startActivity(i);
         }
 
+        /** Invia direttamente un SMS (senza aprire altre app) usando SmsManager.
+         *  Richiede il permesso SEND_SMS; se manca, lo chiede e ripiega sull'app SMS. */
+        @JavascriptInterface
+        public void sendSms(String number, String body) {
+            if (number == null || number.isEmpty()) return;
+            if (checkSelfPermission(android.Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+                runOnUiThread(() -> requestPermissions(new String[]{ android.Manifest.permission.SEND_SMS }, 3));
+                sms(number, body);   // intanto apre l'app SMS come ripiego
+                return;
+            }
+            try {
+                android.telephony.SmsManager sm = android.telephony.SmsManager.getDefault();
+                java.util.ArrayList<String> parts = sm.divideMessage(body == null ? "" : body);
+                sm.sendMultipartTextMessage(number, null, parts, null, null);
+            } catch (Exception e) {
+                sms(number, body);   // se qualcosa va storto, ripiega sull'app SMS
+            }
+        }
+
         /** Livello batteria reale (0-100). */
         @JavascriptInterface
         public int batteryLevel() {
@@ -216,8 +236,12 @@ public class MainActivity extends Activity {
                 Intent send = new Intent(Intent.ACTION_SEND).setType(mime)
                         .putExtra(Intent.EXTRA_STREAM, uri)
                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                // ClipData: indispensabile perché il permesso di lettura dell'URI arrivi
+                // davvero all'app scelta nel chooser (altrimenti riceve l'immagine ma non
+                // può aprirla → la condivisione "non funziona").
+                send.setClipData(ClipData.newUri(getContentResolver(), "foto", uri));
                 Intent chooser = Intent.createChooser(send, "Condividi foto");
-                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 startActivity(chooser);
             } catch (Exception e) {
                 runOnUiThread(() -> Toast.makeText(MainActivity.this, "Condivisione non riuscita", Toast.LENGTH_SHORT).show());
