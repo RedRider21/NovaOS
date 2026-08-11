@@ -199,6 +199,39 @@ public class MainActivity extends Activity {
             startActivity(i);
         }
 
+        /** Condivide un'immagine (data URL) verso altre app col chooser di sistema. */
+        @JavascriptInterface public void shareImage(String dataUrl) {
+            try {
+                int comma = dataUrl.indexOf(',');
+                String meta = dataUrl.substring(dataUrl.indexOf(':') + 1, comma); // es. image/jpeg;base64
+                String mime = meta.split(";")[0];
+                byte[] bytes = android.util.Base64.decode(dataUrl.substring(comma + 1), android.util.Base64.DEFAULT);
+                java.io.File dir = new java.io.File(getCacheDir(), "share");
+                dir.mkdirs();
+                String ext = mime.contains("png") ? ".png" : ".jpg";
+                java.io.File f = new java.io.File(dir, "novaos-" + System.currentTimeMillis() + ext);
+                java.io.FileOutputStream fos = new java.io.FileOutputStream(f);
+                fos.write(bytes); fos.close();
+                Uri uri = Uri.parse("content://" + ShareProvider.AUTHORITY + "/" + f.getName());
+                Intent send = new Intent(Intent.ACTION_SEND).setType(mime)
+                        .putExtra(Intent.EXTRA_STREAM, uri)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                Intent chooser = Intent.createChooser(send, "Condividi foto");
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(chooser);
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, "Condivisione non riuscita", Toast.LENGTH_SHORT).show());
+            }
+        }
+
+        /** Condivide testo/URL (usato da Note, Browser, ecc.). */
+        @JavascriptInterface public void shareText(String text) {
+            Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text);
+            Intent chooser = Intent.createChooser(send, "Condividi");
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(chooser);
+        }
+
         // ---- Mail reale (SMTP/IMAP). I risultati tornano via window.NovaMail.* ----
         @JavascriptInterface public void mailConfigure(String json) { mail.configure(json); }
         @JavascriptInterface public String mailAccount()            { return mail.account(); }

@@ -49,6 +49,13 @@
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@android:style/Theme.NoTitleBar" />
 
+        <!-- Provider per condividere foto/file verso altre app tramite content:// -->
+        <provider
+            android:name=".ShareProvider"
+            android:authorities="os.nova.launcher.share"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <!-- Servizio di chiamata: attivo quando NovaOS è il telefono predefinito.
              Mostra la schermata di chiamata dentro NovaOS invece di quella di sistema. -->
         <service

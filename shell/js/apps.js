@@ -409,8 +409,11 @@ const NovaApps = (() => {
       const go = (u) => {
         u = norm((u||"").trim()); if(!u) return;
         history = [{url:u, t:Date.now()}, ...history.filter(h=>h.url!==u)].slice(0,30); saveH();
-        if (native) window.NovaNative.openBrowser(u);
-        else drawFrame(u);
+        if (native) {
+          try { window.NovaNative.openBrowser(u); return; }
+          catch (e) { /* se il bridge fallisce, ripiega sull'anteprima */ }
+        }
+        drawFrame(u);
       };
       const addBookmark = (u) => {
         u = norm((u||"").trim()); if(!u) return;
@@ -454,12 +457,34 @@ const NovaApps = (() => {
 
       const drawFrame = (u) => {
         root.innerHTML = `<div class="back-bar" style="padding:6px 12px"><button class="back-btn"></button>
-            <div class="back-title" style="flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${host(u)}</div></div>
+            <div class="back-title" style="flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${host(u)}</div>
+            <button class="btn ghost" id="newtab" style="width:auto;padding:0 12px;font-size:13px">↗ Nuova scheda</button></div>
           ${bar(u)}
-          <div style="padding:0 12px 90px">
+          <div style="padding:0 12px 90px;position:relative">
+            <div id="fload" style="position:absolute;left:12px;right:12px;top:0;height:500px;border-radius:12px;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--text-dim);font-size:13px">
+              <div class="spin"></div>Caricamento di ${host(u)}…</div>
             <iframe id="frame" src="${u}" style="width:100%;height:500px;border:none;border-radius:12px;background:#fff"></iframe>
-            <div style="color:var(--text-dim);font-size:12px;padding:10px 4px">⚠️ Banche e molti siti vietano l'anteprima in iframe. Con NovaOS installato sul device si aprono a schermo intero, senza limiti.</div></div>`;
+            <div id="fblock" style="display:none;color:var(--text-dim);font-size:13px;padding:14px 6px;line-height:1.5">
+              ⚠️ <b>${host(u)}</b> non consente l'anteprima incorporata (protezione anti-iframe, tipica di banche e Google).<br>
+              <button class="btn" id="opnew" style="margin-top:10px;width:auto;padding:10px 16px">Apri in una nuova scheda</button></div>
+          </div>`;
         root.querySelector(".back-btn").onclick = drawHome;
+        const openReal = () => { try { window.open(u, "_blank", "noopener"); } catch(e){} };
+        root.querySelector("#newtab").onclick = openReal;
+        root.querySelector("#opnew").onclick = openReal;
+        const frame = root.querySelector("#frame");
+        const load = root.querySelector("#fload");
+        const block = root.querySelector("#fblock");
+        let done = false;
+        frame.onload = () => { done = true; if (load) load.style.display = "none"; };
+        // se dopo 4s non è arrivato l'onload (X-Frame-Options blocca il caricamento),
+        // mostra l'avviso e l'opzione per aprirlo davvero.
+        setTimeout(() => {
+          if (done) return;
+          if (load) load.style.display = "none";
+          frame.style.display = "none";
+          if (block) block.style.display = "block";
+        }, 4000);
         bind();
       };
 
@@ -575,14 +600,16 @@ const NovaApps = (() => {
           else { slideBtn.textContent="⏸️"; slideTimer = setInterval(()=>go(i+1), 2200); }
         };
 
-        // condivisione (share sheet nativo del sistema, se disponibile)
+        // condivisione: prima il bridge nativo (affidabile su Android), poi Web Share
         const shareBtn = root.querySelector("#vshare");
         if (shareBtn) shareBtn.onclick = async () => {
+          if (window.NovaNative && window.NovaNative.shareImage) { window.NovaNative.shareImage(p.data); return; }
           try {
             const blob = await (await fetch(p.data)).blob();
             const file = new File([blob], "novaos-foto.jpg", { type: blob.type||"image/jpeg" });
-            if (navigator.canShare && navigator.canShare({ files:[file] })) await navigator.share({ files:[file], title:"Foto da NovaOS" });
-            else os.notify({ app:"gallery", title:"Condivisione", text:"Condivisione non disponibile su questo dispositivo." });
+            if (navigator.canShare && navigator.canShare({ files:[file] })) { await navigator.share({ files:[file], title:"Foto da NovaOS" }); return; }
+            if (navigator.share) { await navigator.share({ title:"Foto da NovaOS", text:"Condivisa da NovaOS" }); return; }
+            os.notify({ app:"gallery", title:"Condivisione", text:"Condivisione non disponibile in questo contesto." });
           } catch (e) {}
         };
 
@@ -973,13 +1000,17 @@ const NovaApps = (() => {
       // callback invocati dal MailBridge nativo al termine delle operazioni di rete
       window.NovaMail = {
         onMessages(f, jsonStr){
+          let newUnread = 0;
           try {
             const arr = JSON.parse(jsonStr||"[]");
+            const prev = new Set((box.inbox||[]).map(m=>m.uid));
             box.inbox = arr.map(m => ({ id: parseInt((m.uid||"").replace(/\D/g,""),10) || (Date.now()+Math.floor(Math.random()*1e6)),
               from:m.from, subj:m.subj, body:m.body, time:m.time, read:!!m.read, star:false, uid:m.uid }));
+            newUnread = box.inbox.filter(m=>!m.read && !prev.has(m.uid)).length;
             save();
           } catch(e){}
           syncing = false;
+          if (newUnread > 0) os.notify({ app:"mail", title:"Posta in arrivo", text:`${newUnread} nuov${newUnread>1?'i':'o'} messaggi${newUnread>1?'':'o'}` });
           if (root.isConnected) { folder="inbox"; drawList(); }
         },
         onSent(ok, err){
@@ -1266,8 +1297,8 @@ const NovaApps = (() => {
           <div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
             <div class="app-title">${months[mo]} ${y}</div>
             <div style="display:flex;gap:6px">
-              <button class="mini-add" id="today" style="background:var(--surface);width:auto;padding:0 12px;font-size:13px">Oggi</button>
-              <button class="mini-add" id="prev" style="background:var(--surface)">‹</button><button class="mini-add" id="next" style="background:var(--surface)">›</button></div></div>
+              <button class="mini-add" id="today" style="background:var(--surface);color:var(--text);width:auto;padding:0 12px;font-size:13px">Oggi</button>
+              <button class="mini-add" id="prev" style="background:var(--surface);color:var(--text)">‹</button><button class="mini-add" id="next" style="background:var(--surface);color:var(--text)">›</button></div></div>
           <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:0 12px;color:var(--text-dim);font-size:12px;text-align:center;margin-bottom:4px">${dows.map(d=>`<div>${d}</div>`).join("")}</div>
           <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:0 12px">${cells}</div>
           <div class="section-label" style="display:flex;justify-content:space-between;align-items:center"><span>${isToday?"Oggi":sel.split("-").reverse().join("/")}</span><button class="mini-add" id="add">+</button></div>

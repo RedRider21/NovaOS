@@ -56,8 +56,11 @@ const OS = (() => {
 
   let currentApp = null;
   const activeIntervals = new Set();
-  let notifId = 0;
-  const notifs = [];
+  // notifiche REALI e persistenti: nascono solo da eventi effettivi (sveglie, posta,
+  // conferme delle app). Sopravvivono al riavvio finché non vengono scartate.
+  const notifs = store.get("notifs", []);
+  let notifId = notifs.reduce((m,n)=>Math.max(m, n.id||0), 0);
+  const saveNotifs = () => store.set("notifs", notifs.slice(0, 40));
 
   // PIN input in corso
   let pinBuffer = "";
@@ -136,15 +139,298 @@ const OS = (() => {
   // ============================================================
   //  home
   // ============================================================
+  // ============================================================
+  //  Home a pagine + cartelle (modificabile solo in modalità edit)
+  // ============================================================
+  let homePage = 0, editing = false;
+  const escH = s => (s==null?"":String(s)).replace(/[<>&"]/g, c => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;" }[c]));
+  const dockIds = () => NovaApps.dock.map(a => a.id);
+  const pageableIds = () => { const d = dockIds(); return allApps().map(a=>a.id).filter(id => !d.includes(id)); };
+
+  // ricostruisce/normalizza il layout: rimuove app sparite, dissolve cartelle <2,
+  // aggiunge le app nuove non ancora posizionate, garantisce almeno una pagina.
+  function homeLayout() {
+    const ids = pageableIds(); const idset = new Set(ids);
+    let L = store.get("homeLayout", null);
+    const PER = 16;
+    if (!L || !Array.isArray(L.pages)) {
+      L = { pages: [] };
+      for (let i=0;i<ids.length;i+=PER) L.pages.push(ids.slice(i,i+PER).map(id=>({t:"app",id})));
+    } else {
+      const placed = new Set();
+      L.pages = L.pages.map(pg => (pg||[]).map(it => {
+        if (it && it.t==="folder") {
+          const items = (it.items||[]).filter(id => idset.has(id) && !placed.has(id));
+          items.forEach(id=>placed.add(id));
+          return { t:"folder", name: it.name||"Cartella", items };
+        }
+        if (it && idset.has(it.id) && !placed.has(it.id)) { placed.add(it.id); return { t:"app", id:it.id }; }
+        return null;
+      }).filter(Boolean));
+      // dissolvi cartelle con meno di 2 elementi
+      L.pages = L.pages.map(pg => pg.flatMap(it => it.t==="folder" ? (it.items.length>=2 ? [it] : it.items.map(id=>({t:"app",id}))) : [it]));
+      // rimuovi automaticamente le pagine vuote; in modifica si conserva solo quella
+      // attualmente visualizzata (così puoi aggiungerne una col "+" e riempirla).
+      L.pages = L.pages.filter((pg,i) => pg.length || (editing && i===homePage));
+      // app nuove -> in coda all'ultima pagina
+      const missing = ids.filter(id => !placed.has(id));
+      if (missing.length) { if (!L.pages.length) L.pages.push([]); missing.forEach(id => L.pages[L.pages.length-1].push({t:"app",id})); }
+    }
+    if (!L.pages.length) L.pages.push([]);
+    return L;
+  }
+  const saveLayout = L => store.set("homeLayout", L);
+
   function renderHome() {
-    const grid = $("#app-grid"); grid.innerHTML = "";
-    allApps().forEach((a, i) => grid.appendChild(iconEl(a, i)));
+    const host = $("#app-grid");
+    const L = homeLayout();
+    homePage = Math.max(0, Math.min(homePage, L.pages.length-1));
+    host.classList.toggle("editing", editing);
+    host.innerHTML = `
+      <div class="home-track" style="transform:translateX(${-homePage*100}%)">
+        ${L.pages.map((pg,pi)=>`<div class="home-page" data-page="${pi}">${pg.map((it,ii)=>homeIcon(it,pi,ii)).join("")}</div>`).join("")}
+      </div>
+      <div class="page-dots">
+        ${L.pages.map((_,pi)=>`<span class="dot ${pi===homePage?'on':''}" data-dot="${pi}"></span>`).join("")}
+        ${editing?`<button class="dot-add" id="add-page" title="Nuova pagina">＋</button>`:''}
+      </div>
+      ${editing?`<div class="edit-bar"><span>Trascina le icone · tienile su un'altra per creare una cartella</span><button class="home-done" id="home-done">✓ Fine</button></div>`:''}`;
+    bindHome(L, host);
     const dock = $("#dock"); dock.innerHTML = "";
     NovaApps.dock.forEach((a, i) => dock.appendChild(iconEl(a, i)));
   }
+
+  function homeIcon(it, pi, ii) {
+    if (it.t === "folder") {
+      const mini = it.items.map(appById).filter(Boolean).slice(0,4).map(a => {
+        const isImg = /^(https?:|data:)/.test(a.icon||"");
+        return `<span style="background:${a.color}${isImg?`;background-image:url('${a.icon}')`:''}">${isImg?'':a.icon}</span>`;
+      }).join("");
+      return `<div class="app-icon folder" data-loc="${pi}:${ii}"><div class="glyph folder-glyph">${mini}</div><div class="label">${escH(it.name)}</div></div>`;
+    }
+    const a = appById(it.id); if (!a) return "";
+    const isImg = /^(https?:|data:)/.test(a.icon||"");
+    const glyph = isImg
+      ? `<div class="glyph" style="background:${a.color};padding:0;overflow:hidden"><img src="${a.icon}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='🌐'"></div>`
+      : `<div class="glyph" style="background:${a.color}">${a.icon}</div>`;
+    return `<div class="app-icon" data-loc="${pi}:${ii}" data-app="${a.id}">${editing&&a.web?`<button class="icon-rm" data-rm="${a.id}">✕</button>`:''}${glyph}<div class="label">${a.name}</div></div>`;
+  }
+
+  function bindHome(L, host) {
+    const done = host.querySelector("#home-done");
+    if (done) done.onclick = () => { editing = false; saveLayout(L); renderHome(); };
+    const addP = host.querySelector("#add-page");
+    if (addP) addP.onclick = () => { L.pages.push([]); saveLayout(L); homePage = L.pages.length-1; renderHome(); };
+    host.querySelectorAll(".dot").forEach(d => d.onclick = () => { homePage = +d.dataset.dot; renderHome(); });
+    host.querySelectorAll(".icon-rm").forEach(b => b.onclick = e => {
+      e.stopPropagation(); const id = b.dataset.rm;
+      if (confirm(`Rimuovere "${(appById(id)||{}).name||id}"?`)) { uninstallApp(id); saveLayout(homeLayout()); renderHome(); }
+    });
+    host.querySelectorAll(".app-icon").forEach(el => {
+      const [pi,ii] = el.dataset.loc.split(":").map(Number);
+      const it = L.pages[pi][ii];
+      if (!editing) {
+        el.onclick = () => it.t==="folder" ? openFolder(L,pi,ii) : openApp(it.id);
+      } else {
+        el.onclick = () => { if (it.t==="folder") openFolder(L,pi,ii); };
+        makeDraggable(el, L, pi, ii, host);
+      }
+    });
+    enablePageSwipe(host);
+  }
+
+  // cambio pagina con trascinamento (mouse + touch): premi, tieni premuto e scorri
+  // a destra/sinistra. Il carosello segue il dito e scatta alla pagina più vicina.
+  // Solo in modalità normale (in modifica il drag sposta le icone). Legato una volta.
+  function enablePageSwipe(host) {
+    if (host._swipeBound) return; host._swipeBound = true;
+    let startX=0, startY=0, dx=0, w=0, pagesN=1, track=null, active=false, dragging=false, decided=false;
+    const onDown = e => {
+      if (editing) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      track = host.querySelector(".home-track"); if (!track) return;
+      active=true; dragging=false; decided=false; dx=0;
+      startX=e.clientX; startY=e.clientY;
+      w = host.clientWidth || window.innerWidth;
+      pagesN = homeLayout().pages.length;
+      track.style.transition = "none";
+    };
+    const onMove = e => {
+      if (!active || editing) return;
+      dx = e.clientX-startX; const dy = e.clientY-startY;
+      if (!decided) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        decided = true; dragging = Math.abs(dx) > Math.abs(dy);
+        if (!dragging) { active=false; track.style.transition=""; return; }
+      }
+      if (!dragging) return;
+      if (e.cancelable) e.preventDefault();
+      let off = -homePage*w + dx;
+      const min = -(pagesN-1)*w, max = 0;               // resistenza oltre i bordi
+      if (off > max) off = max + (off-max)*0.35;
+      if (off < min) off = min + (off-min)*0.35;
+      track.style.transform = `translateX(${off}px)`;
+    };
+    const onUp = () => {
+      if (!active) { return; }
+      active=false;
+      if (!track) return;
+      track.style.transition = "";
+      if (dragging) {
+        if (dx < -w*0.22 && homePage < pagesN-1) homePage++;
+        else if (dx > w*0.22 && homePage > 0) homePage--;
+      }
+      track.style.transform = `translateX(${-homePage*100}%)`;
+      host.querySelectorAll(".dot").forEach(d => d.classList.toggle("on", +d.dataset.dot===homePage));
+      if (dragging && Math.abs(dx) > 8) {              // dopo uno swipe non aprire l'app
+        const kill = ev => { ev.stopPropagation(); ev.preventDefault(); };
+        host.addEventListener("click", kill, true);
+        setTimeout(() => host.removeEventListener("click", kill, true), 80);
+      }
+      dragging=false;
+    };
+    host.addEventListener("pointerdown", onDown);
+    host.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }
+
+  // trascinamento icona in modalità modifica: riordina, sposta tra pagine, crea cartelle
+  function makeDraggable(el, L, pi, ii, host) {
+    el.style.touchAction = "none";
+    el.addEventListener("pointerdown", e => {
+      if (e.button === 2) return;
+      const rect = el.getBoundingClientRect();
+      const startX = e.clientX, startY = e.clientY;
+      const offX = e.clientX-rect.left, offY = e.clientY-rect.top;
+      const track = host.querySelector(".home-track");
+      let ghost = null, dragging = false, edgeTimer = null, edgeDir = 0;
+      const at = (x,y) => { if (ghost) ghost.style.display="none"; const u = document.elementFromPoint(x,y); if (ghost) ghost.style.display=""; return u; };
+      const startDrag = () => {
+        dragging = true;
+        if (track) track.style.transition = "none";   // cambio pagina istantaneo durante il drag
+        ghost = el.cloneNode(true); ghost.classList.add("drag-ghost");
+        ghost.style.cssText += `;position:fixed;margin:0;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;z-index:200;pointer-events:none;opacity:.92;transform:scale(1.12)`;
+        document.body.appendChild(ghost);
+        el.style.opacity = ".25";
+      };
+      const move = ev => {
+        if (!dragging) {
+          if (Math.abs(ev.clientX-startX) < 7 && Math.abs(ev.clientY-startY) < 7) return;
+          startDrag();
+        }
+        ghost.style.left = (ev.clientX-offX)+"px"; ghost.style.top = (ev.clientY-offY)+"px";
+        const u = at(ev.clientX, ev.clientY);
+        host.querySelectorAll(".app-icon").forEach(x => x.classList.remove("drop-into"));
+        const tIcon = u && u.closest(".app-icon");
+        if (tIcon && tIcon !== el) tIcon.classList.add("drop-into");
+        // bordo sinistro/destro: dopo una breve attesa cambia pagina (per spostare
+        // l'icona su un altro desktop). Zone ampie e attesa breve per renderlo facile.
+        const w = window.innerWidth, dir = ev.clientX < w*0.16 ? -1 : ev.clientX > w*0.84 ? 1 : 0;
+        host.querySelectorAll(".dot").forEach((d,di) => d.classList.toggle("drop-target", dir && (homePage+dir)===di));
+        if (dir !== edgeDir) {
+          edgeDir = dir; clearTimeout(edgeTimer);
+          if (dir) edgeTimer = setTimeout(() => {
+            let np = homePage + dir;
+            // trascinando oltre l'ultima pagina si crea un nuovo desktop al volo
+            // (senza renderHome, che interromperebbe il trascinamento in corso)
+            if (dir > 0 && np >= L.pages.length) {
+              L.pages.push([]);
+              const idx = L.pages.length - 1;
+              const pg = document.createElement("div");
+              pg.className = "home-page"; pg.dataset.page = idx;
+              track.appendChild(pg);
+              const dots = host.querySelector(".page-dots");
+              const dot = document.createElement("span");
+              dot.className = "dot"; dot.dataset.dot = idx;
+              dots.insertBefore(dot, host.querySelector("#add-page") || null);
+              np = idx;
+            }
+            if (np >= 0 && np < L.pages.length) { homePage = np; track.style.transform = `translateX(${-homePage*100}%)`;
+              host.querySelectorAll(".dot").forEach(d => d.classList.toggle("on", +d.dataset.dot===homePage)); }
+            edgeDir = 0;   // consente un ulteriore cambio pagina se si resta sul bordo
+          }, 350);
+        }
+      };
+      const up = ev => {
+        window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+        clearTimeout(edgeTimer);
+        // tap semplice (nessuno spostamento): non toccare il layout, lascia gestire l'onclick
+        if (!dragging) { if (ghost) ghost.remove(); return; }
+        ghost.remove();
+        const u = at(ev.clientX, ev.clientY);
+        const src = L.pages[pi][ii];
+        const dot = u && u.closest(".dot");
+        const tIcon = u && u.closest(".app-icon");
+        const tPage = u && u.closest(".home-page");
+        if (dot) { const p = +dot.dataset.dot; if (p!==pi || true) { L.pages[pi].splice(ii,1); L.pages[p].push(src); } saveLayout(L); renderHome(); return; }
+        if (tIcon && tIcon !== el && tIcon.dataset.loc) {
+          const [tpi,tii] = tIcon.dataset.loc.split(":").map(Number);
+          const tItem = L.pages[tpi][tii];
+          const r = tIcon.getBoundingClientRect();
+          const near = Math.abs(ev.clientX-(r.left+r.width/2)) < r.width*0.34 && Math.abs(ev.clientY-(r.top+r.height/2)) < r.height*0.34;
+          if (near && src.t==="app" && tItem.t==="folder") { L.pages[pi].splice(ii,1); tItem.items.push(src.id); saveLayout(L); renderHome(); return; }
+          if (near && src.t==="app" && tItem.t==="app") {
+            L.pages[pi].splice(ii,1);
+            let a = tpi, b = tii; if (tpi===pi && ii<tii) b--;
+            L.pages[a][b] = { t:"folder", name:"Cartella", items:[tItem.id, src.id] };
+            saveLayout(L); renderHome(); return;
+          }
+          // riordino: inserisci prima dell'icona target
+          L.pages[pi].splice(ii,1);
+          let tb = tii; if (tpi===pi && ii<tii) tb--;
+          L.pages[tpi].splice(tb,0,src); saveLayout(L); renderHome(); return;
+        }
+        if (tPage) { const p = +tPage.dataset.page; if (p!==pi) { L.pages[pi].splice(ii,1); L.pages[p].push(src); saveLayout(L); } renderHome(); return; }
+        renderHome();
+      };
+      window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+    });
+  }
+
+  // apertura cartella: rinomina, avvio app, e (in edit) estrazione app dalla cartella
+  function openFolder(L, pi, ii) {
+    const f = L.pages[pi][ii]; if (!f || f.t!=="folder") return;
+    const ov = document.createElement("div"); ov.className = "folder-ov";
+    const close = () => { saveLayout(homeLayout()); ov.remove(); renderHome(); };
+    const draw = () => {
+      ov.innerHTML = `<div class="folder-card">
+        <input class="folder-name" value="${escH(f.name)}" ${editing?'':'readonly'}>
+        <div class="folder-grid">${f.items.map(id => { const a = appById(id); if(!a) return "";
+          const isImg = /^(https?:|data:)/.test(a.icon||"");
+          return `<div class="app-icon" data-fid="${id}">${editing?`<button class="icon-rm" data-pop="${id}">✕</button>`:''}
+            <div class="glyph" style="background:${a.color}${isImg?';padding:0;overflow:hidden':''}">${isImg?`<img src="${a.icon}" style="width:100%;height:100%;object-fit:cover">`:a.icon}</div>
+            <div class="label">${a.name}</div></div>`;}).join("")}</div>
+        ${editing?`<div class="folder-hint">Tocca ✕ per riportare un'app sulla home. Sotto le 2 app la cartella si scioglie.</div>`:''}
+        <button class="folder-close">${editing?'Fine':'Chiudi'}</button></div>`;
+      const nm = ov.querySelector(".folder-name");
+      if (editing) nm.onchange = () => { f.name = nm.value.trim()||"Cartella"; saveLayout(L); };
+      ov.querySelector(".folder-close").onclick = close;
+      ov.onclick = e => { if (e.target === ov) close(); };
+      ov.querySelectorAll("[data-fid]").forEach(el => el.onclick = e => {
+        if (e.target.dataset.pop !== undefined) return;
+        if (!editing) { ov.remove(); openApp(el.dataset.fid); }
+      });
+      ov.querySelectorAll("[data-pop]").forEach(b => b.onclick = e => {
+        e.stopPropagation(); const id = b.dataset.pop;
+        f.items = f.items.filter(x => x !== id);
+        L.pages[pi].push({ t:"app", id });
+        if (f.items.length < 2) {                       // dissolvi: l'ultima app torna sulla pagina
+          const rem = f.items[0];
+          L.pages[pi].splice(ii, 1, ...(rem ? [{t:"app",id:rem}] : []));
+          saveLayout(L); ov.remove(); renderHome(); return;
+        }
+        saveLayout(L); draw();
+      });
+    };
+    draw();
+    document.body.appendChild(ov);
+  }
+
   function iconEl(a, i) {
     const el = document.createElement("div");
     el.className = "app-icon";
+    el.dataset.app = a.id;
     el.style.animationDelay = (i*0.02)+"s";
     // icona come immagine (favicon/upload) oppure emoji
     const isImg = /^(https?:|data:)/.test(a.icon || "");
@@ -191,7 +477,7 @@ const OS = (() => {
     show("app");
     renderStatusbars();
   }
-  function goHome() { clearIntervals(); cleanupApp(); currentApp = null; show("home"); renderHome(); renderClocks(); renderStatusbars(); }
+  function goHome() { clearIntervals(); cleanupApp(); currentApp = null; editing = false; show("home"); renderHome(); renderClocks(); renderStatusbars(); }
   function goBack() { if (screens.app.classList.contains("active")) goHome(); }
 
   function interval(root, fn, ms) { const id = setInterval(fn, ms); activeIntervals.add(id); return id; }
@@ -262,22 +548,34 @@ const OS = (() => {
 
   function notify({ app, title, text }) {
     const a = appById(app) || { icon:"🔔", color:"var(--accent)" };
-    notifs.unshift({ id:++notifId, icon:a.icon, color:a.color, title, text, time:"ora" });
+    notifs.unshift({ id:++notifId, icon:a.icon, color:a.color, title, text,
+      ts: Date.now(), time: new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"}) });
+    if (notifs.length > 40) notifs.length = 40;
+    saveNotifs();
     renderNotifs();
     if (screens.lock.classList.contains("active")) renderLockNotifs();
     if (!state.dnd) { pulse(); vibrate(60); }
   }
+  const notifAgo = n => {
+    if (!n.ts) return n.time || "";
+    const m = Math.floor((Date.now()-n.ts)/60000);
+    if (m < 1) return "ora"; if (m < 60) return m+" min fa";
+    const h = Math.floor(m/60); if (h < 24) return h+" h fa";
+    return n.time || "";
+  };
   function renderNotifs() {
     const box = $("#shade-notifs");
     if (!notifs.length) { box.innerHTML = `<div class="shade-empty">Nessuna notifica</div>`; return; }
-    box.innerHTML = notifs.map(notifHtml).join("");
-    box.querySelectorAll(".notif").forEach((el,i) => el.onclick = () => { notifs.splice(i,1); renderNotifs(); });
+    box.innerHTML = `<div class="shade-notifs-head"><span>${notifs.length} notifiche</span><button id="notif-clear">Cancella tutto</button></div>`
+      + notifs.map(notifHtml).join("");
+    const clr = box.querySelector("#notif-clear"); if (clr) clr.onclick = () => { notifs.length = 0; saveNotifs(); renderNotifs(); renderLockNotifs(); };
+    box.querySelectorAll(".notif").forEach((el,i) => el.onclick = () => { notifs.splice(i,1); saveNotifs(); renderNotifs(); renderLockNotifs(); });
   }
-  function renderLockNotifs() { $("#lock-notifs").innerHTML = notifs.slice(0,4).map(notifHtml).join(""); }
+  function renderLockNotifs() { const el = $("#lock-notifs"); if (el) el.innerHTML = notifs.slice(0,4).map(notifHtml).join(""); }
   function notifHtml(n) {
     return `<div class="notif"><div class="n-ico" style="background:${n.color}">${n.icon}</div>
       <div style="flex:1"><div class="n-title">${n.title}</div><div class="n-text">${n.text}</div></div>
-      <div class="n-time">${n.time}</div></div>`;
+      <div class="n-time">${notifAgo(n)}</div></div>`;
   }
   function pulse() { document.querySelectorAll("[data-statusbar] .sb-left").forEach(e => e.animate([{opacity:1},{opacity:.3},{opacity:1}], {duration:600})); }
 
@@ -347,6 +645,10 @@ const OS = (() => {
     $("#shade-scrim").addEventListener("click", closeShade);
     // rotellina impostazioni nella tendina (come Android)
     $("#shade-settings").addEventListener("click", () => { closeShade(); openApp("settings"); });
+    // modifica home dalla tendina
+    $("#shade-edit").addEventListener("click", () => {
+      closeShade(); goHome(); editing = true; renderHome();
+    });
     let cy=null;
     $("#shade").addEventListener("touchstart", e => cy = e.touches[0].clientY);
     $("#shade").addEventListener("touchmove",  e => { if(cy!==null && cy-e.touches[0].clientY > 40){ closeShade(); cy=null; } });
@@ -424,13 +726,8 @@ const OS = (() => {
     show("boot");
     renderStatusbars(); renderClocks(); renderNotifs(); renderQuick();
     initBattery(); initAlarms();
-    setTimeout(() => {
-      notifs.push(
-        { id:++notifId, icon:"💬", color:"#34c759", title:"Anna", text:"Ci vediamo alle 18?", time:"16:04" },
-        { id:++notifId, icon:"⚙️", color:"#5a6473", title:"NovaOS", text:"Benvenuto! Sistema pronto.", time:"ora" },
-      );
-      renderNotifs();
-    }, 100);
+    // niente notifiche fittizie: la tendina mostra solo eventi reali (posta, sveglie,
+    // conferme delle app) e le notifiche persistono finché non le scarti.
     setInterval(() => { renderClocks(); renderStatusbars(); }, 1000);
     setTimeout(() => lockDevice(), 2600);
   }
