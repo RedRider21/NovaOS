@@ -833,7 +833,19 @@ const NovaApps = (() => {
         <div class="section-label">Cronometro</div>
         <div class="group" style="padding:16px;display:flex;align-items:center;gap:14px">
           <div id="chrono" style="flex:1;font-size:28px;font-variant-numeric:tabular-nums">00:00.0</div>
+          <button class="btn ghost" style="width:auto;padding:10px 16px" id="chrono-lap">Giro</button>
           <button class="btn" style="width:auto;padding:10px 20px" id="chrono-btn">Avvia</button></div>
+        <div class="group" id="laps" style="display:none"></div>
+
+        <div class="section-label">Timer</div>
+        <div class="group" style="padding:16px">
+          <div id="tmr" style="text-align:center;font-size:44px;font-weight:200;font-variant-numeric:tabular-nums;margin-bottom:10px">00:00</div>
+          <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px" id="tmr-presets">
+            <button class="tpz" data-s="60">1 min</button><button class="tpz" data-s="300">5 min</button>
+            <button class="tpz" data-s="600">10 min</button><button class="tpz" data-s="1800">30 min</button></div>
+          <div style="display:flex;gap:10px">
+            <button class="btn ghost" style="flex:1" id="tmr-reset">Azzera</button>
+            <button class="btn" style="flex:1" id="tmr-btn">Avvia</button></div></div>
 
         <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
           <span>Fuso orario mondiale</span><button id="add-tz" class="mini-add">+</button></div>
@@ -843,7 +855,8 @@ const NovaApps = (() => {
         <style>.mini-add{width:30px;height:30px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:20px;line-height:1;cursor:pointer}
           .inline-panel{background:var(--surface);border-radius:var(--radius-sm);margin:0 16px 10px;padding:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
           .inline-panel input,.inline-panel select{background:var(--surface-2);border:none;border-radius:10px;padding:11px;color:var(--text);font-size:15px;outline:none}
-          .inline-panel input[type=time]{flex:1}.inline-panel select{flex:1}</style>`;
+          .inline-panel input[type=time]{flex:1}.inline-panel select{flex:1}
+          .tpz{background:var(--surface-2);border:none;border-radius:14px;padding:9px 12px;color:var(--text);font-size:13px;cursor:pointer}</style>`;
 
       const bc=root.querySelector("#big-clock"), bd=root.querySelector("#big-date");
 
@@ -900,11 +913,41 @@ const NovaApps = (() => {
       tick(); os.interval(root,tick,1000);
       drawAlarms();
 
-      // ---- CRONOMETRO ----
-      let t0=null,raf=null; const ch=root.querySelector("#chrono"),cb=root.querySelector("#chrono-btn");
-      const upd=()=>{const e=(performance.now()-t0)/1000;const m=String(Math.floor(e/60)).padStart(2,"0");ch.textContent=`${m}:${(e%60).toFixed(1).padStart(4,"0")}`;raf=requestAnimationFrame(upd);};
-      cb.onclick=()=>{if(raf){cancelAnimationFrame(raf);raf=null;cb.textContent="Avvia";}else{t0=performance.now();upd();cb.textContent="Ferma";}};
-      root._cleanup = () => { if(raf) cancelAnimationFrame(raf); };
+      // ---- CRONOMETRO (con giri) ----
+      let t0=null,raf=null,base=0,laps=[]; const ch=root.querySelector("#chrono"),cb=root.querySelector("#chrono-btn"),lapBtn=root.querySelector("#chrono-lap"),lapsBox=root.querySelector("#laps");
+      const fmtCh=e=>{const m=String(Math.floor(e/60)).padStart(2,"0");return `${m}:${(e%60).toFixed(1).padStart(4,"0")}`;};
+      const elapsed=()=>base+(t0!=null?(performance.now()-t0)/1000:0);
+      const upd=()=>{ch.textContent=fmtCh(elapsed());raf=requestAnimationFrame(upd);};
+      const drawLaps=()=>{lapsBox.style.display=laps.length?"block":"none";
+        lapsBox.innerHTML=laps.map((l,i)=>`<div class="item"><div class="i-body"><div class="i-title">Giro ${i+1}</div></div><div style="font-variant-numeric:tabular-nums;margin-right:12px">${fmtCh(l)}</div></div>`).join("");};
+      cb.onclick=()=>{
+        if(raf){cancelAnimationFrame(raf);raf=null;base=elapsed();t0=null;cb.textContent="Riprendi";lapBtn.textContent="Azzera";}
+        else{t0=performance.now();upd();cb.textContent="Ferma";lapBtn.textContent="Giro";}
+      };
+      lapBtn.onclick=()=>{
+        if(raf){ laps.push(elapsed()); drawLaps(); }          // in marcia: segna giro
+        else { base=0; laps=[]; ch.textContent="00:00.0"; drawLaps(); cb.textContent="Avvia"; }  // fermo: azzera
+      };
+
+      // ---- TIMER (conto alla rovescia) ----
+      let tmrTotal=0, tmrLeft=0, tmrRaf=null, tmrEnd=0;
+      const tmrEl=root.querySelector("#tmr"), tmrBtn=root.querySelector("#tmr-btn");
+      const fmtTmr=s=>{s=Math.max(0,Math.ceil(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),ss=s%60;
+        return (h?String(h).padStart(2,"0")+":":"")+String(m).padStart(2,"0")+":"+String(ss).padStart(2,"0");};
+      const drawTmr=()=>{tmrEl.textContent=fmtTmr(tmrLeft);};
+      const tmrTick=()=>{ tmrLeft=(tmrEnd-performance.now())/1000;
+        if(tmrLeft<=0){ tmrLeft=0; drawTmr(); stopTmr(); os.vibrate&&os.vibrate([200,120,200]); os.notify({app:"clock",title:"Timer",text:"Tempo scaduto ⏰"}); return; }
+        drawTmr(); tmrRaf=requestAnimationFrame(tmrTick); };
+      const stopTmr=()=>{ if(tmrRaf){cancelAnimationFrame(tmrRaf);tmrRaf=null;} tmrBtn.textContent="Avvia"; };
+      root.querySelectorAll(".tpz").forEach(b=>b.onclick=()=>{ if(tmrRaf)return; tmrTotal=tmrLeft=+b.dataset.s; drawTmr(); });
+      tmrBtn.onclick=()=>{
+        if(tmrRaf){ stopTmr(); tmrTotal=tmrLeft; }               // pausa
+        else { if(tmrLeft<=0){ if(tmrTotal>0)tmrLeft=tmrTotal; else return; } tmrEnd=performance.now()+tmrLeft*1000; tmrTick(); tmrBtn.textContent="Pausa"; }
+      };
+      root.querySelector("#tmr-reset").onclick=()=>{ stopTmr(); tmrLeft=tmrTotal; drawTmr(); };
+      drawTmr();
+
+      root._cleanup = () => { if(raf) cancelAnimationFrame(raf); if(tmrRaf) cancelAnimationFrame(tmrRaf); };
     }});
 
   /* ---------- Note (cartelle, ricerca, colori, formattazione) ---------- */
@@ -1034,7 +1077,8 @@ const NovaApps = (() => {
             <div style="display:flex;gap:8px"><button class="btn ghost" id="hist" style="width:auto;padding:8px 12px">🕓</button>
             <button class="btn ghost" id="scitog" style="width:auto;padding:8px 12px">${sci?"Base":"Sci"}</button></div></div>
           <div id="hist-panel"></div>
-          <div id="calc-out" style="text-align:right;font-size:46px;font-weight:300;padding:14px 24px;min-height:70px;word-break:break-all">${expr||"0"}</div>
+          <div id="calc-out" style="text-align:right;font-size:46px;font-weight:300;padding:14px 24px 0;min-height:60px;word-break:break-all">${expr||"0"}</div>
+          <div id="calc-prev" style="text-align:right;font-size:20px;color:var(--text-dim);padding:0 24px 8px;min-height:26px;font-variant-numeric:tabular-nums"></div>
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;padding:8px 16px 90px">
             ${sciRows}${base.map(([k,t])=>`<button class="ck ${t}" data-k="${k}">${k}</button>`).join("")}
           </div>
@@ -1048,6 +1092,15 @@ const NovaApps = (() => {
           p.querySelectorAll("[data-h]").forEach(el => el.onclick = () => { expr=el.dataset.h; p.innerHTML=""; root.querySelector("#calc-out").textContent=expr; });
         };
         root.querySelectorAll(".ck").forEach(b => b.onclick = () => press(b.dataset.k));
+        refresh();
+      };
+      const refresh = () => {
+        const out = root.querySelector("#calc-out"); if (out) out.textContent = expr || "0";
+        const prev = root.querySelector("#calc-prev"); if (!prev) return;
+        // anteprima risultato live (solo se l'espressione è calcolabile e diversa dal risultato)
+        if (!expr || /[+\-×÷^]$|\($/.test(expr) || expr==="Errore") { prev.textContent = ""; return; }
+        try { const r = String(evalExpr(expr)); prev.textContent = (r!==expr && r!=="Infinity" && r!=="NaN") ? "= "+r : ""; }
+        catch { prev.textContent = ""; }
       };
       const press = (k) => {
         if (k==="C") expr="";
@@ -1055,8 +1108,27 @@ const NovaApps = (() => {
         else if (k==="±") expr = expr.startsWith("-") ? expr.slice(1) : "-"+expr;
         else if (k==="=") { try { const r=String(evalExpr(expr)); if(expr && r!=="Infinity" && r!=="NaN"){ hist.unshift({e:expr,r}); saveH(); } expr=r; } catch { expr="Errore"; } }
         else { if(expr==="Errore"||expr==="Infinity"||expr==="NaN") expr=""; expr+=k; }
-        root.querySelector("#calc-out").textContent = expr || "0";
+        refresh();
       };
+      // tastiera fisica (utile su desktop e con tastiera collegata)
+      const onKey = (e) => {
+        const k = e.key;
+        if (/[0-9.]/.test(k)) press(k);
+        else if (k==="+") press("+");
+        else if (k==="-") press("−");
+        else if (k==="*") press("×");
+        else if (k==="/") { e.preventDefault(); press("÷"); }
+        else if (k==="^") press("^");
+        else if (k==="(") press("(");
+        else if (k===")") press(")");
+        else if (k==="%") press("%");
+        else if (k==="Enter" || k==="=") { e.preventDefault(); press("="); }
+        else if (k==="Backspace") press("⌫");
+        else if (k==="Escape") press("C");
+        else return;
+      };
+      root._onKey = onKey; window.addEventListener("keydown", onKey);
+      root._cleanup = () => window.removeEventListener("keydown", onKey);
       draw();
     }});
 
@@ -1807,6 +1879,16 @@ const NovaApps = (() => {
         { name:"OpenStreetMap", url:"https://www.openstreetmap.org", icon:"🗺️", color:"#7ebc6f" },
         { name:"YouTube", url:"https://m.youtube.com", icon:"▶️", color:"#ff0033" },
         { name:"Google", url:"https://www.google.com", icon:"🔎", color:"#4285f4" },
+        { name:"Gmail", url:"https://mail.google.com", icon:"✉️", color:"#ea4335" },
+        { name:"Google Maps", url:"https://maps.google.com", icon:"📍", color:"#34a853" },
+        { name:"Google Drive", url:"https://drive.google.com", icon:"📁", color:"#ffba00" },
+        { name:"WhatsApp", url:"https://web.whatsapp.com", icon:"💬", color:"#25d366" },
+        { name:"Telegram", url:"https://web.telegram.org", icon:"✈️", color:"#28a8e9" },
+        { name:"X (Twitter)", url:"https://x.com", icon:"✖️", color:"#111" },
+        { name:"Reddit", url:"https://www.reddit.com", icon:"👽", color:"#ff4500" },
+        { name:"Amazon", url:"https://www.amazon.it", icon:"🛒", color:"#ff9900" },
+        { name:"Spotify", url:"https://open.spotify.com", icon:"🎵", color:"#1db954" },
+        { name:"Google Traduttore", url:"https://translate.google.com", icon:"🌐", color:"#4285f4" },
       ];
       // icona come immagine (favicon/upload) oppure emoji
       const isImg = ic => /^(https?:|data:)/.test(ic || "");
@@ -1861,6 +1943,19 @@ const NovaApps = (() => {
 
         root.querySelector("#ap-emoji").oninput = e => { chosenIcon = e.target.value.trim() || "🌐"; preview(); };
         root.querySelector("#ap-color").oninput = e => { curColor = e.target.value; preview(); };
+        // dall'URL: propone nome (dal dominio) e favicon in automatico
+        let iconTouched = false;
+        root.querySelector("#ap-emoji").addEventListener("input", () => iconTouched = true);
+        root.querySelector("#ap-url").oninput = e => {
+          const v = e.target.value.trim(); if (!v) return;
+          try {
+            const u = new URL(/^https?:/.test(v) ? v : "https://"+v);
+            const host = u.hostname.replace(/^www\./,"");
+            const nameEl = root.querySelector("#ap-name");
+            if (!nameEl.value.trim()) nameEl.placeholder = host.split(".")[0].replace(/^\w/,c=>c.toUpperCase());
+            if (!iconTouched && host.includes(".")) { const f = faviconFor(v); if (f) { chosenIcon = f; preview(); } }
+          } catch {}
+        };
         root.querySelector("#ap-fav").onclick = () => {
           const f = faviconFor(root.querySelector("#ap-url").value.trim());
           if (f) { chosenIcon = f; preview(); } else os.notify({ app:"store", title:"Store", text:"Inserisci prima l'indirizzo del sito." });
@@ -1873,7 +1968,9 @@ const NovaApps = (() => {
         root.querySelector("#ap-install").onclick = () => {
           const url = root.querySelector("#ap-url").value.trim();
           if (!url) { os.notify({ app:"store", title:"Store", text:"Inserisci l'indirizzo dell'app." }); return; }
-          os.installApp({ name: root.querySelector("#ap-name").value.trim(), url, icon: chosenIcon, color: curColor });
+          let name = root.querySelector("#ap-name").value.trim();
+          if (!name) { try { const h = new URL(/^https?:/.test(url)?url:"https://"+url).hostname.replace(/^www\./,""); name = h.split(".")[0].replace(/^\w/,c=>c.toUpperCase()); } catch { name = "Web app"; } }
+          os.installApp({ name, url, icon: chosenIcon, color: curColor });
           os.notify({ app:"store", title:"App installata", text:"Trovi la nuova icona nella home." });
           chosenIcon = "🌐"; curColor = "#6d8bff"; draw();
         };
@@ -1925,7 +2022,7 @@ const NovaApps = (() => {
           <div class="group">
             ${row("apps","🧩","#af52de","App", os.userApps().length+" web app installate")}
             ${row("battery","🔋","#34c759","Batteria", S.battery+"%"+(S.saver?" · Risparmio":""))}
-            ${row("storage","💾","#5e5ce6","Archiviazione", "usati 24,8 GB di 64 GB")}
+            ${row("storage","💾","#5e5ce6","Archiviazione", "Dati, foto e cache di NovaOS")}
             ${row("accessibility","♿","#0a84ff","Accessibilità", (S.boldText||S.highContrast||S.reduceMotion)?"Personalizzata":"Standard")}
             ${row("system","⚙️","#8e8e93","Sistema", "Lingua, data e ora, ripristino")}
             ${row("about","ℹ️","#8e8e93","Info sul telefono", "NovaOS 0.1 · Nova N1")}
@@ -2011,8 +2108,22 @@ const NovaApps = (() => {
             <div class="section-label">Spegnimento schermo</div>
             <div class="seg">${[15,30,60,120].map(s=>`<button data-to="${s}" class="${S.screenTimeout===s?'on':''}">${s<60?s+"s":(s/60)+" min"}</button>`).join("")}</div>
             <div class="section-label">Sfondo</div>
-            <div class="swatches">${os.WALLS.map((w,i)=>`<div class="swatch ${i===S.wallpaper?'on':''}" data-w="${i}" style="background:${w}"></div>`).join("")}</div>`;
+            <div class="swatches">${os.WALLS.map((w,i)=>`<div class="swatch ${i===S.wallpaper?'on':''}" data-w="${i}" style="background:${w}"></div>`).join("")}</div>
+
+            <div class="section-label">Stile icone</div>
+            <div class="seg"><button data-is="filled" class="${S.iconStyle!=='outline'?'on':''}">Colorate</button><button data-is="outline" class="${S.iconStyle==='outline'?'on':''}">Contorno</button></div>
+            <div class="group" style="padding:14px 16px">
+              <div class="item" style="padding:6px 0"><div class="i-body"><div class="i-title">Colore di fondo</div><div class="i-sub">${S.deskColor?"Personalizzato":"Come il tema"}</div></div>
+                <input type="color" id="deskcol" value="${S.deskColor||(S.theme==='dark'?'#0b0f17':'#eef1f7')}" style="width:44px;height:38px;border:none;background:none;border-radius:10px;cursor:pointer"></div>
+              <div class="item" style="padding:6px 0"><div class="i-body"><div class="i-title">Colore icone</div><div class="i-sub">Bordo e glifo${S.iconStyle==='outline'?'':' (attivo con "Contorno")'}</div></div>
+                <input type="color" id="iconcol" value="${S.iconColor||(S.theme==='dark'?'#e8ecf4':'#141a24')}" style="width:44px;height:38px;border:none;background:none;border-radius:10px;cursor:pointer"></div>
+              ${(S.deskColor||S.iconColor||S.iconStyle==='outline')?`<button class="btn ghost" id="icon-reset" style="margin-top:10px">Ripristina aspetto predefinito</button>`:''}
+            </div>`;
           sec.querySelectorAll("[data-th]").forEach(b => b.onclick = () => { os.set("theme", b.dataset.th); sections.display(); });
+          sec.querySelectorAll("[data-is]").forEach(b => b.onclick = () => { os.set("iconStyle", b.dataset.is); sections.display(); });
+          sec.querySelector("#deskcol").oninput = e => os.set("deskColor", e.target.value);
+          sec.querySelector("#iconcol").oninput = e => os.set("iconColor", e.target.value);
+          const ir = sec.querySelector("#icon-reset"); if (ir) ir.onclick = () => { os.set("iconStyle","filled"); os.set("deskColor",""); os.set("iconColor",""); sections.display(); };
           sec.querySelector("#bri").oninput = e => os.set("brightness", +e.target.value);
           sec.querySelector("#ts").oninput = e => { os.set("textScale", +e.target.value); sec.querySelector("#ts-v").textContent = e.target.value+"%"; };
           sec.querySelectorAll("[data-w]").forEach(el => el.onclick = () => { os.set("wallpaper", +el.dataset.w); sections.display(); });
@@ -2138,17 +2249,36 @@ const NovaApps = (() => {
 
         // ---------------- Archiviazione ----------------
         storage: () => nav("Archiviazione", sec => {
-          const cats = [["App","🧩","#af52de",8.2],["Foto e video","🖼️","#ff375f",9.6],["Audio","🎵","#0a84ff",2.1],["Documenti","📄","#ffcc00",1.3],["Sistema","⚙️","#8e8e93",3.6]];
-          const used = 24.8, total = 64;
+          const fmt = b => b>=1073741824 ? (b/1073741824).toFixed(2)+" GB" : b>=1048576 ? (b/1048576).toFixed(1)+" MB" : Math.round(b/1024)+" KB";
+          // dimensione reale di localStorage (dati NovaOS)
+          let lsBytes = 0; try { for (let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); lsBytes += (k.length+(localStorage.getItem(k)||"").length)*2; } } catch {}
           sec.innerHTML = `
-            <div class="group" style="padding:18px">
-              <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b>${used} GB usati</b><span style="color:var(--text-dim)">di ${total} GB</span></div>
-              <div style="height:12px;border-radius:6px;background:var(--surface-2);overflow:hidden;display:flex">
-                ${cats.map(c=>`<div style="height:100%;width:${c[3]/total*100}%;background:${c[2]}"></div>`).join("")}</div>
-            </div>
-            <div class="section-label">Per categoria</div>
-            <div class="group">${cats.map(c=>`<div class="item"><div class="i-ico" style="background:${c[2]}">${c[1]}</div>
-              <div class="i-body"><div class="i-title">${c[0]}</div></div><div class="i-val">${c[3]} GB</div></div>`).join("")}</div>`;
+            <div class="group" style="padding:18px" id="st-top">
+              <div style="color:var(--text-dim)">Calcolo dello spazio realmente usato da NovaOS…</div>
+              <div class="boot-spinner" style="margin:14px auto"></div></div>
+            <div class="section-label">Dettaglio</div>
+            <div class="group" id="st-det">
+              <div class="item"><div class="i-ico" style="background:#5e5ce6">🗃️</div><div class="i-body"><div class="i-title">Dati app (localStorage)</div><div class="i-sub">Impostazioni, note, contatti, messaggi…</div></div><div class="i-val">${fmt(lsBytes)}</div></div>
+              <div class="item" id="st-photos"><div class="i-ico" style="background:#ff375f">🖼️</div><div class="i-body"><div class="i-title">Foto (IndexedDB)</div></div><div class="i-val">…</div></div>
+            </div>`;
+          // stima reale complessiva dell'origine (localStorage + IndexedDB + cache)
+          if (navigator.storage && navigator.storage.estimate) {
+            navigator.storage.estimate().then(est => {
+              const used = est.usage||0, quota = est.quota||0;
+              const top = sec.querySelector("#st-top"); if (!top) return;
+              const pct = quota ? Math.min(100, used/quota*100) : 0;
+              top.innerHTML = `
+                <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b>${fmt(used)} usati</b><span style="color:var(--text-dim)">quota ${fmt(quota)}</span></div>
+                <div style="height:12px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:${pct.toFixed(1)}%;background:var(--accent)"></div></div>
+                <div style="color:var(--text-dim);font-size:12px;margin-top:8px">Spazio effettivamente occupato da NovaOS in questo dispositivo (dati, foto, cache).</div>`;
+            }).catch(()=>{ const top=sec.querySelector("#st-top"); if(top) top.innerHTML = `<div style="color:var(--text-dim)">Dati app: ${fmt(lsBytes)}. Stima complessiva non disponibile.</div>`; });
+          } else { const top=sec.querySelector("#st-top"); if(top) top.innerHTML = `<div style="padding:4px"><b>${fmt(lsBytes)}</b> usati dai dati dell'app.</div>`; }
+          // dimensione foto: numero e byte reali da IndexedDB (non blocca la UI)
+          os.photos.all().then(ph => {
+            const el = sec.querySelector("#st-photos"); if (!el) return;
+            const bytes = ph.reduce((s,p)=>s+(p.data?p.data.length*0.75:0),0);   // base64 ~ 4/3 dei byte reali
+            el.querySelector(".i-val").textContent = ph.length+" foto · "+fmt(bytes);
+          }).catch(()=>{});
         }),
 
         // ---------------- Accessibilità ----------------
@@ -2186,12 +2316,23 @@ const NovaApps = (() => {
 
         // ---------------- Info sul telefono ----------------
         about: () => nav("Info sul telefono", sec => {
+          // dati reali del dispositivo/runtime
+          const ua = navigator.userAgent || "";
+          const chrome = (ua.match(/Chrome\/([\d.]+)/)||[])[1];
+          const android = (ua.match(/Android ([\d.]+)/)||[])[1];
+          const cores = navigator.hardwareConcurrency;
+          const ram = navigator.deviceMemory;
+          const res = `${screen.width}×${screen.height} @${window.devicePixelRatio||1}x`;
           const rows = [
-            ["Nome dispositivo","Nova N1"],["Modello","NovaOS N1 (web)"],["Versione NovaOS","0.1 · build web"],
-            ["Base Android","14 (API 34)"],["Runtime","WebView / Chromium"],["Numero build","novaos-0.1-20260807"],
-            ["Processore","virtuale x86_64"],["RAM","4 GB"],["Archiviazione","64 GB"],
-            ["IMEI","35" + "0000000000000".slice(0,13)],["Indirizzo Wi-Fi","02:00:00:44:55:66"],
-          ];
+            ["Nome dispositivo","Nova N1"],["Versione NovaOS","0.1.3 · build web"],
+            android?["Sistema","Android "+android]:["Runtime","WebView / Chromium"],
+            chrome?["Motore","Chromium "+chrome]:null,
+            ["Risoluzione schermo",res],
+            cores?["Core CPU",cores+" thread"]:null,
+            ram?["RAM","≈ "+ram+" GB"]:null,
+            ["Lingua",navigator.language||"—"],
+            ["Online",navigator.onLine?"Sì":"No"],
+          ].filter(Boolean);
           sec.innerHTML = `
             <div style="text-align:center;padding:16px">
               <svg viewBox="0 0 120 120" style="width:72px;height:72px"><circle cx="60" cy="60" r="40" fill="none" stroke="#8a63ff" stroke-width="3" stroke-dasharray="150 90"/><circle cx="60" cy="60" r="28" fill="#8a63ff"/><path fill="#fff" d="M60 36 C62 51,69 58,84 60 C69 62,62 69,60 84 C58 69,51 62,36 60 C51 58,58 51,60 36 Z"/></svg>

@@ -213,6 +213,20 @@ body {
 }
 .app-icon .label { font-size: 11.5px; color: var(--text); max-width: 74px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Stile icone a CONTORNO (monocromatico): tessera con lo sfondo del desktop,
+   bordo e glifo nel colore scelto; emoji/favicon desaturati per un look uniforme.
+   I colori arrivano da --icon-bg / --icon-color (impostati in applyDisplay). */
+.icons-outline .app-icon .glyph {
+  background: var(--icon-bg) !important;
+  border: 2px solid var(--icon-color);
+  box-shadow: none;
+  padding: 0;
+  filter: grayscale(1);              /* emoji e favicon in monocromatico */
+}
+.icons-outline .app-icon.folder .folder-glyph {
+  background: var(--icon-bg) !important; border: 2px solid var(--icon-color); filter: grayscale(1);
+}
+
 .dock {
   flex: 0 0 auto;
   margin: 0 16px calc(var(--nav-h) + 8px);

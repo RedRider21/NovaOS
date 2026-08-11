@@ -38,6 +38,9 @@ const OS = (() => {
     notifLock: true, notifHistory: false, bubbles: true, batteryPercent: true, charging: false,
     // accessibilità
     boldText: false, highContrast: false, reduceMotion: false,
+    // aspetto icone/desktop: stile "filled" (tessere colorate) o "outline" (contorno
+    // monocromatico); colori personalizzati opzionali (vuoto = default del tema)
+    iconStyle: "filled", deskColor: "", iconColor: "",
   };
   const state = Object.fromEntries(Object.keys(defaults).map(k => [k, store.get(k, defaults[k])]));
 
@@ -103,10 +106,17 @@ const OS = (() => {
   function applyDisplay() {
     document.documentElement.style.fontSize = (16 * state.textScale/100) + "px";
     $("#bright-overlay").style.opacity = String((100 - state.brightness) / 100 * 0.7);
-    // il colore base viene dal tema (CSS var --bg); il wallpaper è solo la tinta sopra
+    // il colore base viene dal tema (CSS var --bg); il wallpaper è solo la tinta sopra.
+    // se l'utente ha scelto un colore di fondo, quello vince (tinta unita, niente wallpaper).
     const w = WALLS[state.wallpaper] || WALLS[0];
-    screens.home.style.backgroundColor = "var(--bg)";
-    screens.home.style.backgroundImage = w;
+    const desk = state.deskColor || "var(--bg)";
+    screens.home.style.backgroundColor = desk;
+    screens.home.style.backgroundImage = state.deskColor ? "none" : w;
+    // aspetto icone: stile e colori personalizzati (usati dal CSS via variabili)
+    document.body.classList.toggle("icons-outline", state.iconStyle === "outline");
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty("--icon-color", state.iconColor || (state.theme==="dark" ? "#e8ecf4" : "#141a24"));
+    rootStyle.setProperty("--icon-bg", state.deskColor || "var(--bg)");
     document.body.classList.toggle("a11y-bold", !!state.boldText);
     document.body.classList.toggle("a11y-contrast", !!state.highContrast);
     document.body.classList.toggle("a11y-reduce", !!state.reduceMotion);
@@ -175,6 +185,14 @@ const OS = (() => {
       // app nuove -> in coda all'ultima pagina
       const missing = ids.filter(id => !placed.has(id));
       if (missing.length) { if (!L.pages.length) L.pages.push([]); missing.forEach(id => L.pages[L.pages.length-1].push({t:"app",id})); }
+      // paginazione automatica: nessun desktop supera PER icone → si spande sui successivi
+      // (così tante app riempiono più desktop invece di far scorrere una pagina).
+      const capped = [];
+      L.pages.forEach(pg => {
+        if (pg.length <= PER) capped.push(pg);
+        else for (let i=0;i<pg.length;i+=PER) capped.push(pg.slice(i,i+PER));
+      });
+      L.pages = capped;
     }
     if (!L.pages.length) L.pages.push([]);
     return L;
@@ -462,6 +480,12 @@ const OS = (() => {
   function openApp(id) {
     const a = appById(id);
     if (!a) return;
+    // web app sul device: apri nel browser nativo a schermo intero. Così i siti che
+    // vietano l'incorporamento in iframe (WhatsApp Web, Telegram Web, banche, Google…)
+    // si aprono davvero, invece di restare bianchi.
+    if (a.web && window.NovaNative && window.NovaNative.openBrowser) {
+      try { window.NovaNative.openBrowser(a.url); return; } catch (e) {}
+    }
     clearIntervals(); cleanupApp();
     currentApp = id;
     const frame = $("#app-frame");
@@ -592,8 +616,9 @@ const OS = (() => {
   //  API stato (usata dalle app, es. Impostazioni)
   // ============================================================
   function set(k, v) { state[k] = v; store.set(k, v);
-    if (k==="theme") applyTheme();
-    if (["brightness","textScale","wallpaper","boldText","highContrast","reduceMotion"].includes(k)) applyDisplay();
+    if (k==="theme") { applyTheme(); applyDisplay(); }
+    if (["brightness","textScale","wallpaper","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor"].includes(k)) applyDisplay();
+    if (["iconStyle","deskColor","iconColor"].includes(k) && screens.home.classList.contains("active")) renderHome();
     renderStatusbars();
   }
   function toggle(k) {
