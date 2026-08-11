@@ -88,7 +88,7 @@ body {
   content: ""; position: absolute; right: -3px; top: 3px; width: 2px; height: 4px;
   background: var(--text); border-radius: 0 1px 1px 0;
 }
-.sb-batt-fill { height: 100%; background: var(--text); border-radius: 1px; transition: width .4s, background .4s; }
+.sb-batt-fill { display: block; height: 100%; background: var(--text); border-radius: 1px; transition: width .4s, background .4s; }
 
 /* ============================================================
    BOOT
@@ -157,6 +157,11 @@ body {
 
 /* Home a pagine multiple (pager orizzontale) + cartelle + modalità modifica */
 .app-grid { flex: 1; position: relative; overflow: hidden; padding: 0; display: block; touch-action: pan-y; }
+/* il gesto orizzontale (cambio pagina) deve arrivare a noi anche quando il dito
+   parte da una pagina o da un'icona: pan-y lascia lo scorrimento verticale al
+   browser e consegna l'orizzontale al nostro handler (in modifica le icone
+   ricevono touch-action:none inline, quindi il drag continua a funzionare). */
+.home-page, .home-page .app-icon { touch-action: pan-y; }
 .home-track { display: flex; height: 100%; transition: transform .25s ease; }
 .home-page {
   flex: 0 0 100%; width: 100%; height: 100%; box-sizing: border-box;

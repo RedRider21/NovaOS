@@ -3,9 +3,11 @@ package os.nova.launcher;
 import android.app.Activity;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.Message;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup.LayoutParams;
+import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -61,22 +63,8 @@ public class BrowserActivity extends Activity {
         bar.addView(urlBar);
         bar.addView(reload);
 
-        web = new WebView(this);
+        web = buildWebView();
         web.setLayoutParams(new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
-        WebSettings s = web.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setSupportZoom(true);
-        s.setBuiltInZoomControls(true);
-        s.setDisplayZoomControls(false);
-        s.setUseWideViewPort(true);
-        s.setLoadWithOverviewMode(true);
-        web.setWebChromeClient(new WebChromeClient());
-        web.setWebViewClient(new WebViewClient() {
-            @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap f) {
-                urlBar.setText(url);
-            }
-        });
 
         root.addView(bar);
         root.addView(web);
@@ -86,6 +74,50 @@ public class BrowserActivity extends Activity {
         if (url == null || url.isEmpty()) url = "https://www.google.com";
         if (!url.matches("^[a-zA-Z]+://.*")) url = "https://" + url;
         web.loadUrl(url);
+    }
+
+    /** Crea e configura una WebView "vera" (banche, Google, login in popup, ecc.). */
+    private WebView buildWebView() {
+        WebView v = new WebView(this);
+        WebSettings s = v.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setDatabaseEnabled(true);
+        s.setSupportZoom(true);
+        s.setBuiltInZoomControls(true);
+        s.setDisplayZoomControls(false);
+        s.setUseWideViewPort(true);
+        s.setLoadWithOverviewMode(true);
+        // molti siti (banche) caricano risorse http su pagine https: senza questo restano bianchi
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        // i login di banche/Google spesso si aprono in un popup (window.open / target=_blank)
+        s.setSupportMultipleWindows(true);
+        s.setJavaScriptCanOpenWindowsAutomatically(true);
+        // user agent "mobile" completo: alcuni siti bloccano/impaginano male i WebView generici
+        s.setUserAgentString(s.getUserAgentString() + " NovaOS");
+
+        CookieManager cm = CookieManager.getInstance();
+        cm.setAcceptCookie(true);
+        cm.setAcceptThirdPartyCookies(v, true);   // necessario per molti login bancari/SSO
+
+        v.setWebViewClient(new WebViewClient() {
+            @Override public void onPageStarted(WebView vw, String url, android.graphics.Bitmap f) {
+                if (urlBar != null) urlBar.setText(url);
+            }
+        });
+        v.setWebChromeClient(new WebChromeClient() {
+            // apre i popup (finestre di login) dentro la stessa WebView invece di scartarli
+            @Override public boolean onCreateWindow(WebView vw, boolean dialog, boolean gesture, Message resultMsg) {
+                WebView href = new WebView(BrowserActivity.this);
+                href.setWebViewClient(new WebViewClient() {
+                    @Override public boolean shouldOverrideUrlLoading(WebView t, String u) { web.loadUrl(u); return true; }
+                });
+                ((WebView.WebViewTransport) resultMsg.obj).setWebView(href);
+                resultMsg.sendToTarget();
+                return true;
+            }
+        });
+        return v;
     }
 
     @Override public void onBackPressed() {
