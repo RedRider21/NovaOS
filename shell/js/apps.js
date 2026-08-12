@@ -2060,7 +2060,7 @@ const NovaApps = (() => {
         ["wifi","bt","nfc","location","airplane"].forEach(k => { if (k in ns) S[k] = ns[k]; }); return ns; };
       // versione REALE installata (da PackageInfo) con fallback alla build web
       const appVer = (() => { try { return NN.appVersion ? JSON.parse(NN.appVersion()) : null; } catch { return null; } })();
-      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.4";
+      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.5";
       const VERLONG = appVer && appVer.code ? `${VER} · build ${appVer.code}` : `${VER} · build web`;
 
       const nav = (title, bodyFn) => {
@@ -2124,26 +2124,30 @@ const NovaApps = (() => {
       const sections = {
         // ---------------- Rete e Internet ----------------
         net: () => nav("Rete e Internet", sec => {
-          syncSensors();
+          const ns = syncSensors();
           // ===== dispositivo reale: agisce sull'hardware / apre i pannelli di sistema =====
           if (hasSensors) {
+            const raw = ns ? JSON.stringify(ns) : "lettura non riuscita";
             sec.innerHTML = `
               <div class="group" style="padding:12px 14px;color:var(--text-dim);font-size:12.5px;line-height:1.5">
                 Stato reale dell'hardware. Da Android 10 il sistema non consente alle app di
                 accendere o spegnere in silenzio Wi-Fi, dati e modalità aereo: qui si apre il
-                pannello ufficiale, dove la modifica è immediata.</div>
+                pannello ufficiale, dove la modifica è immediata. Al ritorno tocca «Aggiorna».</div>
               <div class="group">
                 <div class="item" data-open="airplane"><div class="i-ico" style="background:#8e8e93">✈️</div><div class="i-body"><div class="i-title">Modalità aereo</div><div class="i-sub">${S.airplane?"Attiva":"Disattivata"} · tocca per aprire</div></div><div class="chev"></div></div>
                 <div class="item"><div class="i-ico" style="background:#0a84ff">📶</div><div class="i-body"><div class="i-title">Wi-Fi</div><div class="i-sub">${S.wifi?"Attivo":"Disattivato"}</div></div>${sw(S.wifi)}</div>
                 <div class="item" data-open="data"><div class="i-ico" style="background:#0a84ff">📱</div><div class="i-body"><div class="i-title">Dati mobili</div><div class="i-sub">Apri le impostazioni rete mobile</div></div><div class="chev"></div></div>
                 <div class="item" data-open="hotspot"><div class="i-ico" style="background:#0a84ff">🔥</div><div class="i-body"><div class="i-title">Hotspot e tethering</div></div><div class="chev"></div></div>
               </div>
-              <div class="group" style="margin-top:12px"><div class="item" data-open="wifi"><div class="i-ico" style="background:#2a3550">📡</div><div class="i-body"><div class="i-title">Reti Wi-Fi disponibili</div><div class="i-sub">Apri l'elenco reti del sistema</div></div><div class="chev"></div></div></div>`;
+              <div class="group" style="margin-top:12px"><div class="item" data-open="wifi"><div class="i-ico" style="background:#2a3550">📡</div><div class="i-body"><div class="i-title">Reti Wi-Fi disponibili</div><div class="i-sub">Apri l'elenco reti del sistema</div></div><div class="chev"></div></div></div>
+              <button class="btn ghost" id="net-refresh" style="margin:14px 16px 4px">🔄 Aggiorna stato</button>
+              <div style="padding:0 16px 20px;color:var(--text-dim);font-size:11px;word-break:break-all">Diagnostica hardware: ${raw}</div>`;
             sec.querySelector(".switch").onclick = () => {
               const applied = (()=>{ try { return NN.setWifi(!S.wifi); } catch { return false; } })();
-              setTimeout(() => sections.net(), applied ? 200 : 700);
+              setTimeout(() => sections.net(), applied ? 400 : 900);
             };
             sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
+            sec.querySelector("#net-refresh").onclick = () => sections.net();
             return;
           }
           // ===== ambiente di sviluppo (browser/emulatore): simulazione =====
@@ -2175,20 +2179,24 @@ const NovaApps = (() => {
 
         // ---------------- Dispositivi connessi ----------------
         connected: () => nav("Dispositivi connessi", sec => {
-          syncSensors();
+          const ns = syncSensors();
           // ===== dispositivo reale =====
           if (hasSensors) {
+            const raw = ns ? JSON.stringify(ns) : "lettura non riuscita";
             sec.innerHTML = `
               <div class="group">
                 <div class="item"><div class="i-ico" style="background:#0a84ff">🔵</div><div class="i-body"><div class="i-title">Bluetooth</div><div class="i-sub">${S.bt?"Attivo":"Disattivato"}</div></div>${sw(S.bt)}</div>
                 <div class="item" data-open="nfc"><div class="i-ico" style="background:#5e5ce6">📡</div><div class="i-body"><div class="i-title">NFC</div><div class="i-sub">${S.nfc?"Attivo":"Disattivato"} · pagamenti e tag</div></div><div class="chev"></div></div>
               </div>
-              <div class="group" style="margin-top:12px"><div class="item" data-open="bluetooth"><div class="i-ico" style="background:#2a3550">🎧</div><div class="i-body"><div class="i-title">Accoppia un nuovo dispositivo</div><div class="i-sub">Apri le impostazioni Bluetooth</div></div><div class="chev"></div></div></div>`;
+              <div class="group" style="margin-top:12px"><div class="item" data-open="bluetooth"><div class="i-ico" style="background:#2a3550">🎧</div><div class="i-body"><div class="i-title">Accoppia un nuovo dispositivo</div><div class="i-sub">Apri le impostazioni Bluetooth</div></div><div class="chev"></div></div></div>
+              <button class="btn ghost" id="conn-refresh" style="margin:14px 16px 4px">🔄 Aggiorna stato</button>
+              <div style="padding:0 16px 20px;color:var(--text-dim);font-size:11px;word-break:break-all">Diagnostica hardware: ${raw}</div>`;
             sec.querySelector(".switch").onclick = () => {
               const applied = (()=>{ try { return NN.setBluetooth(!S.bt); } catch { return false; } })();
-              setTimeout(() => sections.connected(), applied ? 300 : 700);
+              setTimeout(() => sections.connected(), applied ? 500 : 900);
             };
             sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
+            sec.querySelector("#conn-refresh").onclick = () => sections.connected();
             return;
           }
           // ===== simulazione (sviluppo) =====

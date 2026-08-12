@@ -94,6 +94,11 @@ public class MainActivity extends Activity {
         for (String p : new String[]{ android.Manifest.permission.CALL_PHONE, android.Manifest.permission.CAMERA }) {
             if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) need.add(p);
         }
+        // Android 12+: leggere/gestire il Bluetooth richiede il permesso runtime BLUETOOTH_CONNECT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED)
+                need.add(android.Manifest.permission.BLUETOOTH_CONNECT);
+        }
         if (!need.isEmpty()) requestPermissions(need.toArray(new String[0]), 1);
 
         // collega la schermata di chiamata e chiede di diventare telefono predefinito
@@ -328,47 +333,54 @@ public class MainActivity extends Activity {
         public boolean setBluetooth(boolean on) {
             try {
                 BluetoothAdapter a = BluetoothAdapter.getDefaultAdapter();
-                if (a == null) return false;
+                if (a == null) { toast("Bluetooth non disponibile"); return false; }
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                     boolean ok = on ? a.enable() : a.disable();   // deprecato ma funziona < API 33
-                    if (ok) return true;
+                    if (ok) { toast(on ? "Attivo il Bluetooth…" : "Disattivo il Bluetooth…"); return true; }
                 }
             } catch (Exception ignored) {}
             if (on) {
-                try { Intent i = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(i); return false; }
-                catch (Exception e) { openSetting("bluetooth"); return false; }
+                launch(new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE), "Attivazione Bluetooth");
+                return false;
             }
             openSetting("bluetooth");
             return false;
         }
 
-        /** Apre il pannello/impostazione di sistema per un sensore. */
+        /** Apre il pannello/impostazione di sistema per un sensore (sul thread UI). */
         @JavascriptInterface
         public void openSetting(String which) {
             Intent i = new Intent();
-            try {
-                switch (which) {
-                    case "wifi":
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                            i.setAction(Settings.Panel.ACTION_WIFI);
-                        else i.setAction(Settings.ACTION_WIFI_SETTINGS);
-                        break;
-                    case "bluetooth": i.setAction(Settings.ACTION_BLUETOOTH_SETTINGS); break;
-                    case "airplane":  i.setAction(Settings.ACTION_AIRPLANE_MODE_SETTINGS); break;
-                    case "nfc":       i.setAction(Settings.ACTION_NFC_SETTINGS); break;
-                    case "location":  i.setAction(Settings.ACTION_LOCATION_SOURCE_SETTINGS); break;
-                    case "data":      i.setAction(Settings.ACTION_DATA_ROAMING_SETTINGS); break;
-                    case "hotspot":
-                        i.setClassName("com.android.settings", "com.android.settings.TetherSettings"); break;
-                    default:          i.setAction(Settings.ACTION_SETTINGS);
-                }
-                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(i);
-            } catch (Exception e) {
-                try { startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
-                catch (Exception ignored) {}
+            String label;
+            switch (which) {
+                case "wifi":
+                    i.setAction(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                        ? Settings.Panel.ACTION_WIFI : Settings.ACTION_WIFI_SETTINGS);
+                    label = "Wi-Fi"; break;
+                case "bluetooth": i.setAction(Settings.ACTION_BLUETOOTH_SETTINGS); label = "Bluetooth"; break;
+                case "airplane":  i.setAction(Settings.ACTION_AIRPLANE_MODE_SETTINGS); label = "Modalità aereo"; break;
+                case "nfc":       i.setAction(Settings.ACTION_NFC_SETTINGS); label = "NFC"; break;
+                case "location":  i.setAction(Settings.ACTION_LOCATION_SOURCE_SETTINGS); label = "Posizione"; break;
+                case "data":      i.setAction(Settings.ACTION_DATA_ROAMING_SETTINGS); label = "Dati mobili"; break;
+                case "hotspot":   i.setClassName("com.android.settings", "com.android.settings.TetherSettings");
+                                  label = "Hotspot"; break;
+                default:          i.setAction(Settings.ACTION_SETTINGS); label = "Impostazioni";
             }
+            launch(i, "Apro " + label + "…");
+        }
+
+        /** Avvia un'Activity di sistema dal thread UI, con toast e fallback su Impostazioni. */
+        private void launch(Intent intent, String toastMsg) {
+            runOnUiThread(() -> {
+                if (toastMsg != null) Toast.makeText(MainActivity.this, toastMsg, Toast.LENGTH_SHORT).show();
+                try {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    try { startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+                    catch (Exception e2) { Toast.makeText(MainActivity.this, "Impossibile aprire le impostazioni", Toast.LENGTH_SHORT).show(); }
+                }
+            });
         }
 
         /** Versione REALE dell'app installata (da PackageInfo), come JSON. */

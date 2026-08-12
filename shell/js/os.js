@@ -622,12 +622,54 @@ const OS = (() => {
   }
   function pulse() { document.querySelectorAll("[data-statusbar] .sb-left").forEach(e => e.animate([{opacity:1},{opacity:.3},{opacity:1}], {duration:600})); }
 
+  // ---- ponte sensori nativi (presente solo dentro l'app NovaOS) ----
+  const NN = () => window.NovaNative || {};
+  const hasNativeSensors = () => !!(window.NovaNative && window.NovaNative.sensorStates);
+  function readNativeSensors() { try { return hasNativeSensors() ? JSON.parse(NN().sensorStates()) : null; } catch { return null; } }
+  function syncQuickSensors() { const ns = readNativeSensors(); if (!ns) return;
+    ["wifi","bt","nfc","location","airplane"].forEach(k => { if (k in ns) state[k] = ns[k]; }); }
+
+  // pannello rapido stile Android: pulsanti tondi con icona + slider luminosità.
+  // I sensori (Wi-Fi/BT/aereo/posizione/NFC) sul dispositivo agiscono davvero
+  // (o aprono il pannello di sistema); gli interruttori software cambiano subito.
   function renderQuick() {
-    const q = [["wifi","📶","Wi-Fi"],["bt","🔵","Bluetooth"],["dnd","🌙","Non dist."],["theme","🎨","Tema"]];
-    $("#shade-quick").innerHTML = q.map(([k,ic,l]) =>
-      `<div class="quick ${quickOn(k)?'on':''}" data-q="${k}"><span class="q-ico">${ic}</span>${l}</div>`).join("");
-    $("#shade-quick").querySelectorAll(".quick").forEach(el =>
-      el.onclick = () => { toggle(el.dataset.q); el.classList.toggle("on", quickOn(el.dataset.q)); });
+    if (hasNativeSensors()) syncQuickSensors();
+    const native = hasNativeSensors();
+    // k = chiave stato · ic = icona · l = etichetta · sensor/panel = gestione hardware
+    const tiles = [
+      { k:"wifi",      ic:"📶", l:"Wi-Fi",      sensor:true, panel:"wifi" },
+      { k:"bt",        ic:"🔵", l:"Bluetooth",  sensor:true, panel:"bluetooth" },
+      { k:"dnd",       ic:"🌙", l:"Non dist." },
+      { k:"airplane",  ic:"✈️", l:"Aereo",      sensor:true, panel:"airplane" },
+      { k:"theme",     ic:"🌗", l:"Tema" },
+      { k:"location",  ic:"📍", l:"Posizione",  sensor:true, panel:"location" },
+      { k:"vibrate",   ic:"📳", l:"Vibrazione" },
+      { k:"saver",     ic:"🔋", l:"Risparmio" },
+      { k:"autoRotate",ic:"🔄", l:"Rotazione" },
+      { k:"nfc",       ic:"📡", l:"NFC",        sensor:true, panel:"nfc" },
+    ];
+    $("#shade-quick").innerHTML = `
+      <div class="qs-grid">
+        ${tiles.map(t => `<button class="qtile ${quickOn(t.k)?'on':''}" data-q="${t.k}" data-sensor="${t.sensor?1:0}" data-panel="${t.panel||''}">
+          <span class="q-ico">${t.ic}</span><span class="q-lbl">${t.l}</span></button>`).join("")}
+      </div>
+      <div class="qs-bright"><span>🔅</span><input type="range" class="slider" id="qs-bri" min="20" max="100" value="${state.brightness}"><span>🔆</span></div>`;
+    $("#shade-quick").querySelectorAll(".qtile").forEach(el => el.onclick = () => {
+      const k = el.dataset.q, isSensor = el.dataset.sensor === "1";
+      if (isSensor && native) {
+        // sul dispositivo: azione reale sull'hardware / pannello di sistema
+        try {
+          if (k === "wifi") NN().setWifi && NN().setWifi(!state.wifi);
+          else if (k === "bt") NN().setBluetooth && NN().setBluetooth(!state.bt);
+          else if (NN().openSetting) NN().openSetting(el.dataset.panel);
+        } catch (e) {}
+        closeShade();   // così il pannello/toast di sistema è visibile
+        return;
+      }
+      toggle(k);        // software (o simulazione sensori in sviluppo)
+      el.classList.toggle("on", quickOn(k));
+    });
+    const bri = $("#qs-bri"); if (bri) bri.oninput = e => set("brightness", +e.target.value);
   }
   function quickOn(k) { return k==="theme" ? state.theme==="dark" : !!state[k]; }
 

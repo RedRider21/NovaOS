@@ -310,7 +310,17 @@ body[data-theme="light"] .dock { background: rgba(255,255,255,.6); }
 .shade-time { font-size: 14px; color: var(--text-dim); font-weight: 600; }
 .shade-ico { width: 38px; height: 38px; border-radius: 50%; border: none; background: var(--surface); color: var(--text); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .shade-ico:active { background: var(--surface-2); }
-.shade-quick { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 18px; }
+.shade-quick { margin-bottom: 18px; }
+.qs-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 14px 4px; margin-bottom: 14px; }
+.qtile { display: flex; flex-direction: column; align-items: center; gap: 6px; background: none; border: none; padding: 0; font-size: 10.5px; color: var(--text-dim); cursor: pointer; }
+.qtile .q-ico { width: 52px; height: 52px; border-radius: 50%; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--text); transition: background .15s, transform .1s; }
+.qtile:active .q-ico { transform: scale(.92); }
+.qtile.on .q-ico { background: var(--accent); color: #fff; }
+.qtile.on { color: var(--text); }
+.qtile .q-lbl { max-width: 62px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qs-bright { display: flex; align-items: center; gap: 10px; background: var(--surface); border-radius: 26px; padding: 9px 15px; font-size: 15px; }
+.qs-bright input[type=range] { flex: 1; }
+/* vecchie tile (compat) */
 .quick { aspect-ratio: 1.6; border-radius: 16px; background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 11px; color: var(--text-dim); cursor: pointer; }
 .quick .q-ico { font-size: 18px; }
 .quick.on { background: var(--accent); color:#fff; }
