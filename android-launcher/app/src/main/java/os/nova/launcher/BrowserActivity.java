@@ -31,6 +31,13 @@ public class BrowserActivity extends Activity {
 
     private WebView web;
     private TextView urlBar;
+    private Button dtBtn;                 // interruttore vista desktop/mobile
+    private String mobileUa;             // UA mobile originale (+ " NovaOS")
+    private boolean desktopMode = false;
+    // UA di un Chrome desktop: serve a WhatsApp/Telegram Web per mostrare il QR
+    // (con UA mobile reindirizzano all'app e non fanno accedere via web).
+    private static final String DESKTOP_UA =
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -58,6 +65,12 @@ public class BrowserActivity extends Activity {
         ulp.leftMargin = 12; ulp.rightMargin = 12;
         urlBar.setLayoutParams(ulp);
 
+        dtBtn = new Button(this);
+        dtBtn.setText("🖥");                        // richiedi/annulla vista desktop
+        dtBtn.setBackgroundColor(Color.TRANSPARENT);
+        dtBtn.setTextColor(Color.WHITE);
+        dtBtn.setOnClickListener(v -> { desktopMode = !desktopMode; applyUa(true); });
+
         Button chrome = new Button(this);
         chrome.setText("⧉");                       // apre nel browser di sistema (Chrome)
         chrome.setBackgroundColor(Color.TRANSPARENT);
@@ -72,6 +85,7 @@ public class BrowserActivity extends Activity {
 
         bar.addView(close);
         bar.addView(urlBar);
+        bar.addView(dtBtn);
         bar.addView(chrome);
         bar.addView(reload);
 
@@ -85,7 +99,34 @@ public class BrowserActivity extends Activity {
         String url = getIntent().getStringExtra("url");
         if (url == null || url.isEmpty()) url = "https://www.google.com";
         if (!url.matches("^[a-zA-Z]+://.*")) url = "https://" + url;
+        // WhatsApp/Telegram Web (o richiesta esplicita): parti già in vista desktop
+        desktopMode = getIntent().getBooleanExtra("desktop", false) || wantsDesktop(url);
+        applyUa(false);
         web.loadUrl(url);
+    }
+
+    /** true per i siti che mostrano il QR/login solo a un browser desktop. */
+    private boolean wantsDesktop(String url) {
+        try {
+            String host = Uri.parse(url).getHost();
+            if (host == null) return false;
+            host = host.toLowerCase();
+            return host.contains("web.whatsapp.com") || host.contains("web.telegram.org");
+        } catch (Exception e) { return false; }
+    }
+
+    /** Applica lo User-Agent (desktop o mobile) e aggiorna l'icona del pulsante. */
+    private void applyUa(boolean reload) {
+        WebSettings s = web.getSettings();
+        if (desktopMode) {
+            s.setUserAgentString(DESKTOP_UA);
+            s.setUseWideViewPort(true);
+            s.setLoadWithOverviewMode(true);
+        } else {
+            s.setUserAgentString(mobileUa);
+        }
+        if (dtBtn != null) dtBtn.setText(desktopMode ? "📱" : "🖥");
+        if (reload && web != null) web.reload();
     }
 
     /** Crea e configura una WebView "vera" (banche, Google, login in popup, ecc.). */
@@ -105,8 +146,10 @@ public class BrowserActivity extends Activity {
         // i login di banche/Google spesso si aprono in un popup (window.open / target=_blank)
         s.setSupportMultipleWindows(true);
         s.setJavaScriptCanOpenWindowsAutomatically(true);
-        // user agent "mobile" completo: alcuni siti bloccano/impaginano male i WebView generici
-        s.setUserAgentString(s.getUserAgentString() + " NovaOS");
+        // user agent "mobile" completo: alcuni siti bloccano/impaginano male i WebView generici.
+        // Lo memorizziamo per poter tornare da desktop a mobile con applyUa().
+        mobileUa = s.getUserAgentString() + " NovaOS";
+        s.setUserAgentString(mobileUa);
 
         CookieManager cm = CookieManager.getInstance();
         cm.setAcceptCookie(true);
