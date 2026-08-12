@@ -654,16 +654,17 @@ const OS = (() => {
           <span class="q-ico">${t.ic}</span><span class="q-lbl">${t.l}</span></button>`).join("")}
       </div>
       <div class="qs-bright"><span>🔅</span><input type="range" class="slider" id="qs-bri" min="20" max="100" value="${state.brightness}"><span>🔆</span></div>`;
+    const SETFN = { wifi:"setWifi", bt:"setBluetooth", airplane:"setAirplane", location:"setLocation", nfc:"setNfc" };
     $("#shade-quick").querySelectorAll(".qtile").forEach(el => el.onclick = () => {
       const k = el.dataset.q, isSensor = el.dataset.sensor === "1";
       if (isSensor && native) {
-        // sul dispositivo: azione reale sull'hardware / pannello di sistema
-        try {
-          if (k === "wifi") NN().setWifi && NN().setWifi(!state.wifi);
-          else if (k === "bt") NN().setBluetooth && NN().setBluetooth(!state.bt);
-          else if (NN().openSetting) NN().openSetting(el.dataset.panel);
-        } catch (e) {}
-        closeShade();   // così il pannello/toast di sistema è visibile
+        // sul dispositivo: prova l'azione reale; se applicata in-process (ROM
+        // privilegiato) aggiorna la tile senza uscire, altrimenti si apre il
+        // pannello di sistema e chiudiamo la tendina per renderlo visibile.
+        let applied = false;
+        try { const fn = SETFN[k]; if (fn && NN()[fn]) applied = NN()[fn](!state[k]); } catch (e) {}
+        if (applied) { syncQuickSensors(); renderQuick(); }
+        else closeShade();
         return;
       }
       toggle(k);        // software (o simulazione sensori in sviluppo)

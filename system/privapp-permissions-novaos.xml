@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  NovaOS — whitelist dei permessi PRIVILEGIATI.
+
+  Va copiato nel ROM in:
+      /system/etc/permissions/privapp-permissions-novaos.xml
+  (oppure /product/etc/permissions/ o /system_ext/etc/permissions/ a seconda
+  della partizione in cui è installata NovaOS come priv-app).
+
+  Effetto: quando NovaOS è un'app di sistema privilegiata (priv-app) firmata con
+  la chiave di piattaforma, questi permessi vengono CONCESSI. È ciò che sblocca i
+  toggle diretti dei sensori nel bridge nativo (privilegedNative() → true), così
+  Wi-Fi / Bluetooth / aereo / posizione / dati / NFC si commutano in-process senza
+  aprire i pannelli di sistema.
+
+  Da app normale (telefono di prova) questi permessi NON vengono concessi: NovaOS
+  ripiega automaticamente sull'apertura dei pannelli di sistema. Stesso APK, due
+  comportamenti — nessuna riga di codice da cambiare.
+-->
+<permissions>
+    <privapp-permissions package="os.nova.launcher">
+        <permission name="android.permission.WRITE_SECURE_SETTINGS"/>
+        <permission name="android.permission.WRITE_SETTINGS"/>
+        <permission name="android.permission.MODIFY_PHONE_STATE"/>
+        <permission name="android.permission.NETWORK_SETTINGS"/>
+        <!-- opzionali, utili se in futuro NovaOS gestisce direttamente il tethering
+             e il controllo connettività a basso livello -->
+        <permission name="android.permission.TETHER_PRIVILEGED"/>
+        <permission name="android.permission.CONNECTIVITY_INTERNAL"/>
+    </privapp-permissions>
+</permissions>

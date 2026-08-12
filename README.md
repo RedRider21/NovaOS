@@ -5,8 +5,12 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1 · build web**. Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.6**. Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
+>
+> 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
+> cosa resta del telefono (kernel/driver riusati), installazione passo-passo,
+> bridge "reale" a doppia modalità e nota sulle app bancarie/attestazione.
 
 ## Architettura a tre livelli
 
@@ -52,7 +56,7 @@ web-phone-os/
 | Telefono | tastierino, **cronologia chiamate** (recenti + richiamo), chiamata reale via dialer nativo (`tel:` / bridge `NovaNative.call`) |
 | Rubrica | contatti CRUD (nome/telefono/email), chiama/SMS/email dal contatto |
 | Messaggi | nuova conversazione dai contatti, elimina, orari per messaggio, risposte contestuali, avatar |
-| Mail | client email **reale** (SMTP/IMAP via bridge nativo JavaMail): schermata account con autocompilazione host per provider noti, invio SMTP e sincronizzazione IMAP, **password cifrata nell'Android Keystore** (mai in chiaro). In assenza del bridge (browser) resta simulazione locale. Inoltre: cartelle (arrivo/inviati/bozze/cestino), **ricerca**, stella, **bozze reali**, **rispondi con citazione**, **inoltra**, **allegati** con anteprima, destinatari dai contatti, firma |
+| Mail | client email **reale** (SMTP/IMAP via bridge nativo JavaMail): schermata account con **selettore provider** (Gmail/Outlook/Yahoo/iCloud/Libero/Aruba/PEC/GMX/TIM che precompilano host e porte) **o configurazione manuale**, invio SMTP e sincronizzazione IMAP, **password cifrata nell'Android Keystore** (mai in chiaro). In assenza del bridge (browser) resta simulazione locale. Inoltre: cartelle (arrivo/inviati/bozze/cestino), **ricerca**, stella, **bozze reali**, **rispondi con citazione**, **inoltra**, **allegati** con anteprima, destinatari dai contatti, firma |
 | Browser | cronologia + preferiti; sul device apre i siti in **WebView nativa a schermo intero** (BrowserActivity) → nessun limite iframe (banche, Google, ecc.). In shell web resta l'anteprima iframe |
 | Fotocamera | anteprima live `getUserMedia`, scatto salvato in Galleria, import da file |
 | Galleria | foto reali (IndexedDB) + demo, **album**, visualizzatore con **swipe**, **zoom doppio-tap**, **info scatto** (data/dimensioni/peso), **condivisione** (share nativo), **presentazione**; **editor** (filtri + luminosità/contrasto/saturazione + **rotazione**, salvataggio) |
@@ -62,13 +66,16 @@ web-phone-os/
 | Note | multi-nota con **ricerca**, **cartelle/categorie**, colori, **formattazione markdown** + anteprima, note fissate, data modifica |
 | Calcolatrice | espressioni con operatori |
 | File | gestore file reale: area **"I miei file"** con cartelle e file di testo (**crea/rinomina/sposta/elimina**), **ricerca**, **riepilogo spazio** reale; cartelle intelligenti **Immagini** (foto reali, elimina + apri in Galleria) e **Note** |
-| Store | installa **web app di terze parti** via URL, con **scelta icona** (emoji / favicon del sito / immagine caricata) e anteprima |
-| Impostazioni | Rete, Dispositivi connessi, Display, Suoni, Notifiche, Sicurezza/PIN, Privacy, App, Batteria, Archiviazione, Accessibilità, Sistema, Info telefono |
+| Store | installa **web app di terze parti** via URL, con **scelta icona** (emoji / favicon del sito / immagine caricata), anteprima e **modifica** delle app installate (nome/URL/icona/colore) |
+| Impostazioni | Rete, Dispositivi connessi, Display, Suoni, Notifiche, Sicurezza/PIN, Privacy, App, Batteria, Archiviazione, Accessibilità, Sistema, Info telefono. **Sensori reali** (Wi-Fi/BT/NFC/posizione/aereo/dati): stato letto dall'hardware e **toggle a doppia modalità** — da app apre i pannelli di sistema, nel ROM privilegiato commuta in-process (vedi [GUIDA-ROM](docs/GUIDA-ROM.md) §4). **Versione reale** installata da `PackageInfo` + controllo release su GitHub |
 
 Funzioni di sistema: boot con logo animato, **blocco/sblocco** (nessuno / scorrimento
-/ **PIN**), centro notifiche a tendina con quick toggle, tema chiaro/scuro,
-luminosità, dimensione testo, sfondi, accessibilità (grassetto, contrasto, riduci
-animazioni), ricerca nelle impostazioni.
+/ **PIN**), **tendina rapida stile Android** (10 tile tonde con icona: Wi-Fi, BT, Non
+dist., aereo, tema, posizione, vibrazione, risparmio, rotazione, NFC + slider
+luminosità), tema chiaro/scuro, luminosità, dimensione testo, sfondi, **icone
+monocromatiche/contorno con colori personalizzabili**, accessibilità (grassetto,
+contrasto, riduci animazioni), ricerca nelle impostazioni. **Home a pagine editabile**
+(drag icone tra desktop, cartelle, swipe rapido con flick, auto-paginazione).
 
 ## Avvio rapido (sviluppo)
 
@@ -102,7 +109,10 @@ adb shell am start -a android.intent.action.VIEW \
 Apri `android-launcher/` in Android Studio e premi Run (o `./gradlew installDebug`
 con l'emulatore avviato). Il manifest registra NovaOS come categoria `HOME`:
 premi il tasto Home e scegli NovaOS come launcher. Il bridge `NovaNative` espone
-alla shell `call`, `sms`, `vibrate`, `batteryLevel`, `toast`. Per un SO offline,
+alla shell `call`, `sms`/`sendSms`, `vibrate`, `batteryLevel`, `toast`,
+`openBrowser`, `shareImage`/`shareText`, la Mail (`mail*`), i **sensori**
+(`sensorStates`, `setWifi`/`setBluetooth`/`setAirplane`/`setLocation`/`setNfc`/`setMobileData`,
+`openSetting`, `privileged`) e la **versione reale** (`appVersion`). Per un SO offline,
 imposta `DEV=false` in `MainActivity.java` e copia `shell/` in
 `app/src/main/assets/www/`.
 
@@ -143,10 +153,18 @@ Poi eventualmente disinstalla NovaOS come una normale app.
 
 ## Costruire la ROM (SO di base)
 
-Vedi `system/README.md` e `system/build-rom.sh`. In sintesi: si parte da AOSP
-(il vero SO di base, scaricato con `repo`), si integra il launcher come app di
-sistema e Home predefinita, si rimuovono le app superflue, si compila la
-`system.img`. Alternativa più rapida: LineageOS + priv-app.
+**Guida completa e passo-passo: [docs/GUIDA-ROM.md](docs/GUIDA-ROM.md).** Copre cosa
+resta fisso e viene riusato (kernel/driver/radio/WebView del telefono, mai
+sostituiti), l'installazione dal più semplice (emulatore, GSI su device reale) al
+più completo (AOSP), la firma di piattaforma + whitelist priv-app
+(`system/privapp-permissions-novaos.xml`), il bridge sensori a **doppia modalità**
+(stesso APK: apre i pannelli da app, commuta in-process nel ROM) e la questione
+**app bancarie/attestazione** (Play Integrity).
+
+Riferimenti tecnici di dettaglio anche in `system/README.md` e `system/build-rom.sh`.
+In sintesi: si parte da un Android vanilla (GSI/AOSP), si innesta NovaOS come app di
+sistema e Home predefinita, si flasha **solo `system`** lasciando intatte `vendor` e
+`boot` → l'hardware del telefono continua a funzionare col suo kernel.
 
 ## Stato
 

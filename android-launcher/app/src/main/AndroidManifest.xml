@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="os.nova.launcher"
-    android:versionCode="6"
-    android:versionName="0.1.5">
+    android:versionCode="7"
+    android:versionName="0.1.6">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
@@ -17,6 +17,14 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.NFC" />
+    <!-- Permessi PRIVILEGIATI: un'app normale non li ottiene (nessun effetto qui);
+         nel ROM definitivo, con NovaOS come priv-app firmata + whitelist
+         (system/privapp-permissions-novaos.xml), vengono concessi e sbloccano
+         i toggle diretti di aereo/posizione/dati/NFC senza aprire pannelli. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="android.permission.MODIFY_PHONE_STATE" />
+    <uses-permission android:name="android.permission.NETWORK_SETTINGS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- necessario su Android 11+ per aprire dialer/SMS di sistema -->

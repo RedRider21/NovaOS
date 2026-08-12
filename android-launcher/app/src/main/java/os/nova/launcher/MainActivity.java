@@ -286,8 +286,27 @@ public class MainActivity extends Activity {
             b.append(",\"nfc\":").append(readNfc());
             b.append(",\"location\":").append(readLocation());
             b.append(",\"airplane\":").append(readAirplane());
+            b.append(",\"mobileData\":").append(readMobileData());
+            b.append(",\"privileged\":").append(privilegedNative());   // true nel ROM (app di sistema)
             b.append(",\"native\":true}");
             return b.toString();
+        }
+
+        /** true se NovaOS ha poteri di sistema (firma di piattaforma / priv-app nel ROM
+         *  definitivo): WRITE_SECURE_SETTINGS non è concedibile a un'app normale, quindi è
+         *  una spia affidabile del fatto che possiamo commutare i sensori in-process. */
+        private boolean privilegedNative() {
+            try { return checkSelfPermission("android.permission.WRITE_SECURE_SETTINGS") == PackageManager.PERMISSION_GRANTED; }
+            catch (Exception e) { return false; }
+        }
+        /** Esposto al web: capacità reali del bridge su questo dispositivo. */
+        @JavascriptInterface public boolean privileged() { return privilegedNative(); }
+
+        private boolean readMobileData() {
+            try { android.telephony.TelephonyManager tm = (android.telephony.TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+                  java.lang.reflect.Method m = tm.getClass().getMethod("isDataEnabled");
+                  Object r = m.invoke(tm); return r instanceof Boolean && (Boolean) r; }
+            catch (Exception e) { return false; }
         }
 
         private boolean readWifi() {
@@ -315,27 +334,35 @@ public class MainActivity extends Activity {
             catch (Exception e) { return false; }
         }
 
-        /** Prova ad accendere/spegnere il Wi-Fi. Su Android 10+ non è consentito
-         *  in silenzio: apre il pannello Wi-Fi di sistema e restituisce false. */
+        // ============================================================
+        //  Toggle "reali" dei sensori. Ogni metodo restituisce true se ha
+        //  cambiato lo stato DAVVERO e in-process (nessuna UI esterna); false
+        //  se ha dovuto delegare al pannello di sistema (app non privilegiata).
+        //  → Stesso APK: da app normale apre i pannelli; nel ROM definitivo
+        //    (privilegiato) commuta direttamente, senza uscire da NovaOS.
+        // ============================================================
+
+        /** Wi-Fi: diretto se privilegiato o Android < 10; altrimenti pannello. */
         @JavascriptInterface
         public boolean setWifi(boolean on) {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                try { WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-                      if (wm != null) { wm.setWifiEnabled(on); return true; } } catch (Exception ignored) {}
-            }
+            try {
+                WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wm != null && (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || privilegedNative())) {
+                    wm.setWifiEnabled(on); toast(on ? "Wi-Fi attivato" : "Wi-Fi disattivato"); return true;
+                }
+            } catch (Exception ignored) {}
             openSetting("wifi");
             return false;
         }
 
-        /** Prova ad accendere/spegnere il Bluetooth; se il sistema lo vieta,
-         *  apre la richiesta/pannello Bluetooth. Restituisce true se applicato. */
+        /** Bluetooth: diretto se privilegiato o Android < 13; altrimenti richiesta/pannello. */
         @JavascriptInterface
         public boolean setBluetooth(boolean on) {
             try {
                 BluetoothAdapter a = BluetoothAdapter.getDefaultAdapter();
                 if (a == null) { toast("Bluetooth non disponibile"); return false; }
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                    boolean ok = on ? a.enable() : a.disable();   // deprecato ma funziona < API 33
+                if (privilegedNative() || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                    boolean ok = on ? a.enable() : a.disable();   // deprecato ma valido da sistema o < API 33
                     if (ok) { toast(on ? "Attivo il Bluetooth…" : "Disattivo il Bluetooth…"); return true; }
                 }
             } catch (Exception ignored) {}
@@ -344,6 +371,66 @@ public class MainActivity extends Activity {
                 return false;
             }
             openSetting("bluetooth");
+            return false;
+        }
+
+        /** Modalità aereo: diretto solo se privilegiato (WRITE_SECURE_SETTINGS). */
+        @JavascriptInterface
+        public boolean setAirplane(boolean on) {
+            if (privilegedNative()) {
+                try {
+                    Settings.Global.putInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, on ? 1 : 0);
+                    sendBroadcast(new Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED).putExtra("state", on));
+                    toast(on ? "Modalità aereo attiva" : "Modalità aereo disattivata"); return true;
+                } catch (Exception ignored) {}
+            }
+            openSetting("airplane");
+            return false;
+        }
+
+        /** Posizione (GPS): diretto solo se privilegiato. */
+        @JavascriptInterface
+        public boolean setLocation(boolean on) {
+            if (privilegedNative()) {
+                try {
+                    Settings.Secure.putInt(getContentResolver(), Settings.Secure.LOCATION_MODE,
+                        on ? Settings.Secure.LOCATION_MODE_HIGH_ACCURACY : Settings.Secure.LOCATION_MODE_OFF);
+                    toast(on ? "Posizione attivata" : "Posizione disattivata"); return true;
+                } catch (Exception ignored) {}
+            }
+            openSetting("location");
+            return false;
+        }
+
+        /** NFC: diretto solo se privilegiato (API @hide via reflection). */
+        @JavascriptInterface
+        public boolean setNfc(boolean on) {
+            if (privilegedNative()) {
+                try {
+                    NfcAdapter a = NfcAdapter.getDefaultAdapter(MainActivity.this);
+                    if (a != null) {
+                        java.lang.reflect.Method m = NfcAdapter.class.getDeclaredMethod(on ? "enable" : "disable");
+                        m.setAccessible(true); m.invoke(a);
+                        toast(on ? "NFC attivato" : "NFC disattivato"); return true;
+                    }
+                } catch (Exception ignored) {}
+            }
+            openSetting("nfc");
+            return false;
+        }
+
+        /** Dati mobili: diretto solo se privilegiato (MODIFY_PHONE_STATE, via reflection). */
+        @JavascriptInterface
+        public boolean setMobileData(boolean on) {
+            if (privilegedNative()) {
+                try {
+                    android.telephony.TelephonyManager tm = (android.telephony.TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+                    java.lang.reflect.Method m = tm.getClass().getDeclaredMethod("setDataEnabled", boolean.class);
+                    m.setAccessible(true); m.invoke(tm, on);
+                    toast(on ? "Dati mobili attivi" : "Dati mobili disattivati"); return true;
+                } catch (Exception ignored) {}
+            }
+            openSetting("data");
             return false;
         }
 
