@@ -2067,7 +2067,7 @@ const NovaApps = (() => {
       const isPriv = () => { const ns = readSensors(); return !!(ns && ns.privileged); };
       // versione REALE installata (da PackageInfo) con fallback alla build web
       const appVer = (() => { try { return NN.appVersion ? JSON.parse(NN.appVersion()) : null; } catch { return null; } })();
-      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.7";
+      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.8";
       const VERLONG = appVer && appVer.code ? `${VER} · build ${appVer.code}` : `${VER} · build web`;
 
       const nav = (title, bodyFn) => {
@@ -2279,9 +2279,14 @@ const NovaApps = (() => {
               <div class="item"><div class="i-ico" style="background:#5e5ce6">🌙</div><div class="i-body"><div class="i-title">Non disturbare</div><div class="i-sub">Silenzia le notifiche</div></div>${sw(S.dnd)}</div>
               <div class="item"><div class="i-ico" style="background:#ff9f0a">📳</div><div class="i-body"><div class="i-title">Vibrazione</div></div>${sw(S.vibrate)}</div>
             </div>
+            <div class="section-label">Suoneria (chiamate)</div>
+            <div class="chips" data-pick="ring">${os.sounds.lists.ring.map(n=>`<button class="chip ${S.ringtone===n?'on':''}" data-snd="${n}">${n}</button>`).join("")}</div>
+            <div class="section-label">Suono notifiche</div>
+            <div class="chips" data-pick="notif">${os.sounds.lists.notif.map(n=>`<button class="chip ${S.notifSound===n?'on':''}" data-snd="${n}">${n}</button>`).join("")}</div>
+            <div class="section-label">Suono sveglia</div>
+            <div class="chips" data-pick="alarm">${os.sounds.lists.alarm.map(n=>`<button class="chip ${S.alarmSound===n?'on':''}" data-snd="${n}">${n}</button>`).join("")}</div>
             <div class="group" style="margin-top:12px">
-              <div class="item"><div class="i-ico" style="background:#8e8e93">🎶</div><div class="i-body"><div class="i-title">Suoneria</div></div><div class="i-val">Nova</div></div>
-              <div class="item"><div class="i-ico" style="background:#8e8e93">🔔</div><div class="i-body"><div class="i-title">Suono notifiche</div></div><div class="i-val">Goccia</div></div>
+              <div class="item"><div class="i-ico" style="background:#8e8e93">🎚️</div><div class="i-body"><div class="i-title">Suoni di sistema</div><div class="i-sub">Blocco/sblocco e conferme</div></div>${sw(S.sysSounds)}</div>
             </div>
             <div style="display:flex;gap:10px;margin:16px">
               <button class="btn ghost" id="test" style="flex:1">Notifica di prova</button>
@@ -2290,6 +2295,18 @@ const NovaApps = (() => {
           const sws = sec.querySelectorAll(".switch");
           sws[0].onclick = () => { os.toggle("dnd"); sws[0].classList.toggle("on"); };
           sws[1].onclick = () => { os.toggle("vibrate"); sws[1].classList.toggle("on"); if(os.state.vibrate) os.vibrate([80,40,80]); };
+          sws[2].onclick = () => { os.toggle("sysSounds"); sws[2].classList.toggle("on"); };
+          // selezione suonerie/suoni: salva la scelta e ne riproduce l'anteprima
+          const keyOf = { ring:"ringtone", notif:"notifSound", alarm:"alarmSound" };
+          const volOf = { ring:"volRing", notif:"volNotif", alarm:"volAlarm" };
+          sec.querySelectorAll(".chips").forEach(box => {
+            const cat = box.dataset.pick;
+            box.querySelectorAll("[data-snd]").forEach(b => b.onclick = () => {
+              os.set(keyOf[cat], b.dataset.snd);
+              box.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c===b));
+              os.sounds.preview(cat, b.dataset.snd, (S[volOf[cat]]==null?60:S[volOf[cat]])/100*0.5);
+            });
+          });
           sec.querySelector("#test").onclick = () => os.notify({ app:"settings", title:"NovaOS", text:"Notifica di prova." });
           sec.querySelector("#vibtest").onclick = () => os.vibrate([120,60,120,60,220]);
         }),
@@ -2300,15 +2317,23 @@ const NovaApps = (() => {
             <div class="group">
               <div class="item"><div class="i-ico" style="background:#ff9f0a">🔒</div><div class="i-body"><div class="i-title">Sulla schermata di blocco</div><div class="i-sub">Mostra le notifiche quando bloccato</div></div>${sw(S.notifLock)}</div>
               <div class="item"><div class="i-ico" style="background:#ff9f0a">🕓</div><div class="i-body"><div class="i-title">Cronologia notifiche</div></div>${sw(S.notifHistory)}</div>
-              <div class="item"><div class="i-ico" style="background:#ff9f0a">💬</div><div class="i-body"><div class="i-title">Bolle</div><div class="i-sub">Conversazioni fluttuanti</div></div>${sw(S.bubbles)}</div>
+              <div class="item"><div class="i-ico" style="background:#ff9f0a">💬</div><div class="i-body"><div class="i-title">Bolle</div><div class="i-sub">Banner fluttuante alla ricezione</div></div>${sw(S.bubbles)}</div>
               <div class="item"><div class="i-ico" style="background:#34c759">🔋</div><div class="i-body"><div class="i-title">Percentuale batteria</div><div class="i-sub">Mostra nella barra di stato</div></div>${sw(S.batteryPercent)}</div>
             </div>
             <div class="section-label">Notifiche per app</div>
             <div class="group">
-              ${["Messaggi","Telefono","Store"].map(a=>`<div class="item"><div class="i-body"><div class="i-title">${a}</div><div class="i-sub">Attive</div></div><div class="chev"></div></div>`).join("")}
+              ${[["messages","Messaggi"],["phone","Telefono"],["mail","Mail"],["clock","Orologio"],["store","Store"]].map(([id,label])=>{
+                const on = (S.notifApps||{})[id] !== false;
+                return `<div class="item" data-napp="${id}"><div class="i-body"><div class="i-title">${label}</div><div class="i-sub">${on?"Attive":"Silenziate"}</div></div>${sw(on)}</div>`;}).join("")}
             </div>`;
           const sws = sec.querySelectorAll(".group:first-child .switch");
           ["notifLock","notifHistory","bubbles","batteryPercent"].forEach((k,i)=>sws[i].onclick=()=>{os.toggle(k);sws[i].classList.toggle("on");});
+          // notifiche per app: attiva/silenzia davvero (usato da os.notify)
+          sec.querySelectorAll("[data-napp]").forEach(row => row.onclick = () => {
+            const id = row.dataset.napp, m = { ...(os.state.notifApps||{}) };
+            m[id] = m[id] === false ? true : false;
+            os.set("notifApps", m); sections.notifications();
+          });
         }),
 
         // ---------------- Sicurezza e blocco ----------------
@@ -2369,18 +2394,23 @@ const NovaApps = (() => {
             <div class="group">
               ${locRow}
             </div>
-            <div class="section-label">Gestione permessi</div>
+            <div class="section-label">Permessi app${hasSensors?'':' (gestiti da Android)'}</div>
             <div class="group">
-              ${[["📷","Fotocamera","1 app"],["🎤","Microfono","Nessuna app"],["📍","Posizione","2 app"],["👤","Contatti","1 app"]].map(([ic,t,s])=>`
-                <div class="item"><div class="i-ico" style="background:#5e5ce6">${ic}</div><div class="i-body"><div class="i-title">${t}</div><div class="i-sub">${s}</div></div><div class="chev"></div></div>`).join("")}
+              ${[["📷","Fotocamera"],["🎤","Microfono"],["📍","Posizione"],["👤","Contatti"]].map(([ic,t])=>`
+                <div class="item" ${hasSensors?'data-open="appdetails"':''}><div class="i-ico" style="background:#5e5ce6">${ic}</div><div class="i-body"><div class="i-title">${t}</div><div class="i-sub">${hasSensors?"Apri i permessi di sistema":"Concessi al primo utilizzo"}</div></div><div class="chev"></div></div>`).join("")}
             </div>
             <div class="group" style="margin-top:12px">
-              <div class="item"><div class="i-ico" style="background:#8e8e93">🗑️</div><div class="i-body"><div class="i-title">Cancella dati di navigazione</div></div><div class="chev"></div></div>
+              <div class="item" id="clear-nav"><div class="i-ico" style="background:#8e8e93">🗑️</div><div class="i-body"><div class="i-title">Cancella dati di navigazione</div><div class="i-sub">Cronologia e preferiti del Browser</div></div><div class="chev"></div></div>
             </div>`;
           const locSens = sec.querySelector('[data-sens="location"]');
           if (locSens) locSens.onclick = () => sensorAct("location", () => sections.privacy());
           else { const lsw = sec.querySelector(".switch"); if (lsw) lsw.onclick = () => { os.toggle("location"); sections.privacy(); }; }
           sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
+          sec.querySelector("#clear-nav").onclick = () => {
+            if (!confirm("Cancellare cronologia e preferiti del Browser?")) return;
+            os.store.del("browserHistory"); os.store.del("bookmarks");
+            os.notify({ app:"settings", title:"Privacy", text:"Dati di navigazione cancellati." });
+          };
         }),
 
         // ---------------- Archiviazione ----------------
@@ -2437,10 +2467,9 @@ const NovaApps = (() => {
         system: () => nav("Sistema", sec => {
           sec.innerHTML = `
             <div class="group">
-              <div class="item"><div class="i-ico" style="background:#8e8e93">🌐</div><div class="i-body"><div class="i-title">Lingue e inserimento</div></div><div class="i-val">Italiano</div></div>
-              <div class="item"><div class="i-ico" style="background:#8e8e93">🕐</div><div class="i-body"><div class="i-title">Data e ora</div></div><div class="i-val">Automatiche</div></div>
-              <div class="item"><div class="i-ico" style="background:#8e8e93">✋</div><div class="i-body"><div class="i-title">Gesti</div><div class="i-sub">Navigazione e scorciatoie</div></div><div class="chev"></div></div>
-              <div class="item"><div class="i-ico" style="background:#8e8e93">☁️</div><div class="i-body"><div class="i-title">Backup</div><div class="i-sub">Locale (localStorage/IndexedDB)</div></div><div class="chev"></div></div>
+              <div class="item" ${hasSensors?'data-open="locale"':''}><div class="i-ico" style="background:#8e8e93">🌐</div><div class="i-body"><div class="i-title">Lingue e inserimento</div><div class="i-sub">${navigator.language||"Italiano"}${hasSensors?' · apri':''}</div></div><div class="${hasSensors?'chev':'i-val'}">${hasSensors?'':'Italiano'}</div></div>
+              <div class="item" ${hasSensors?'data-open="date"':''}><div class="i-ico" style="background:#8e8e93">🕐</div><div class="i-body"><div class="i-title">Data e ora</div><div class="i-sub">${new Date().toLocaleString("it-IT",{dateStyle:"medium",timeStyle:"short"})}${hasSensors?' · apri':''}</div></div><div class="${hasSensors?'chev':'i-val'}">${hasSensors?'':'Auto'}</div></div>
+              <div class="item"><div class="i-ico" style="background:#8e8e93">💾</div><div class="i-body"><div class="i-title">Backup dati</div><div class="i-sub">Esporta/importa i dati di NovaOS</div></div><div class="chev" id="sys-backup"></div></div>
             </div>
             <div class="group" style="margin-top:12px">
               <div class="item" id="upd"><div class="i-ico" style="background:#34c759">⬆️</div><div class="i-body"><div class="i-title">Aggiornamenti di sistema</div><div class="i-sub" id="upd-sub">Versione installata: NovaOS ${VER}</div></div><div class="chev"></div></div>
@@ -2473,6 +2502,17 @@ const NovaApps = (() => {
               .catch(() => { panel.innerHTML = `<div style="padding:8px 16px 14px;color:var(--text-dim);font-size:13px">Impossibile contattare GitHub. Versione installata: NovaOS ${VER}.</div>`; });
           };
           sec.querySelector("#reset").onclick = () => { if (confirm("Ripristinare NovaOS? Verranno cancellati impostazioni e app installate.")) os.factoryReset(); };
+          // Data e ora / Lingua: aprono i pannelli reali di sistema (sul dispositivo)
+          sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
+          // Backup reale: esporta/importa tutti i dati nova:* come file JSON
+          const backup = sec.querySelector("#sys-backup");
+          if (backup) backup.closest(".item").onclick = () => {
+            const data = {}; try { for (let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k.startsWith("nova:")) data[k]=localStorage.getItem(k); } } catch {}
+            const blobUrl = URL.createObjectURL(new Blob([JSON.stringify(data,null,2)], {type:"application/json"}));
+            const a = document.createElement("a"); a.href = blobUrl; a.download = `novaos-backup-${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(blobUrl), 2000);
+            os.notify({ app:"settings", title:"Backup", text:"Dati esportati come file JSON." });
+          };
         }),
 
         // ---------------- Info sul telefono ----------------

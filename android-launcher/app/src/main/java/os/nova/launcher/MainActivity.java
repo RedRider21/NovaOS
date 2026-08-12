@@ -451,6 +451,11 @@ public class MainActivity extends Activity {
                 case "data":      i.setAction(Settings.ACTION_DATA_ROAMING_SETTINGS); label = "Dati mobili"; break;
                 case "hotspot":   i.setClassName("com.android.settings", "com.android.settings.TetherSettings");
                                   label = "Hotspot"; break;
+                case "date":      i.setAction(Settings.ACTION_DATE_SETTINGS); label = "Data e ora"; break;
+                case "locale":    i.setAction(Settings.ACTION_LOCALE_SETTINGS); label = "Lingua"; break;
+                case "appdetails":
+                    i.setAction(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                     .setData(Uri.parse("package:" + getPackageName())); label = "Permessi app"; break;
                 default:          i.setAction(Settings.ACTION_SETTINGS); label = "Impostazioni";
             }
             launch(i, "Apro " + label + "…");

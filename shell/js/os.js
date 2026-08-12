@@ -32,10 +32,12 @@ const OS = (() => {
     airplane: false, mobileData: true, hotspot: false, nfc: true, location: true,
     // display
     autoRotate: true, adaptiveBright: true, screenTimeout: 30, refreshHigh: true,
-    // audio (volumi separati)
+    // audio (volumi separati) + suonerie/suoni selezionabili + suoni di sistema
     volRing: 70, volMedia: 60, volNotif: 50, volAlarm: 80,
+    ringtone: "Nova", notifSound: "Goccia", alarmSound: "Radar", sysSounds: true,
     // notifiche
     notifLock: true, notifHistory: false, bubbles: true, batteryPercent: true, charging: false,
+    notifApps: {},   // id app -> false = notifiche silenziate per quell'app
     // accessibilità
     boldText: false, highContrast: false, reduceMotion: false,
     // aspetto icone/desktop: stile "filled" (tessere colorate) o "outline" (contorno
@@ -114,7 +116,11 @@ const OS = (() => {
   }
   function applyDisplay() {
     document.documentElement.style.fontSize = (16 * state.textScale/100) + "px";
-    $("#bright-overlay").style.opacity = String((100 - state.brightness) / 100 * 0.7);
+    // luminosità effettiva: risparmio energetico limita il massimo; la luminosità
+    // adattiva attenua la sera/notte (effetti reali sull'overlay di luminosità).
+    let eff = state.saver ? Math.min(state.brightness, 55) : state.brightness;
+    if (state.adaptiveBright) { const h = new Date().getHours(); if (h >= 20 || h < 7) eff = Math.round(eff * 0.75); }
+    $("#bright-overlay").style.opacity = String((100 - eff) / 100 * 0.7);
     // il colore base viene dal tema (CSS var --bg); il wallpaper è solo la tinta sopra.
     // se l'utente ha scelto un colore di fondo, quello vince (tinta unita, niente wallpaper).
     const w = WALLS[state.wallpaper] || WALLS[0];
@@ -128,7 +134,9 @@ const OS = (() => {
     rootStyle.setProperty("--icon-bg", state.deskColor || "var(--bg)");
     document.body.classList.toggle("a11y-bold", !!state.boldText);
     document.body.classList.toggle("a11y-contrast", !!state.highContrast);
-    document.body.classList.toggle("a11y-reduce", !!state.reduceMotion);
+    // riduci animazioni: attivo anche col risparmio energetico
+    document.body.classList.toggle("a11y-reduce", !!state.reduceMotion || !!state.saver);
+    document.body.classList.toggle("power-saver", !!state.saver);
   }
 
   // ============================================================
@@ -143,7 +151,7 @@ const OS = (() => {
         <span class="sb-left">${time}</span>
         <span class="sb-right">
           ${state.dnd ? "🌙" : ""} ${state.bt ? "🔵" : ""} ${wifi}
-          <span class="sb-batt"><span class="sb-batt-shell"><span class="sb-batt-fill" style="width:${state.battery}%;background:${state.charging?'var(--ok)':(state.battery<20?'var(--danger)':'currentColor')}"></span></span>${state.charging?'⚡':''}${state.battery}%</span>
+          <span class="sb-batt"><span class="sb-batt-shell"><span class="sb-batt-fill" style="width:${state.battery}%;background:${state.charging?'var(--ok)':(state.battery<20?'var(--danger)':'currentColor')}"></span></span>${state.charging?'⚡':''}${state.batteryPercent===false?'':state.battery+'%'}</span>
         </span>`;
     });
   }
@@ -166,47 +174,62 @@ const OS = (() => {
   const dockIds = () => NovaApps.dock.map(a => a.id);
   const pageableIds = () => { const d = dockIds(); return allApps().map(a=>a.id).filter(id => !d.includes(id)); };
 
-  // ricostruisce/normalizza il layout: rimuove app sparite, dissolve cartelle <2,
-  // aggiunge le app nuove non ancora posizionate, garantisce almeno una pagina.
+  // ricostruisce/normalizza il layout a SLOT FISSI (16 per pagina): ogni pagina è
+  // un array di lunghezza PER dove ogni cella è un elemento (app/cartella) oppure
+  // null (slot vuoto). Così le icone restano dove le posizioni, con spazi liberi.
+  // Rimuove app sparite, dissolve cartelle <2, colloca le app nuove nel primo slot
+  // libero, elimina le pagine del tutto vuote e migra il vecchio formato "denso".
+  const PER = 16;
+  const blankPage = () => new Array(PER).fill(null);
   function homeLayout() {
     const ids = pageableIds(); const idset = new Set(ids);
-    let L = store.get("homeLayout", null);
-    const PER = 16;
-    if (!L || !Array.isArray(L.pages)) {
-      L = { pages: [] };
-      for (let i=0;i<ids.length;i+=PER) L.pages.push(ids.slice(i,i+PER).map(id=>({t:"app",id})));
-    } else {
-      const placed = new Set();
-      L.pages = L.pages.map(pg => (pg||[]).map(it => {
-        if (it && it.t==="folder") {
-          const items = (it.items||[]).filter(id => idset.has(id) && !placed.has(id));
-          items.forEach(id=>placed.add(id));
-          return { t:"folder", name: it.name||"Cartella", items };
-        }
-        if (it && idset.has(it.id) && !placed.has(it.id)) { placed.add(it.id); return { t:"app", id:it.id }; }
+    const placed = new Set();
+    const normItem = it => {
+      if (!it) return null;
+      if (it.t === "folder") {
+        const items = (it.items||[]).filter(id => idset.has(id) && !placed.has(id));
+        items.forEach(id => placed.add(id));
+        if (items.length >= 2) return { t:"folder", name: it.name||"Cartella", items };
+        if (items.length === 1) return { t:"app", id: items[0] };
         return null;
-      }).filter(Boolean));
-      // dissolvi cartelle con meno di 2 elementi
-      L.pages = L.pages.map(pg => pg.flatMap(it => it.t==="folder" ? (it.items.length>=2 ? [it] : it.items.map(id=>({t:"app",id}))) : [it]));
-      // rimuovi automaticamente le pagine vuote; in modifica si conserva solo quella
-      // attualmente visualizzata (così puoi aggiungerne una col "+" e riempirla).
-      L.pages = L.pages.filter((pg,i) => pg.length || (editing && i===homePage));
-      // app nuove -> in coda all'ultima pagina
-      const missing = ids.filter(id => !placed.has(id));
-      if (missing.length) { if (!L.pages.length) L.pages.push([]); missing.forEach(id => L.pages[L.pages.length-1].push({t:"app",id})); }
-      // paginazione automatica: nessun desktop supera PER icone → si spande sui successivi
-      // (così tante app riempiono più desktop invece di far scorrere una pagina).
-      const capped = [];
-      L.pages.forEach(pg => {
-        if (pg.length <= PER) capped.push(pg);
-        else for (let i=0;i<pg.length;i+=PER) capped.push(pg.slice(i,i+PER));
+      }
+      if (it.t === "app" && idset.has(it.id) && !placed.has(it.id)) { placed.add(it.id); return { t:"app", id: it.id }; }
+      return null;
+    };
+    let L = store.get("homeLayout", null);
+    let pages;
+    if (!L || !Array.isArray(L.pages)) {
+      pages = [];
+      for (let i=0;i<ids.length;i+=PER) { const pg = blankPage(); ids.slice(i,i+PER).forEach((id,j)=>{ pg[j]={t:"app",id}; placed.add(id); }); pages.push(pg); }
+    } else {
+      pages = L.pages.map(pg => {
+        const slots = blankPage();
+        (pg||[]).forEach((it,i) => { const n = normItem(it); if (!n) return;
+          const idx = (i < PER && slots[i] === null) ? i : slots.indexOf(null);   // preserva la posizione (migra il formato denso)
+          if (idx >= 0) slots[idx] = n; });
+        return slots;
       });
-      L.pages = capped;
     }
-    if (!L.pages.length) L.pages.push([]);
-    return L;
+    // app nuove -> primo slot libero (aggiunge una pagina se tutte piene)
+    const missing = ids.filter(id => !placed.has(id));
+    missing.forEach(id => {
+      let target = null;
+      for (const pg of pages) { const f = pg.indexOf(null); if (f>=0) { target=[pg,f]; break; } }
+      if (!target) { const pg = blankPage(); pages.push(pg); target=[pg,0]; }
+      target[0][target[1]] = { t:"app", id };
+    });
+    // rimuovi le pagine del tutto vuote (tranne quella corrente in modifica, per poterne
+    // aggiungere una col "+" e riempirla)
+    pages = pages.filter((pg,i) => pg.some(Boolean) || (editing && i===homePage));
+    if (!pages.length) pages = [blankPage()];
+    return { pages };
   }
   const saveLayout = L => store.set("homeLayout", L);
+  // primo slot libero in tutto il layout; se pieno, crea una pagina
+  function placeFree(L, item) {
+    for (const pg of L.pages) { const f = pg.indexOf(null); if (f>=0) { pg[f]=item; return; } }
+    const pg = blankPage(); pg[0]=item; L.pages.push(pg);
+  }
 
   function renderHome() {
     const host = $("#app-grid");
@@ -215,7 +238,7 @@ const OS = (() => {
     host.classList.toggle("editing", editing);
     host.innerHTML = `
       <div class="home-track" style="transform:translateX(${-homePage*100}%)">
-        ${L.pages.map((pg,pi)=>`<div class="home-page" data-page="${pi}">${pg.map((it,ii)=>homeIcon(it,pi,ii)).join("")}</div>`).join("")}
+        ${L.pages.map((pg,pi)=>`<div class="home-page" data-page="${pi}">${pg.map((it,ii)=> it ? homeIcon(it,pi,ii) : `<div class="app-slot" data-loc="${pi}:${ii}"></div>`).join("")}</div>`).join("")}
       </div>
       <div class="page-dots">
         ${L.pages.map((_,pi)=>`<span class="dot ${pi===homePage?'on':''}" data-dot="${pi}"></span>`).join("")}
@@ -247,7 +270,7 @@ const OS = (() => {
     const done = host.querySelector("#home-done");
     if (done) done.onclick = () => { editing = false; saveLayout(L); renderHome(); };
     const addP = host.querySelector("#add-page");
-    if (addP) addP.onclick = () => { L.pages.push([]); saveLayout(L); homePage = L.pages.length-1; renderHome(); };
+    if (addP) addP.onclick = () => { L.pages.push(blankPage()); saveLayout(L); homePage = L.pages.length-1; renderHome(); };
     host.querySelectorAll(".dot").forEach(d => d.onclick = () => { homePage = +d.dataset.dot; renderHome(); });
     host.querySelectorAll(".icon-rm").forEach(b => b.onclick = e => {
       e.stopPropagation(); const id = b.dataset.rm;
@@ -372,7 +395,7 @@ const OS = (() => {
             // trascinando oltre l'ultima pagina si crea un nuovo desktop al volo
             // (senza renderHome, che interromperebbe il trascinamento in corso)
             if (dir > 0 && np >= L.pages.length) {
-              L.pages.push([]);
+              L.pages.push(blankPage());
               const idx = L.pages.length - 1;
               const pg = document.createElement("div");
               pg.className = "home-page"; pg.dataset.page = idx;
@@ -398,27 +421,25 @@ const OS = (() => {
         const u = at(ev.clientX, ev.clientY);
         const src = L.pages[pi][ii];
         const dot = u && u.closest(".dot");
-        const tIcon = u && u.closest(".app-icon");
+        const slot = u && u.closest("[data-loc]");     // cella piena (.app-icon) o vuota (.app-slot)
         const tPage = u && u.closest(".home-page");
-        if (dot) { const p = +dot.dataset.dot; if (p!==pi || true) { L.pages[pi].splice(ii,1); L.pages[p].push(src); } saveLayout(L); renderHome(); return; }
-        if (tIcon && tIcon !== el && tIcon.dataset.loc) {
-          const [tpi,tii] = tIcon.dataset.loc.split(":").map(Number);
-          const tItem = L.pages[tpi][tii];
-          const r = tIcon.getBoundingClientRect();
-          const near = Math.abs(ev.clientX-(r.left+r.width/2)) < r.width*0.34 && Math.abs(ev.clientY-(r.top+r.height/2)) < r.height*0.34;
-          if (near && src.t==="app" && tItem.t==="folder") { L.pages[pi].splice(ii,1); tItem.items.push(src.id); saveLayout(L); renderHome(); return; }
-          if (near && src.t==="app" && tItem.t==="app") {
-            L.pages[pi].splice(ii,1);
-            let a = tpi, b = tii; if (tpi===pi && ii<tii) b--;
-            L.pages[a][b] = { t:"folder", name:"Cartella", items:[tItem.id, src.id] };
-            saveLayout(L); renderHome(); return;
+        // sposta l'icona nel primo slot libero della pagina p (se ce n'è uno)
+        const placeOnPage = p => { const f = L.pages[p].indexOf(null); if (f>=0) { L.pages[pi][ii]=null; L.pages[p][f]=src; } };
+        if (dot) { const p = +dot.dataset.dot; if (p!==pi) placeOnPage(p); saveLayout(L); renderHome(); return; }
+        if (slot && slot !== el && slot.dataset.loc) {
+          const [tpi,tsi] = slot.dataset.loc.split(":").map(Number);
+          const tItem = L.pages[tpi][tsi];
+          if (tItem === null) {                          // slot VUOTO → posizione libera esatta
+            L.pages[pi][ii]=null; L.pages[tpi][tsi]=src; saveLayout(L); renderHome(); return;
           }
-          // riordino: inserisci prima dell'icona target
-          L.pages[pi].splice(ii,1);
-          let tb = tii; if (tpi===pi && ii<tii) tb--;
-          L.pages[tpi].splice(tb,0,src); saveLayout(L); renderHome(); return;
+          const r = slot.getBoundingClientRect();
+          const near = Math.abs(ev.clientX-(r.left+r.width/2)) < r.width*0.34 && Math.abs(ev.clientY-(r.top+r.height/2)) < r.height*0.34;
+          if (near && src.t==="app" && tItem.t==="folder") { tItem.items.push(src.id); L.pages[pi][ii]=null; saveLayout(L); renderHome(); return; }
+          if (near && src.t==="app" && tItem.t==="app") { L.pages[tpi][tsi] = { t:"folder", name:"Cartella", items:[tItem.id, src.id] }; L.pages[pi][ii]=null; saveLayout(L); renderHome(); return; }
+          // altrimenti: scambia le due posizioni
+          L.pages[pi][ii]=tItem; L.pages[tpi][tsi]=src; saveLayout(L); renderHome(); return;
         }
-        if (tPage) { const p = +tPage.dataset.page; if (p!==pi) { L.pages[pi].splice(ii,1); L.pages[p].push(src); saveLayout(L); } renderHome(); return; }
+        if (tPage) { const p = +tPage.dataset.page; if (p!==pi) placeOnPage(p); saveLayout(L); renderHome(); return; }
         renderHome();
       };
       window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
@@ -451,12 +472,13 @@ const OS = (() => {
       ov.querySelectorAll("[data-pop]").forEach(b => b.onclick = e => {
         e.stopPropagation(); const id = b.dataset.pop;
         f.items = f.items.filter(x => x !== id);
-        L.pages[pi].push({ t:"app", id });
-        if (f.items.length < 2) {                       // dissolvi: l'ultima app torna sulla pagina
+        if (f.items.length < 2) {                       // dissolvi: l'ultima app prende lo slot della cartella
           const rem = f.items[0];
-          L.pages[pi].splice(ii, 1, ...(rem ? [{t:"app",id:rem}] : []));
+          L.pages[pi][ii] = rem ? { t:"app", id:rem } : null;
+          placeFree(L, { t:"app", id });                // l'app estratta va nel primo slot libero
           saveLayout(L); ov.remove(); renderHome(); return;
         }
+        placeFree(L, { t:"app", id });
         saveLayout(L); draw();
       });
     };
@@ -532,6 +554,7 @@ const OS = (() => {
   function lockDevice() {
     pinBuffer = ""; pinMode = "unlock"; pinOnDone = null;
     clearIntervals(); currentApp = null;
+    if (state.sysSounds && !screens.lock.classList.contains("active")) beep(320, .12, 0.16);
     show("lock");
     renderLockNotifs();
     setupLockUI();
@@ -576,6 +599,8 @@ const OS = (() => {
       return;
     }
     screens.lock.style.transform=""; screens.lock.style.opacity="";
+    noteActivity();
+    if (state.sysSounds) beep(760, .1, 0.18);
     goHome();
   }
 
@@ -589,15 +614,99 @@ const OS = (() => {
     else if (navigator.vibrate) navigator.vibrate(pattern);
   }
 
+  // suono reale (WebAudio) con volume 0..1; usato da notifiche e sveglia.
+  function beep(freq = 660, dur = 0.18, vol = 0.3) {
+    if (vol <= 0) return;
+    try {
+      const ctx = new (window.AudioContext||window.webkitAudioContext)();
+      const osc = ctx.createOscillator(), g = ctx.createGain();
+      osc.frequency.value = freq; osc.type = "sine"; osc.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.0001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(vol, ctx.currentTime+0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+dur);
+      osc.start(); osc.stop(ctx.currentTime+dur+0.02);
+      osc.onended = () => { try { ctx.close(); } catch {} };
+    } catch {}
+  }
+
+  // ============================================================
+  //  Suoni di sistema: suonerie, notifiche, sveglie (sintetizzate, offline)
+  //  Ogni "melodia" è una sequenza di note [frequenzaHz, durataSec]; freq 0 = pausa.
+  // ============================================================
+  const Sounds = (() => {
+    const NOTIF = {
+      "Goccia":    [[880,.12],[1245,.14]],
+      "Pop":       [[520,.07],[780,.12]],
+      "Bip":       [[1000,.09],[0,.05],[1000,.09]],
+      "Cristallo": [[1320,.1],[1760,.1],[2217,.16]],
+      "Legno":     [[440,.08],[330,.14]],
+    };
+    const RING = {
+      "Nova":     [[660,.18],[880,.18],[990,.22],[0,.18]],
+      "Classica": [[784,.2],[659,.2],[784,.2],[988,.3],[0,.22]],
+      "Digitale": [[1000,.1],[0,.06],[1000,.1],[0,.06],[1300,.16],[0,.28]],
+      "Marimba":  [[523,.16],[659,.16],[784,.16],[1047,.22],[0,.22]],
+      "Arpeggio": [[440,.13],[554,.13],[659,.13],[880,.13],[659,.13],[554,.13],[0,.22]],
+    };
+    const ALARM = {
+      "Radar":   [[740,.24],[0,.1],[740,.24],[0,.14]],
+      "Sirena":  [[600,.3],[900,.3]],
+      "Mattino": [[880,.15],[1108,.15],[1319,.2],[0,.22]],
+    };
+    let stopFn = null;
+    function stop() { if (stopFn) stopFn(); }
+    function playSeq(notes, vol, loop) {
+      stop();
+      if (vol <= 0 || !notes) return;
+      let ctx; try { ctx = new (window.AudioContext||window.webkitAudioContext)(); } catch { return; }
+      let cancelled = false;
+      const total = notes.reduce((s,n)=>s+n[1],0) + 0.12;
+      const once = t0 => { let t = t0;
+        notes.forEach(([f,d]) => { if (f>0) { const o=ctx.createOscillator(), g=ctx.createGain();
+          o.frequency.value=f; o.type="sine"; o.connect(g); g.connect(ctx.destination);
+          g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001,t+d); o.start(t); o.stop(t+d+0.03); } t += d; }); };
+      once(ctx.currentTime+0.03);
+      if (loop) { const iv = setInterval(() => { if (!cancelled) once(ctx.currentTime+0.03); }, total*1000);
+        stopFn = () => { cancelled=true; clearInterval(iv); try{ctx.close();}catch{} stopFn=null; }; }
+      else { stopFn = () => { cancelled=true; try{ctx.close();}catch{} stopFn=null; };
+        setTimeout(() => { if (stopFn) { try{ctx.close();}catch{} stopFn=null; } }, total*1000+250); }
+    }
+    return {
+      lists: { ring: Object.keys(RING), notif: Object.keys(NOTIF), alarm: Object.keys(ALARM) },
+      notif: (name, vol) => playSeq(NOTIF[name]||NOTIF.Goccia, vol, false),
+      ring:  (name, vol) => playSeq(RING[name]||RING.Nova, vol, true),
+      alarm: (name, vol) => playSeq(ALARM[name]||ALARM.Radar, vol, true),
+      preview: (cat, name, vol=0.35) => { const map = cat==="ring"?RING:cat==="alarm"?ALARM:NOTIF; playSeq(map[name]||Object.values(map)[0], vol, false); },
+      stop,
+    };
+  })();
+
+  // banner "bolla" (heads-up) transitorio in alto, alla ricezione di una notifica
+  function showBubble(n) {
+    const b = document.createElement("div");
+    b.className = "heads-up";
+    b.innerHTML = `<div class="n-ico" style="background:${n.color}">${n.icon}</div>
+      <div style="flex:1;min-width:0"><div class="n-title">${escH(n.title)}</div><div class="n-text">${escH(n.text)}</div></div>`;
+    (document.querySelector("#device") || document.body).appendChild(b);
+    requestAnimationFrame(() => b.classList.add("show"));
+    const kill = () => { b.classList.remove("show"); setTimeout(() => b.remove(), 250); };
+    b.onclick = kill;
+    setTimeout(kill, 3500);
+  }
+
   function notify({ app, title, text }) {
+    if (state.notifApps && state.notifApps[app] === false) return;   // app silenziata
     const a = appById(app) || { icon:"🔔", color:"var(--accent)" };
-    notifs.unshift({ id:++notifId, icon:a.icon, color:a.color, title, text,
-      ts: Date.now(), time: new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"}) });
+    const n = { id:++notifId, icon:a.icon, color:a.color, title, text,
+      ts: Date.now(), time: new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"}) };
+    notifs.unshift(n);
     if (notifs.length > 40) notifs.length = 40;
     saveNotifs();
     renderNotifs();
     if (screens.lock.classList.contains("active")) renderLockNotifs();
-    if (!state.dnd) { pulse(); vibrate(60); }
+    if (!state.dnd) { pulse(); vibrate(60); Sounds.notif(state.notifSound, (state.volNotif==null?50:state.volNotif)/100*0.4);
+      if (state.bubbles && !screens.lock.classList.contains("active")) showBubble(n); }
   }
   const notifAgo = n => {
     if (!n.ts) return n.time || "";
@@ -614,7 +723,7 @@ const OS = (() => {
     const clr = box.querySelector("#notif-clear"); if (clr) clr.onclick = () => { notifs.length = 0; saveNotifs(); renderNotifs(); renderLockNotifs(); };
     box.querySelectorAll(".notif").forEach((el,i) => el.onclick = () => { notifs.splice(i,1); saveNotifs(); renderNotifs(); renderLockNotifs(); });
   }
-  function renderLockNotifs() { const el = $("#lock-notifs"); if (el) el.innerHTML = notifs.slice(0,4).map(notifHtml).join(""); }
+  function renderLockNotifs() { const el = $("#lock-notifs"); if (el) el.innerHTML = state.notifLock ? notifs.slice(0,4).map(notifHtml).join("") : ""; }
   function notifHtml(n) {
     return `<div class="notif"><div class="n-ico" style="background:${n.color}">${n.icon}</div>
       <div style="flex:1"><div class="n-title">${n.title}</div><div class="n-text">${n.text}</div></div>
@@ -679,8 +788,9 @@ const OS = (() => {
   // ============================================================
   function set(k, v) { state[k] = v; store.set(k, v);
     if (k==="theme") { applyTheme(); applyDisplay(); }
-    if (["brightness","textScale","wallpaper","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor"].includes(k)) applyDisplay();
+    if (["brightness","textScale","wallpaper","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","saver","adaptiveBright"].includes(k)) applyDisplay();
     if (["iconStyle","deskColor","iconColor"].includes(k) && screens.home.classList.contains("active")) renderHome();
+    if (k==="notifLock") renderLockNotifs();
     renderStatusbars();
   }
   function toggle(k) {
@@ -783,21 +893,14 @@ const OS = (() => {
   }
   function ringAlarm(time) {
     if (state.vibrate && navigator.vibrate) navigator.vibrate([400,200,400,200,600]);
-    let ctx, beepInt;
-    try {
-      ctx = new (window.AudioContext||window.webkitAudioContext)();
-      const beep = () => { const osc=ctx.createOscillator(), g=ctx.createGain();
-        osc.frequency.value=880; osc.connect(g); g.connect(ctx.destination);
-        g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime+0.05);
-        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.4); osc.start(); osc.stop(ctx.currentTime+0.45); };
-      beep(); beepInt = setInterval(beep, 800);
-    } catch {}
+    // suoneria sveglia scelta, in loop, al volume impostato
+    Sounds.alarm(state.alarmSound, (state.volAlarm==null?80:state.volAlarm)/100*0.45);
     const ov = document.createElement("div");
     ov.className = "alarm-ring";
     ov.innerHTML = `<div class="ar-time">${time}</div><div class="ar-label">⏰ Sveglia</div>
       <div class="ar-actions"><button id="ar-snooze">Posponi 5 min</button><button id="ar-stop">Ferma</button></div>`;
     $("#device").appendChild(ov);
-    const stop = () => { if(beepInt) clearInterval(beepInt); try{ctx&&ctx.close();}catch{}; if(navigator.vibrate) navigator.vibrate(0); ov.remove(); };
+    const stop = () => { Sounds.stop(); if(navigator.vibrate) navigator.vibrate(0); ov.remove(); };
     ov.querySelector("#ar-stop").onclick = stop;
     ov.querySelector("#ar-snooze").onclick = () => {
       stop();
@@ -810,13 +913,32 @@ const OS = (() => {
 
   function boot() {
     applyTheme(); applyDisplay();
+    // cronologia notifiche disattivata → non conservare le notifiche tra i riavvii
+    if (!state.notifHistory && notifs.length) { notifs.length = 0; saveNotifs(); }
     show("boot");
     renderStatusbars(); renderClocks(); renderNotifs(); renderQuick();
     initBattery(); initAlarms();
     // niente notifiche fittizie: la tendina mostra solo eventi reali (posta, sveglie,
     // conferme delle app) e le notifiche persistono finché non le scarti.
     setInterval(() => { renderClocks(); renderStatusbars(); }, 1000);
+    initAutolock();
     setTimeout(() => lockDevice(), 2600);
+  }
+
+  // blocco automatico per inattività: dopo N secondi senza tocchi/tasti la schermata
+  // si blocca davvero (mostra il lockscreen). N = il minore tra "spegnimento schermo"
+  // (Display) e "blocco automatico" (Sicurezza). Con blocco "Nessuno" non si attiva.
+  let lastActivity = Date.now();
+  function noteActivity() { lastActivity = Date.now(); }
+  function initAutolock() {
+    ["pointerdown","keydown","touchstart","wheel"].forEach(ev =>
+      window.addEventListener(ev, noteActivity, { capture:true, passive:true }));
+    setInterval(() => {
+      if (state.lockType === "none") return;
+      if (!(screens.home.classList.contains("active") || screens.app.classList.contains("active"))) return;
+      const secs = Math.min(state.autolock || 30, state.screenTimeout || 30);
+      if (Date.now() - lastActivity >= secs * 1000) { noteActivity(); lockDevice(); }
+    }, 1000);
   }
 
   // ============================================================
@@ -866,7 +988,7 @@ const OS = (() => {
   // API esposta alle app
   const api = {
     state, store, notify, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
-    WALLS, photos, vibrate,
+    WALLS, photos, vibrate, sounds: Sounds,
     // gestione app di terze parti
     installApp, uninstallApp, updateApp, userApps,
     // impostazione PIN: chiede due volte tramite pinpad sul lockscreen non serve qui,
@@ -960,16 +1082,20 @@ window.NovaCall = (() => {
     timer = setInterval(() => { const s = Math.floor((Date.now()-t0)/1000);
       ov.querySelector(".call-state").textContent = String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); }, 1000);
   }
-  function close() { if (timer){clearInterval(timer);timer=null;} if (ov){ov.remove();ov=null;} muted=false; spk=false; }
+  const stopRing = () => { try { OS.api.sounds.stop(); } catch {} };
+  function close() { stopRing(); if (timer){clearInterval(timer);timer=null;} if (ov){ov.remove();ov=null;} muted=false; spk=false; }
   function update(state, number, name) {
     if (state === "ended") { close(); return; }
     if (!ov) build();
     ov.dataset.state = state;
     setContact(number, name);
     const st = ov.querySelector(".call-state");
-    if (state === "incoming")      st.textContent = "Chiamata in arrivo…";
-    else if (state === "dialing")  st.textContent = "Chiamata in corso…";
-    else if (state === "active")   startTimer();
+    if (state === "incoming") { st.textContent = "Chiamata in arrivo…";
+      // suoneria scelta in Impostazioni, in loop, finché non si risponde/termina
+      try { const S = OS.api.state; if (!S.dnd) OS.api.sounds.ring(S.ringtone, (S.volRing==null?70:S.volRing)/100*0.5); } catch {}
+    }
+    else if (state === "dialing")  { stopRing(); st.textContent = "Chiamata in corso…"; }
+    else if (state === "active")   { stopRing(); startTimer(); }
   }
   return { update };
 })();

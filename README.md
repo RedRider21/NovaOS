@@ -70,12 +70,17 @@ web-phone-os/
 | Impostazioni | Rete, Dispositivi connessi, Display, Suoni, Notifiche, Sicurezza/PIN, Privacy, App, Batteria, Archiviazione, Accessibilità, Sistema, Info telefono. **Sensori reali** (Wi-Fi/BT/NFC/posizione/aereo/dati): stato letto dall'hardware e **toggle a doppia modalità** — da app apre i pannelli di sistema, nel ROM privilegiato commuta in-process (vedi [GUIDA-ROM](docs/GUIDA-ROM.md) §4). **Versione reale** installata da `PackageInfo` + controllo release su GitHub |
 
 Funzioni di sistema: boot con logo animato, **blocco/sblocco** (nessuno / scorrimento
-/ **PIN**), **tendina rapida stile Android** (10 tile tonde con icona: Wi-Fi, BT, Non
-dist., aereo, tema, posizione, vibrazione, risparmio, rotazione, NFC + slider
-luminosità), tema chiaro/scuro, luminosità, dimensione testo, sfondi, **icone
+/ **PIN**) con **blocco automatico per inattività**, **tendina rapida stile Android**
+(10 tile tonde con icona + slider luminosità), tema chiaro/scuro, luminosità (con
+**adattiva** e **risparmio energetico** reali), dimensione testo, sfondi, **icone
 monocromatiche/contorno con colori personalizzabili**, accessibilità (grassetto,
-contrasto, riduci animazioni), ricerca nelle impostazioni. **Home a pagine editabile**
-(drag icone tra desktop, cartelle, swipe rapido con flick, auto-paginazione).
+**contrasto elevato**, riduci animazioni), **suoni di sistema con suonerie/notifiche/
+sveglia selezionabili** (sintetizzate, con volumi reali), **notifiche heads-up (bolle)**
+e per-app, **backup dati** (export JSON), ricerca nelle impostazioni. **Home a pagine
+editabile** con **posizionamento libero delle icone** (slot fissi 4×4: ogni icona
+resta dove la metti, anche con spazi vuoti), drag tra desktop, cartelle, swipe con flick.
+Sul dispositivo molte voci aprono i **pannelli di sistema reali** (Wi-Fi, Bluetooth,
+data/ora, lingua, permessi app).
 
 ## Avvio rapido (sviluppo)
 
