@@ -1231,15 +1231,23 @@ const NovaApps = (() => {
         root.querySelectorAll("[data-id]").forEach(el => el.onclick = e => { if(e.target.dataset.star!==undefined) return; drawRead(+el.dataset.id); });
       };
 
-      const provPreset = (email) => { // autocompilazione host per i provider comuni
-        const d = (email.split("@")[1]||"").toLowerCase();
-        const P = { "gmail.com":["imap.gmail.com","smtp.gmail.com"], "googlemail.com":["imap.gmail.com","smtp.gmail.com"],
-          "outlook.com":["outlook.office365.com","smtp.office365.com"], "hotmail.com":["outlook.office365.com","smtp.office365.com"],
-          "live.com":["outlook.office365.com","smtp.office365.com"], "yahoo.com":["imap.mail.yahoo.com","smtp.mail.yahoo.com"],
-          "icloud.com":["imap.mail.me.com","smtp.mail.me.com"], "libero.it":["imapmail.libero.it","smtp.libero.it"],
-          "aruba.it":["imaps.aruba.it","smtps.aruba.it"], "pec.it":["imaps.pec.aruba.it","smtps.pec.aruba.it"] };
-        return P[d] || null;
-      };
+      // gestori di posta più noti, con host e porte già predisposti.
+      // "custom" = configurazione manuale (l'utente inserisce tutto a mano).
+      const PROVIDERS = [
+        { id:"gmail",   name:"Gmail",     ic:"✉️", domains:["gmail.com","googlemail.com"], imap:["imap.gmail.com",993], smtp:["smtp.gmail.com",465], note:"Con la verifica in 2 passaggi serve una password per app." },
+        { id:"outlook", name:"Outlook",   ic:"📧", domains:["outlook.com","hotmail.com","hotmail.it","live.com","live.it","msn.com"], imap:["outlook.office365.com",993], smtp:["smtp.office365.com",587], note:"Con 2FA serve una password per app." },
+        { id:"yahoo",   name:"Yahoo",     ic:"🟣", domains:["yahoo.com","yahoo.it","ymail.com"], imap:["imap.mail.yahoo.com",993], smtp:["smtp.mail.yahoo.com",465], note:"Richiede una password per app." },
+        { id:"icloud",  name:"iCloud",    ic:"☁️", domains:["icloud.com","me.com","mac.com"], imap:["imap.mail.me.com",993], smtp:["smtp.mail.me.com",587], note:"Richiede una password per app." },
+        { id:"libero",  name:"Libero",    ic:"📮", domains:["libero.it","inwind.it","iol.it","blu.it"], imap:["imapmail.libero.it",993], smtp:["smtp.libero.it",465] },
+        { id:"aruba",   name:"Aruba",     ic:"🟠", domains:["aruba.it"], imap:["imaps.aruba.it",993], smtp:["smtps.aruba.it",465] },
+        { id:"pec",     name:"PEC Aruba", ic:"🔐", domains:["pec.it"], imap:["imaps.pec.aruba.it",993], smtp:["smtps.pec.aruba.it",465] },
+        { id:"gmx",     name:"GMX",       ic:"📬", domains:["gmx.com","gmx.net","gmx.it"], imap:["imap.gmx.com",993], smtp:["mail.gmx.com",465] },
+        { id:"tim",     name:"TIM/Alice", ic:"📨", domains:["tim.it","alice.it","virgilio.it"], imap:["in.virgilio.it",993], smtp:["out.virgilio.it",465] },
+        { id:"custom",  name:"Altro / Manuale", ic:"⚙️", domains:[], imap:["",993], smtp:["",465], note:"Inserisci manualmente server e porte del tuo provider." },
+      ];
+      const provByDomain = (email) => { const d = (email.split("@")[1]||"").toLowerCase();
+        return PROVIDERS.find(p => p.domains.includes(d)) || null; };
+      const provPreset = (email) => { const p = provByDomain(email); return p ? [p.imap[0], p.smtp[0]] : null; };
       const inp = (id,val,ph,type,extra="") => `<input id="${id}" value="${esc(val||"")}" placeholder="${ph}" ${type?`type="${type}"`:''} ${extra} style="width:100%;background:var(--surface-2);border:none;border-radius:12px;padding:12px;color:var(--text);font-size:15px;outline:none;margin-bottom:10px">`;
 
       const drawSettings = () => {
@@ -1251,6 +1259,11 @@ const NovaApps = (() => {
             ${inp("c-email", nativeMail?(a.email||cfg.email):cfg.email, "Indirizzo email", "email", 'inputmode="email"').replace(";margin-bottom:10px","")}
           </div>
           ${nativeMail ? `
+          <div class="section-label">Provider di posta</div>
+          <div style="display:flex;gap:8px;overflow-x:auto;padding:2px 16px 10px;-webkit-overflow-scrolling:touch">
+            ${PROVIDERS.map(p=>`<button class="prov-chip" data-prov="${p.id}" style="flex:0 0 auto;background:var(--surface-2);border:1.5px solid transparent;border-radius:14px;padding:9px 13px;color:var(--text);font-size:13px;white-space:nowrap;cursor:pointer">${p.ic} ${p.name}</button>`).join("")}
+          </div>
+          <div id="c-provnote" style="padding:0 16px 8px;color:var(--text-dim);font-size:12px;line-height:1.5"></div>
           <div class="section-label">Account posta (IMAP/SMTP)</div>
           <div class="group" style="padding:14px 16px">
             <div style="display:flex;gap:8px">${inp("c-imaphost", a.imapHost, "Server IMAP (in arrivo)")}<div style="width:84px;flex:0 0 84px">${inp("c-imapport", a.imapPort||993, "Porta", "number")}</div></div>
@@ -1278,14 +1291,38 @@ const NovaApps = (() => {
           cfg.signature = root.querySelector("#c-sig").value;
           saveCfg(); os.notify({ app:"mail", title:"Mail", text:"Impostazioni salvate." }); drawList();
         };
-        // autocompilazione host quando si digita un'email di un provider noto
+        // ---- selettore provider: compila host/porte già predisposti ----
         const emailEl = root.querySelector("#c-email");
-        if (nativeMail && emailEl) emailEl.onblur = () => {
-          const pr = provPreset(emailEl.value.trim());
-          const ih=root.querySelector("#c-imaphost"), sh=root.querySelector("#c-smtphost"), us=root.querySelector("#c-user");
-          if (pr) { if(ih&&!ih.value) ih.value=pr[0]; if(sh&&!sh.value) sh.value=pr[1]; }
-          if (us&&!us.value) us.value = emailEl.value.trim();
-        };
+        if (nativeMail) {
+          const ih=root.querySelector("#c-imaphost"), ip=root.querySelector("#c-imapport"),
+                sh=root.querySelector("#c-smtphost"), sp=root.querySelector("#c-smtpport"),
+                us=root.querySelector("#c-user"), note=root.querySelector("#c-provnote");
+          const chips = root.querySelectorAll(".prov-chip");
+          const highlight = id => chips.forEach(c => {
+            const on = c.dataset.prov === id;
+            c.style.borderColor = on ? "var(--accent)" : "transparent";
+            c.style.background = on ? "color-mix(in srgb, var(--accent) 18%, var(--surface-2))" : "var(--surface-2)";
+          });
+          const applyProv = (p, {force}={}) => {
+            if (!p) return;
+            highlight(p.id);
+            note.innerHTML = p.note ? `ℹ️ ${p.note}` : (p.id==="custom" ? "" : `Server predisposti per <b>${p.name}</b>.`);
+            if (p.id === "custom") return;                 // manuale: non tocca i campi
+            if (force || !ih.value) ih.value = p.imap[0];
+            if (force || !ip.value || +ip.value===993) ip.value = p.imap[1];
+            if (force || !sh.value) sh.value = p.smtp[0];
+            if (force || !sp.value || +sp.value===465) sp.value = p.smtp[1];
+            if (us && (!us.value || force)) us.value = emailEl.value.trim();
+          };
+          chips.forEach(c => c.onclick = () => applyProv(PROVIDERS.find(p=>p.id===c.dataset.prov), {force:true}));
+          // stato iniziale: riconosce il provider dai dati già presenti
+          const guessed = (ih.value ? PROVIDERS.find(p=>p.imap[0]===ih.value) : null)
+                       || provByDomain(emailEl.value.trim())
+                       || (a.configured ? PROVIDERS.find(p=>p.id==="custom") : null);
+          if (guessed) highlight(guessed.id), note.innerHTML = guessed.note ? `ℹ️ ${guessed.note}` : "";
+          // digitando l'email di un provider noto, propone in automatico
+          emailEl.onblur = () => { const p = provByDomain(emailEl.value.trim()); if (p) applyProv(p); if (us&&!us.value) us.value = emailEl.value.trim(); };
+        }
         const connect = root.querySelector("#c-connect");
         if (connect) connect.onclick = () => {
           const email = root.querySelector("#c-email").value.trim();
@@ -1897,14 +1934,16 @@ const NovaApps = (() => {
         : `<div class="i-ico" style="background:${color}">${ic}</div>`;
       const faviconFor = url => { try { const u = new URL(/^https?:/.test(url)?url:"https://"+url); return `https://www.google.com/s2/favicons?domain=${u.hostname}&sz=64`; } catch { return null; } };
 
-      let chosenIcon = "🌐", curColor = "#6d8bff";
+      let chosenIcon = "🌐", curColor = "#6d8bff", editId = null;
 
       const draw = () => {
         const installed = os.userApps();
+        const editing = editId ? installed.find(a => a.id === editId) : null;
+        if (!editing) editId = null;
         root.innerHTML = `
           <div class="app-header"><div class="app-title">Store</div><div class="app-sub">Aggiungi qualsiasi web app tramite URL</div></div>
-          <div class="section-label">Installa una web app</div>
-          <div class="group" style="padding:14px 16px">
+          <div class="section-label">${editing?`Modifica «${editing.name}»`:"Installa una web app"}</div>
+          <div class="group" style="padding:14px 16px${editing?';outline:2px solid var(--accent);outline-offset:-2px;border-radius:14px':''}">
             <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
               <div id="ap-preview" style="width:54px;height:54px;border-radius:15px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff;overflow:hidden"></div>
               <input id="ap-name" placeholder="Nome dell'app" style="flex:1;background:var(--surface-2);border:none;border-radius:12px;padding:12px;color:var(--text);font-size:15px;outline:none">
@@ -1917,7 +1956,8 @@ const NovaApps = (() => {
               <label class="btn ghost" style="width:auto;padding:10px 12px;font-size:13px;cursor:pointer">🖼️ Immagine<input id="ap-file" type="file" accept="image/*" hidden></label>
               <input id="ap-color" type="color" value="${curColor}" title="Colore sfondo" style="width:44px;height:40px;border:none;background:none;border-radius:10px;cursor:pointer">
             </div>
-            <button class="btn" id="ap-install">Installa sul desktop</button>
+            <button class="btn" id="ap-install">${editing?"Salva modifiche":"Installa sul desktop"}</button>
+            ${editing?`<button class="btn ghost" id="ap-cancel" style="margin-top:8px">Annulla</button>`:''}
           </div>
           <div class="section-label">Suggerite</div>
           <div class="group">${suggested.map((s,i)=>`
@@ -1929,10 +1969,19 @@ const NovaApps = (() => {
             ${installed.length ? installed.map(a=>`
               <div class="item">${ico(a.icon,a.color)}
                 <div class="i-body"><div class="i-title">${a.name}</div><div class="i-sub">${a.url}</div></div>
-                <button class="btn ghost" style="width:auto;padding:8px 14px;color:var(--danger)" data-rm="${a.id}">Rimuovi</button></div>`).join("")
+                <button class="btn ghost" style="width:auto;padding:8px 12px" data-ed="${a.id}">Modifica</button>
+                <button class="btn ghost" style="width:auto;padding:8px 12px;color:var(--danger)" data-rm="${a.id}">Rimuovi</button></div>`).join("")
               : `<div style="color:var(--text-dim);font-size:14px">Nessuna web app installata. Aggiungine una qui sopra: comparirà tra le icone della home.</div>`}
           </div>
           <div style="height:80px"></div>`;
+
+        // in modifica: precompila i campi con i dati dell'app selezionata
+        if (editing) {
+          root.querySelector("#ap-name").value = editing.name || "";
+          root.querySelector("#ap-url").value = editing.url || "";
+          if (!isImg(editing.icon)) root.querySelector("#ap-emoji").value = editing.icon || "🌐";
+          root.querySelector("#ap-color").value = editing.color || "#6d8bff";
+        }
 
         const preview = () => {
           const p = root.querySelector("#ap-preview");
@@ -1970,15 +2019,30 @@ const NovaApps = (() => {
           if (!url) { os.notify({ app:"store", title:"Store", text:"Inserisci l'indirizzo dell'app." }); return; }
           let name = root.querySelector("#ap-name").value.trim();
           if (!name) { try { const h = new URL(/^https?:/.test(url)?url:"https://"+url).hostname.replace(/^www\./,""); name = h.split(".")[0].replace(/^\w/,c=>c.toUpperCase()); } catch { name = "Web app"; } }
-          os.installApp({ name, url, icon: chosenIcon, color: curColor });
-          os.notify({ app:"store", title:"App installata", text:"Trovi la nuova icona nella home." });
+          if (editId) {
+            os.updateApp(editId, { name, url, icon: chosenIcon, color: curColor });
+            os.notify({ app:"store", title:"App aggiornata", text:`${name} modificata.` });
+            editId = null;
+          } else {
+            os.installApp({ name, url, icon: chosenIcon, color: curColor });
+            os.notify({ app:"store", title:"App installata", text:"Trovi la nuova icona nella home." });
+          }
           chosenIcon = "🌐"; curColor = "#6d8bff"; draw();
         };
+        const cancel = root.querySelector("#ap-cancel");
+        if (cancel) cancel.onclick = () => { editId = null; chosenIcon = "🌐"; curColor = "#6d8bff"; draw(); };
         root.querySelectorAll("[data-sugg]").forEach(el => el.onclick = () => {
           const s = suggested[+el.dataset.sugg]; os.installApp(s);
           os.notify({ app:"store", title:"App installata", text:`${s.name} aggiunta alla home.` }); draw();
         });
-        root.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { os.uninstallApp(b.dataset.rm); draw(); });
+        root.querySelectorAll("[data-ed]").forEach(b => b.onclick = () => {
+          editId = b.dataset.ed;
+          const a = os.userApps().find(x => x.id === editId);
+          if (a) { chosenIcon = a.icon || "🌐"; curColor = a.color || "#6d8bff"; }
+          draw();
+          root.scrollTop = 0;
+        });
+        root.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { if (editId===b.dataset.rm) editId=null; os.uninstallApp(b.dataset.rm); draw(); });
       };
       draw();
     }});
@@ -1987,6 +2051,18 @@ const NovaApps = (() => {
   const settings = app({ id:"settings", name:"Impostazioni", icon:"⚙️", color:"#5a6473",
     render(root, os) {
       const S = os.state;
+      // ---- ponte hardware reale (presente solo dentro l'app NovaOS su Android) ----
+      const NN = window.NovaNative || {};
+      const hasSensors = !!NN.sensorStates;
+      const readSensors = () => { try { return NN.sensorStates ? JSON.parse(NN.sensorStates()) : null; } catch { return null; } };
+      // specchia nello stato della shell i valori VERI letti dall'hardware
+      const syncSensors = () => { const ns = readSensors(); if (!ns) return null;
+        ["wifi","bt","nfc","location","airplane"].forEach(k => { if (k in ns) S[k] = ns[k]; }); return ns; };
+      // versione REALE installata (da PackageInfo) con fallback alla build web
+      const appVer = (() => { try { return NN.appVersion ? JSON.parse(NN.appVersion()) : null; } catch { return null; } })();
+      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.4";
+      const VERLONG = appVer && appVer.code ? `${VER} · build ${appVer.code}` : `${VER} · build web`;
+
       const nav = (title, bodyFn) => {
         root.innerHTML = `<div class="back-bar"><button class="back-btn"></button><div class="back-title">${title}</div></div><div id="sec" style="padding-bottom:90px"></div>`;
         root.querySelector(".back-btn").onclick = home;
@@ -1995,8 +2071,9 @@ const NovaApps = (() => {
 
       // --- home impostazioni (raggruppata in categorie come Android) ---
       const home = () => {
+        syncSensors();   // riflette lo stato reale dei sensori nei sottotitoli
         root.innerHTML = `
-          <div class="app-header"><div class="app-title">Impostazioni</div><div class="app-sub">NovaOS 0.1 · build web</div></div>
+          <div class="app-header"><div class="app-title">Impostazioni</div><div class="app-sub">NovaOS ${VERLONG}</div></div>
           <div style="padding:0 16px 8px"><input id="q" placeholder="Cerca nelle impostazioni" style="width:100%;background:var(--surface);border:none;border-radius:20px;padding:12px 16px;color:var(--text);font-size:15px;outline:none"></div>
 
           <div class="section-label">Rete e connettività</div>
@@ -2024,8 +2101,8 @@ const NovaApps = (() => {
             ${row("battery","🔋","#34c759","Batteria", S.battery+"%"+(S.saver?" · Risparmio":""))}
             ${row("storage","💾","#5e5ce6","Archiviazione", "Dati, foto e cache di NovaOS")}
             ${row("accessibility","♿","#0a84ff","Accessibilità", (S.boldText||S.highContrast||S.reduceMotion)?"Personalizzata":"Standard")}
-            ${row("system","⚙️","#8e8e93","Sistema", "Lingua, data e ora, ripristino")}
-            ${row("about","ℹ️","#8e8e93","Info sul telefono", "NovaOS 0.1 · Nova N1")}
+            ${row("system","⚙️","#8e8e93","Sistema", "Lingua, data e ora, aggiornamenti")}
+            ${row("about","ℹ️","#8e8e93","Info sul telefono", "NovaOS "+VER+" · Nova N1")}
           </div><div style="height:80px"></div>`;
         root.querySelectorAll("[data-go]").forEach(el => el.onclick = () => sections[el.dataset.go]());
         // ricerca: filtra le voci per titolo
@@ -2047,6 +2124,29 @@ const NovaApps = (() => {
       const sections = {
         // ---------------- Rete e Internet ----------------
         net: () => nav("Rete e Internet", sec => {
+          syncSensors();
+          // ===== dispositivo reale: agisce sull'hardware / apre i pannelli di sistema =====
+          if (hasSensors) {
+            sec.innerHTML = `
+              <div class="group" style="padding:12px 14px;color:var(--text-dim);font-size:12.5px;line-height:1.5">
+                Stato reale dell'hardware. Da Android 10 il sistema non consente alle app di
+                accendere o spegnere in silenzio Wi-Fi, dati e modalità aereo: qui si apre il
+                pannello ufficiale, dove la modifica è immediata.</div>
+              <div class="group">
+                <div class="item" data-open="airplane"><div class="i-ico" style="background:#8e8e93">✈️</div><div class="i-body"><div class="i-title">Modalità aereo</div><div class="i-sub">${S.airplane?"Attiva":"Disattivata"} · tocca per aprire</div></div><div class="chev"></div></div>
+                <div class="item"><div class="i-ico" style="background:#0a84ff">📶</div><div class="i-body"><div class="i-title">Wi-Fi</div><div class="i-sub">${S.wifi?"Attivo":"Disattivato"}</div></div>${sw(S.wifi)}</div>
+                <div class="item" data-open="data"><div class="i-ico" style="background:#0a84ff">📱</div><div class="i-body"><div class="i-title">Dati mobili</div><div class="i-sub">Apri le impostazioni rete mobile</div></div><div class="chev"></div></div>
+                <div class="item" data-open="hotspot"><div class="i-ico" style="background:#0a84ff">🔥</div><div class="i-body"><div class="i-title">Hotspot e tethering</div></div><div class="chev"></div></div>
+              </div>
+              <div class="group" style="margin-top:12px"><div class="item" data-open="wifi"><div class="i-ico" style="background:#2a3550">📡</div><div class="i-body"><div class="i-title">Reti Wi-Fi disponibili</div><div class="i-sub">Apri l'elenco reti del sistema</div></div><div class="chev"></div></div></div>`;
+            sec.querySelector(".switch").onclick = () => {
+              const applied = (()=>{ try { return NN.setWifi(!S.wifi); } catch { return false; } })();
+              setTimeout(() => sections.net(), applied ? 200 : 700);
+            };
+            sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
+            return;
+          }
+          // ===== ambiente di sviluppo (browser/emulatore): simulazione =====
           const nets = ["NovaNet","FASTWEB-8842","TIM-Casa","AndroidAP","Vodafone-Guest","Iliad-Home"];
           const toggleRow = (k,ic,t,sub) => `<div class="item"><div class="i-ico" style="background:#0a84ff">${ic}</div>
             <div class="i-body"><div class="i-title">${t}</div><div class="i-sub">${sub}</div></div>${sw(S[k])}</div>`;
@@ -2075,6 +2175,23 @@ const NovaApps = (() => {
 
         // ---------------- Dispositivi connessi ----------------
         connected: () => nav("Dispositivi connessi", sec => {
+          syncSensors();
+          // ===== dispositivo reale =====
+          if (hasSensors) {
+            sec.innerHTML = `
+              <div class="group">
+                <div class="item"><div class="i-ico" style="background:#0a84ff">🔵</div><div class="i-body"><div class="i-title">Bluetooth</div><div class="i-sub">${S.bt?"Attivo":"Disattivato"}</div></div>${sw(S.bt)}</div>
+                <div class="item" data-open="nfc"><div class="i-ico" style="background:#5e5ce6">📡</div><div class="i-body"><div class="i-title">NFC</div><div class="i-sub">${S.nfc?"Attivo":"Disattivato"} · pagamenti e tag</div></div><div class="chev"></div></div>
+              </div>
+              <div class="group" style="margin-top:12px"><div class="item" data-open="bluetooth"><div class="i-ico" style="background:#2a3550">🎧</div><div class="i-body"><div class="i-title">Accoppia un nuovo dispositivo</div><div class="i-sub">Apri le impostazioni Bluetooth</div></div><div class="chev"></div></div></div>`;
+            sec.querySelector(".switch").onclick = () => {
+              const applied = (()=>{ try { return NN.setBluetooth(!S.bt); } catch { return false; } })();
+              setTimeout(() => sections.connected(), applied ? 300 : 700);
+            };
+            sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
+            return;
+          }
+          // ===== simulazione (sviluppo) =====
           sec.innerHTML = `
             <div class="group">
               <div class="item"><div class="i-ico" style="background:#0a84ff">🔵</div><div class="i-body"><div class="i-title">Bluetooth</div><div class="i-sub">${S.bt?"Attivo":"Disattivato"}</div></div>${sw(S.bt)}</div>
@@ -2232,9 +2349,13 @@ const NovaApps = (() => {
 
         // ---------------- Privacy e posizione ----------------
         privacy: () => nav("Privacy e posizione", sec => {
+          syncSensors();
+          const locRow = hasSensors
+            ? `<div class="item" data-open="location"><div class="i-ico" style="background:#34c759">📍</div><div class="i-body"><div class="i-title">Posizione</div><div class="i-sub">${S.location?"Attiva":"Disattivata"} · tocca per aprire</div></div><div class="chev"></div></div>`
+            : `<div class="item"><div class="i-ico" style="background:#34c759">📍</div><div class="i-body"><div class="i-title">Posizione</div><div class="i-sub">${S.location?"Attiva":"Disattivata"}</div></div>${sw(S.location)}</div>`;
           sec.innerHTML = `
             <div class="group">
-              <div class="item"><div class="i-ico" style="background:#34c759">📍</div><div class="i-body"><div class="i-title">Posizione</div><div class="i-sub">${S.location?"Attiva":"Disattivata"}</div></div>${sw(S.location)}</div>
+              ${locRow}
             </div>
             <div class="section-label">Gestione permessi</div>
             <div class="group">
@@ -2244,7 +2365,9 @@ const NovaApps = (() => {
             <div class="group" style="margin-top:12px">
               <div class="item"><div class="i-ico" style="background:#8e8e93">🗑️</div><div class="i-body"><div class="i-title">Cancella dati di navigazione</div></div><div class="chev"></div></div>
             </div>`;
-          sec.querySelector(".switch").onclick = () => { os.toggle("location"); sections.privacy(); };
+          const lsw = sec.querySelector(".switch");
+          if (lsw) lsw.onclick = () => { os.toggle("location"); sections.privacy(); };
+          sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
         }),
 
         // ---------------- Archiviazione ----------------
@@ -2307,10 +2430,35 @@ const NovaApps = (() => {
               <div class="item"><div class="i-ico" style="background:#8e8e93">☁️</div><div class="i-body"><div class="i-title">Backup</div><div class="i-sub">Locale (localStorage/IndexedDB)</div></div><div class="chev"></div></div>
             </div>
             <div class="group" style="margin-top:12px">
-              <div class="item" id="upd"><div class="i-ico" style="background:#34c759">⬆️</div><div class="i-body"><div class="i-title">Aggiornamenti di sistema</div><div class="i-sub">NovaOS 0.1 · aggiornato</div></div><div class="chev"></div></div>
+              <div class="item" id="upd"><div class="i-ico" style="background:#34c759">⬆️</div><div class="i-body"><div class="i-title">Aggiornamenti di sistema</div><div class="i-sub" id="upd-sub">Versione installata: NovaOS ${VER}</div></div><div class="chev"></div></div>
+              <div id="upd-panel"></div>
             </div>
             <button class="btn ghost" id="reset" style="margin:16px;color:var(--danger)">Ripristina impostazioni di fabbrica</button>`;
-          sec.querySelector("#upd").onclick = () => os.notify({ app:"settings", title:"Aggiornamenti", text:"NovaOS è aggiornato all'ultima versione." });
+          const panel = sec.querySelector("#upd-panel");
+          const sub = sec.querySelector("#upd-sub");
+          sec.querySelector("#upd").onclick = () => {
+            panel.innerHTML = `<div style="padding:12px 16px;color:var(--text-dim);font-size:13px"><span class="spin" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:8px"></span>Verifica su GitHub…</div>`;
+            fetch("https://api.github.com/repos/dPlusOS21/NovaOS/releases/latest", { headers:{Accept:"application/vnd.github+json"} })
+              .then(r => r.ok ? r.json() : Promise.reject(r.status))
+              .then(rel => {
+                const tag = rel.tag_name || rel.name || "?";
+                const when = rel.published_at ? new Date(rel.published_at).toLocaleDateString("it-IT",{day:"numeric",month:"long",year:"numeric"}) : "";
+                const blob = ((rel.name||"")+" "+(rel.body||"")+" "+tag);
+                const upToDate = blob.includes(VER);
+                sub.textContent = upToDate ? `NovaOS ${VER} · aggiornato` : `NovaOS ${VER} · potrebbe esserci un aggiornamento`;
+                panel.innerHTML = `
+                  <div style="padding:8px 16px 14px">
+                    <div class="item" style="padding:6px 0"><div class="i-body"><div class="i-sub">Versione installata</div><div class="i-title">NovaOS ${VER}</div></div></div>
+                    <div class="item" style="padding:6px 0"><div class="i-body"><div class="i-sub">Ultima release pubblicata</div><div class="i-title">${tag}${when?` · ${when}`:""}</div></div></div>
+                    <div style="color:${upToDate?'var(--ok)':'var(--accent)'};font-size:13px;margin:8px 0">${upToDate?"✓ Il sistema è aggiornato all'ultima versione pubblicata.":"⬇ Apri la pagina della release per scaricare l'APK più recente."}</div>
+                    <button class="btn ghost" id="upd-open">Apri la release su GitHub</button>
+                  </div>`;
+                const ob = panel.querySelector("#upd-open");
+                if (ob) ob.onclick = () => { const u = rel.html_url || "https://github.com/dPlusOS21/NovaOS/releases/latest";
+                  if (NN.openBrowser) { try { NN.openBrowser(u); return; } catch {} } window.open(u,"_blank"); };
+              })
+              .catch(() => { panel.innerHTML = `<div style="padding:8px 16px 14px;color:var(--text-dim);font-size:13px">Impossibile contattare GitHub. Versione installata: NovaOS ${VER}.</div>`; });
+          };
           sec.querySelector("#reset").onclick = () => { if (confirm("Ripristinare NovaOS? Verranno cancellati impostazioni e app installate.")) os.factoryReset(); };
         }),
 
@@ -2324,7 +2472,7 @@ const NovaApps = (() => {
           const ram = navigator.deviceMemory;
           const res = `${screen.width}×${screen.height} @${window.devicePixelRatio||1}x`;
           const rows = [
-            ["Nome dispositivo","Nova N1"],["Versione NovaOS","0.1.3 · build web"],
+            ["Nome dispositivo","Nova N1"],["Versione NovaOS",VERLONG],
             android?["Sistema","Android "+android]:["Runtime","WebView / Chromium"],
             chrome?["Motore","Chromium "+chrome]:null,
             ["Risoluzione schermo",res],

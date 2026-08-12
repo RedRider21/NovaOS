@@ -2,9 +2,16 @@ package os.nova.launcher;
 
 import android.app.Activity;
 import android.app.role.RoleManager;
+import android.bluetooth.BluetoothAdapter;
 import android.content.ClipData;
+import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.location.LocationManager;
+import android.net.wifi.WifiManager;
+import android.nfc.NfcAdapter;
+import android.provider.Settings;
 import android.telecom.Call;
 import android.telecom.TelecomManager;
 import android.net.Uri;
@@ -254,6 +261,124 @@ public class MainActivity extends Activity {
             Intent chooser = Intent.createChooser(send, "Condividi");
             chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(chooser);
+        }
+
+        // ============================================================
+        //  Sensori / connettività REALI
+        //  Nota: da Android 10 le app NON possono accendere/spegnere in
+        //  silenzio Wi-Fi, Bluetooth, dati, aereo ecc. (scelta di sicurezza
+        //  del sistema). La via ufficiale è aprire il pannello rapido/di
+        //  sistema, che qui invochiamo davvero; lo stato letto è quello VERO
+        //  dell'hardware, non una simulazione.
+        // ============================================================
+
+        /** Stato reale di tutti i sensori/connettività, come JSON. */
+        @JavascriptInterface
+        public String sensorStates() {
+            StringBuilder b = new StringBuilder("{");
+            b.append("\"wifi\":").append(readWifi());
+            b.append(",\"bt\":").append(readBt());
+            b.append(",\"nfc\":").append(readNfc());
+            b.append(",\"location\":").append(readLocation());
+            b.append(",\"airplane\":").append(readAirplane());
+            b.append(",\"native\":true}");
+            return b.toString();
+        }
+
+        private boolean readWifi() {
+            try { WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                  return wm != null && wm.isWifiEnabled(); } catch (Exception e) { return false; }
+        }
+        private boolean readBt() {
+            try { BluetoothAdapter a = BluetoothAdapter.getDefaultAdapter(); return a != null && a.isEnabled(); }
+            catch (Exception e) { return false; }
+        }
+        private boolean readNfc() {
+            try { NfcAdapter a = NfcAdapter.getDefaultAdapter(MainActivity.this); return a != null && a.isEnabled(); }
+            catch (Exception e) { return false; }
+        }
+        private boolean readLocation() {
+            try { LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+                  if (lm == null) return false;
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return lm.isLocationEnabled();
+                  return lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                      || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER); }
+            catch (Exception e) { return false; }
+        }
+        private boolean readAirplane() {
+            try { return Settings.Global.getInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) != 0; }
+            catch (Exception e) { return false; }
+        }
+
+        /** Prova ad accendere/spegnere il Wi-Fi. Su Android 10+ non è consentito
+         *  in silenzio: apre il pannello Wi-Fi di sistema e restituisce false. */
+        @JavascriptInterface
+        public boolean setWifi(boolean on) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                try { WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                      if (wm != null) { wm.setWifiEnabled(on); return true; } } catch (Exception ignored) {}
+            }
+            openSetting("wifi");
+            return false;
+        }
+
+        /** Prova ad accendere/spegnere il Bluetooth; se il sistema lo vieta,
+         *  apre la richiesta/pannello Bluetooth. Restituisce true se applicato. */
+        @JavascriptInterface
+        public boolean setBluetooth(boolean on) {
+            try {
+                BluetoothAdapter a = BluetoothAdapter.getDefaultAdapter();
+                if (a == null) return false;
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                    boolean ok = on ? a.enable() : a.disable();   // deprecato ma funziona < API 33
+                    if (ok) return true;
+                }
+            } catch (Exception ignored) {}
+            if (on) {
+                try { Intent i = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(i); return false; }
+                catch (Exception e) { openSetting("bluetooth"); return false; }
+            }
+            openSetting("bluetooth");
+            return false;
+        }
+
+        /** Apre il pannello/impostazione di sistema per un sensore. */
+        @JavascriptInterface
+        public void openSetting(String which) {
+            Intent i = new Intent();
+            try {
+                switch (which) {
+                    case "wifi":
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                            i.setAction(Settings.Panel.ACTION_WIFI);
+                        else i.setAction(Settings.ACTION_WIFI_SETTINGS);
+                        break;
+                    case "bluetooth": i.setAction(Settings.ACTION_BLUETOOTH_SETTINGS); break;
+                    case "airplane":  i.setAction(Settings.ACTION_AIRPLANE_MODE_SETTINGS); break;
+                    case "nfc":       i.setAction(Settings.ACTION_NFC_SETTINGS); break;
+                    case "location":  i.setAction(Settings.ACTION_LOCATION_SOURCE_SETTINGS); break;
+                    case "data":      i.setAction(Settings.ACTION_DATA_ROAMING_SETTINGS); break;
+                    case "hotspot":
+                        i.setClassName("com.android.settings", "com.android.settings.TetherSettings"); break;
+                    default:          i.setAction(Settings.ACTION_SETTINGS);
+                }
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+            } catch (Exception e) {
+                try { startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+                catch (Exception ignored) {}
+            }
+        }
+
+        /** Versione REALE dell'app installata (da PackageInfo), come JSON. */
+        @JavascriptInterface
+        public String appVersion() {
+            try {
+                PackageInfo p = getPackageManager().getPackageInfo(getPackageName(), 0);
+                long code = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ? p.getLongVersionCode() : p.versionCode;
+                return "{\"name\":\"" + p.versionName + "\",\"code\":" + code + "}";
+            } catch (Exception e) { return "{\"name\":\"?\",\"code\":0}"; }
         }
 
         // ---- Mail reale (SMTP/IMAP). I risultati tornano via window.NovaMail.* ----

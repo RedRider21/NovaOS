@@ -89,6 +89,15 @@ const OS = (() => {
     return id;
   }
   function uninstallApp(id) { store.set("userApps", userApps().filter(a => a.id !== id)); }
+  // modifica una web app installata (nome, url, icona, colore)
+  function updateApp(id, patch) {
+    const list = userApps();
+    const i = list.findIndex(a => a.id === id);
+    if (i < 0) return;
+    if (patch.url && !/^https?:/.test(patch.url)) patch.url = "https://" + patch.url;
+    list[i] = { ...list[i], ...patch };
+    store.set("userApps", list);
+  }
 
   // ============================================================
   //  schermate / tema / display
@@ -263,12 +272,14 @@ const OS = (() => {
   function enablePageSwipe(host) {
     if (host._swipeBound) return; host._swipeBound = true;
     let startX=0, startY=0, dx=0, w=0, pagesN=1, track=null, active=false, dragging=false, decided=false;
+    let t0=0, lastX=0, lastT=0, vel=0;   // per il "flick": velocità del dito
     const onDown = e => {
       if (editing) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
       track = host.querySelector(".home-track"); if (!track) return;
       active=true; dragging=false; decided=false; dx=0;
       startX=e.clientX; startY=e.clientY;
+      t0=lastT=performance.now(); lastX=e.clientX; vel=0;
       w = host.clientWidth || window.innerWidth;
       pagesN = homeLayout().pages.length;
       track.style.transition = "none";
@@ -283,6 +294,9 @@ const OS = (() => {
       }
       if (!dragging) return;
       if (e.cancelable) e.preventDefault();
+      const now = performance.now(), dt = now-lastT;   // velocità istantanea (px/ms)
+      if (dt > 0) vel = (e.clientX-lastX)/dt;
+      lastX = e.clientX; lastT = now;
       let off = -homePage*w + dx;
       const min = -(pagesN-1)*w, max = 0;               // resistenza oltre i bordi
       if (off > max) off = max + (off-max)*0.35;
@@ -295,8 +309,13 @@ const OS = (() => {
       if (!track) return;
       track.style.transition = "";
       if (dragging) {
-        if (dx < -w*0.22 && homePage < pagesN-1) homePage++;
-        else if (dx > w*0.22 && homePage > 0) homePage--;
+        // commit se: superata la soglia di distanza (12% della larghezza) OPPURE
+        // "flick" veloce (>0.35 px/ms) anche con spostamento breve → molto reattivo
+        const flick = Math.abs(vel) > 0.35;
+        const goNext = (dx < -w*0.12 || (flick && vel < 0)) && homePage < pagesN-1;
+        const goPrev = (dx >  w*0.12 || (flick && vel > 0)) && homePage > 0;
+        if (goNext) homePage++;
+        else if (goPrev) homePage--;
       }
       track.style.transform = `translateX(${-homePage*100}%)`;
       host.querySelectorAll(".dot").forEach(d => d.classList.toggle("on", +d.dataset.dot===homePage));
@@ -806,7 +825,7 @@ const OS = (() => {
     state, store, notify, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
     WALLS, photos, vibrate,
     // gestione app di terze parti
-    installApp, uninstallApp, userApps,
+    installApp, uninstallApp, updateApp, userApps,
     // impostazione PIN: chiede due volte tramite pinpad sul lockscreen non serve qui,
     // le app la gestiscono con input diretti (vedi Impostazioni)
     get theme(){ return state.theme; },
