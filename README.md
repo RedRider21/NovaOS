@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.6**. Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.10**. Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -67,7 +67,7 @@ web-phone-os/
 | Calcolatrice | espressioni con operatori |
 | File | gestore file reale: area **"I miei file"** con cartelle e file di testo (**crea/rinomina/sposta/elimina**), **ricerca**, **riepilogo spazio** reale; cartelle intelligenti **Immagini** (foto reali, elimina + apri in Galleria) e **Note** |
 | Store | installa **web app di terze parti** via URL, con **scelta icona** (emoji / favicon del sito / immagine caricata), anteprima e **modifica** delle app installate (nome/URL/icona/colore) |
-| Impostazioni | Rete, Dispositivi connessi, Display, Suoni, Notifiche, Sicurezza/PIN, Privacy, App, Batteria, Archiviazione, Accessibilità, Sistema, Info telefono. **Sensori reali** (Wi-Fi/BT/NFC/posizione/aereo/dati): stato letto dall'hardware e **toggle a doppia modalità** — da app apre i pannelli di sistema, nel ROM privilegiato commuta in-process (vedi [GUIDA-ROM](docs/GUIDA-ROM.md) §4). **Versione reale** installata da `PackageInfo` + controllo release su GitHub |
+| Impostazioni | Rete, Dispositivi connessi, Display, Suoni, Notifiche, Sicurezza/PIN, Privacy, App, Batteria, Archiviazione, Accessibilità, Sistema, Info telefono. **Sensori reali** (Wi-Fi/BT/NFC/posizione/aereo/dati): stato letto dall'hardware e **toggle a doppia modalità** — da app apre i pannelli di sistema, nel ROM privilegiato commuta in-process (vedi [GUIDA-ROM](docs/GUIDA-ROM.md) §4). **Versione reale** installata da `PackageInfo`. **Aggiornamenti di Sistema OTA**: controllo autonomo all'avvio contro `shell/version.json` su GitHub, notifica quando c'è una versione più recente, e installazione dalla UI (su dispositivo scarica+installa l'APK, su web/PWA svuota cache e ricarica) |
 
 Funzioni di sistema: boot con logo animato, **blocco/sblocco** (nessuno / scorrimento
 / **PIN**) con **blocco automatico per inattività**, **tendina rapida stile Android**
