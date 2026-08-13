@@ -297,7 +297,10 @@ const OS = (() => {
     let startX=0, startY=0, dx=0, w=0, pagesN=1, track=null, active=false, dragging=false, decided=false;
     let t0=0, lastX=0, lastT=0, vel=0;   // per il "flick": velocità del dito
     const onDown = e => {
-      if (editing) return;
+      // in modifica: se parto da un'icona la trascina makeDraggable; se parto da uno
+      // spazio vuoto uso lo swipe per cambiare pagina (così si modificano tutte le
+      // pagine senza dover prima uscire dalla modalità modifica).
+      if (editing && e.target.closest(".app-icon")) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
       track = host.querySelector(".home-track"); if (!track) return;
       active=true; dragging=false; decided=false; dx=0;
@@ -308,7 +311,7 @@ const OS = (() => {
       track.style.transition = "none";
     };
     const onMove = e => {
-      if (!active || editing) return;
+      if (!active) return;
       dx = e.clientX-startX; const dy = e.clientY-startY;
       if (!decided) {
         if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
@@ -384,17 +387,22 @@ const OS = (() => {
         host.querySelectorAll(".app-icon").forEach(x => x.classList.remove("drop-into"));
         const tIcon = u && u.closest(".app-icon");
         if (tIcon && tIcon !== el) tIcon.classList.add("drop-into");
-        // bordo sinistro/destro: dopo una breve attesa cambia pagina (per spostare
-        // l'icona su un altro desktop). Zone ampie e attesa breve per renderlo facile.
-        const w = window.innerWidth, dir = ev.clientX < w*0.16 ? -1 : ev.clientX > w*0.84 ? 1 : 0;
-        host.querySelectorAll(".dot").forEach((d,di) => d.classList.toggle("drop-target", dir && (homePage+dir)===di));
+        // bordo sinistro/destro: tenendo l'icona ferma sul bordo per un istante si
+        // cambia pagina (per spostarla su un altro desktop). Un SOLO cambio per ogni
+        // "ingresso" nella zona bordo: per cambiare ancora bisogna allontanarsi e
+        // rientrare. Così non si sfogliano decine di pagine né se ne creano a raffica.
+        const w = window.innerWidth, dir = ev.clientX < w*0.12 ? -1 : ev.clientX > w*0.88 ? 1 : 0;
+        const atEnd = dir > 0 && homePage === L.pages.length-1 && !L.pages[homePage].every(c => c===null);
+        host.querySelectorAll(".dot").forEach((d,di) => d.classList.toggle("drop-target", !!dir && (homePage+dir)===di));
         if (dir !== edgeDir) {
           edgeDir = dir; clearTimeout(edgeTimer);
           if (dir) edgeTimer = setTimeout(() => {
             let np = homePage + dir;
-            // trascinando oltre l'ultima pagina si crea un nuovo desktop al volo
-            // (senza renderHome, che interromperebbe il trascinamento in corso)
+            // oltre l'ultima pagina si crea UN nuovo desktop, ma solo se quella attuale
+            // non è già vuota (evita di accumulare pagine vuote). Senza renderHome, che
+            // interromperebbe il trascinamento in corso.
             if (dir > 0 && np >= L.pages.length) {
+              if (!atEnd) { edgeDir = dir; return; }   // ultima pagina vuota: non creare
               L.pages.push(blankPage());
               const idx = L.pages.length - 1;
               const pg = document.createElement("div");
@@ -406,10 +414,15 @@ const OS = (() => {
               dots.insertBefore(dot, host.querySelector("#add-page") || null);
               np = idx;
             }
-            if (np >= 0 && np < L.pages.length) { homePage = np; track.style.transform = `translateX(${-homePage*100}%)`;
-              host.querySelectorAll(".dot").forEach(d => d.classList.toggle("on", +d.dataset.dot===homePage)); }
-            edgeDir = 0;   // consente un ulteriore cambio pagina se si resta sul bordo
-          }, 350);
+            if (np >= 0 && np < L.pages.length) {
+              homePage = np;
+              track.style.transition = "transform .26s cubic-bezier(.22,.61,.36,1)";
+              track.style.transform = `translateX(${-homePage*100}%)`;
+              host.querySelectorAll(".dot").forEach(d => d.classList.toggle("on", +d.dataset.dot===homePage));
+            }
+            // NON azzero edgeDir: resta = dir, così non riparte finché il dito non lascia
+            // il bordo (dir torna 0) e vi rientra. Un cambio pagina alla volta.
+          }, 620);
         }
       };
       const up = ev => {
@@ -757,12 +770,13 @@ const OS = (() => {
       { k:"autoRotate",ic:"🔄", l:"Rotazione" },
       { k:"nfc",       ic:"📡", l:"NFC",        sensor:true, panel:"nfc" },
     ];
+    const briFill = Math.round((state.brightness - 20) / 80 * 100);
     $("#shade-quick").innerHTML = `
       <div class="qs-grid">
         ${tiles.map(t => `<button class="qtile ${quickOn(t.k)?'on':''}" data-q="${t.k}" data-sensor="${t.sensor?1:0}" data-panel="${t.panel||''}">
           <span class="q-ico">${t.ic}</span><span class="q-lbl">${t.l}</span></button>`).join("")}
       </div>
-      <div class="qs-bright"><span>🔅</span><input type="range" class="slider" id="qs-bri" min="20" max="100" value="${state.brightness}"><span>🔆</span></div>`;
+      <div class="qs-bright"><span class="qs-sun">☀</span><input type="range" id="qs-bri" min="20" max="100" value="${state.brightness}" style="--fill:${briFill}%"></div>`;
     const SETFN = { wifi:"setWifi", bt:"setBluetooth", airplane:"setAirplane", location:"setLocation", nfc:"setNfc" };
     $("#shade-quick").querySelectorAll(".qtile").forEach(el => el.onclick = () => {
       const k = el.dataset.q, isSensor = el.dataset.sensor === "1";
@@ -779,7 +793,10 @@ const OS = (() => {
       toggle(k);        // software (o simulazione sensori in sviluppo)
       el.classList.toggle("on", quickOn(k));
     });
-    const bri = $("#qs-bri"); if (bri) bri.oninput = e => set("brightness", +e.target.value);
+    const bri = $("#qs-bri"); if (bri) bri.oninput = e => {
+      const v = +e.target.value; e.target.style.setProperty("--fill", Math.round((v-20)/80*100)+"%");
+      set("brightness", v);
+    };
   }
   function quickOn(k) { return k==="theme" ? state.theme==="dark" : !!state[k]; }
 
@@ -931,10 +948,17 @@ const OS = (() => {
   let lastActivity = Date.now();
   function noteActivity() { lastActivity = Date.now(); }
   function initAutolock() {
-    ["pointerdown","keydown","touchstart","wheel"].forEach(ev =>
-      window.addEventListener(ev, noteActivity, { capture:true, passive:true }));
+    // ogni interazione reale (tocco, movimento, tasto, scroll, click, digitazione)
+    // rimanda il blocco: così NON scatta mentre si sta effettivamente usando il telefono.
+    ["pointerdown","pointermove","pointerup","touchstart","touchmove","keydown","wheel","click","input","scroll"]
+      .forEach(ev => window.addEventListener(ev, noteActivity, { capture:true, passive:true }));
+    document.addEventListener("scroll", noteActivity, { capture:true, passive:true });
+    // tornando su NovaOS (es. dopo il browser nativo di una web app) si riparte da zero,
+    // per non trovarsi bloccati appena si rientra.
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) noteActivity(); });
     setInterval(() => {
       if (state.lockType === "none") return;
+      if (document.hidden) return;   // schermo/app in background: il conteggio riprende al ritorno
       if (!(screens.home.classList.contains("active") || screens.app.classList.contains("active"))) return;
       const secs = Math.min(state.autolock || 30, state.screenTimeout || 30);
       if (Date.now() - lastActivity >= secs * 1000) { noteActivity(); lockDevice(); }

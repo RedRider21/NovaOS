@@ -314,16 +314,40 @@ body[data-theme="light"] .dock { background: rgba(255,255,255,.6); }
 .shade-time { font-size: 14px; color: var(--text-dim); font-weight: 600; }
 .shade-ico { width: 38px; height: 38px; border-radius: 50%; border: none; background: var(--surface); color: var(--text); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .shade-ico:active { background: var(--surface-2); }
-.shade-quick { margin-bottom: 18px; }
-.qs-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 14px 4px; margin-bottom: 14px; }
-.qtile { display: flex; flex-direction: column; align-items: center; gap: 6px; background: none; border: none; padding: 0; font-size: 10.5px; color: var(--text-dim); cursor: pointer; }
-.qtile .q-ico { width: 52px; height: 52px; border-radius: 50%; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--text); transition: background .15s, transform .1s; }
-.qtile:active .q-ico { transform: scale(.92); }
-.qtile.on .q-ico { background: var(--accent); color: #fff; }
-.qtile.on { color: var(--text); }
-.qtile .q-lbl { max-width: 62px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qs-bright { display: flex; align-items: center; gap: 10px; background: var(--surface); border-radius: 26px; padding: 9px 15px; font-size: 15px; }
-.qs-bright input[type=range] { flex: 1; }
+.shade-quick { margin-bottom: 16px; }
+.qs-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 18px 4px; margin: 6px 0 20px; }
+.qtile { display: flex; flex-direction: column; align-items: center; gap: 9px; background: none; border: none; padding: 0; font-size: 11px; color: var(--text-dim); cursor: pointer; }
+.qtile .q-ico {
+  width: 58px; height: 58px; border-radius: 50%;
+  background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 23px; color: var(--text);
+  transition: background .18s, transform .12s, box-shadow .18s;
+}
+.qtile:active .q-ico { transform: scale(.9); }
+.qtile.on .q-ico {
+  background: linear-gradient(155deg, color-mix(in srgb, var(--accent) 88%, #7db0ff), var(--accent));
+  color: #fff;
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 65%, transparent);
+}
+.qtile.on { color: var(--text); font-weight: 600; }
+.qtile .q-lbl { max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* slider luminosità stile One UI: pillola con riempimento accent e pomello bianco */
+.qs-bright { display: flex; align-items: center; gap: 12px; background: var(--surface); border-radius: 30px; padding: 12px 18px; }
+.qs-sun { font-size: 17px; opacity: .8; }
+.qs-bright input[type=range] {
+  flex: 1; -webkit-appearance: none; appearance: none; height: 10px; border-radius: 6px;
+  background: linear-gradient(90deg, var(--accent) var(--fill,60%), var(--surface-2) var(--fill,60%));
+  outline: none; cursor: pointer;
+}
+.qs-bright input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.4); cursor: pointer;
+}
+.qs-bright input[type=range]::-moz-range-thumb {
+  width: 22px; height: 22px; border: none; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.4); cursor: pointer;
+}
 /* vecchie tile (compat) */
 .quick { aspect-ratio: 1.6; border-radius: 16px; background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 11px; color: var(--text-dim); cursor: pointer; }
 .quick .q-ico { font-size: 18px; }
