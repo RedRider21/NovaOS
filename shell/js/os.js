@@ -772,7 +772,7 @@ const OS = (() => {
       const li = await localInfo();
       const ai = appInfo();
       const curBuild = (ai && ai.code) || (li && li.build) || 0;
-      const curName  = (ai && ai.name && ai.name !== "?") ? ai.name : (li && li.version) || "0.1.10";
+      const curName  = (ai && ai.name && ai.name !== "?") ? ai.name : (li && li.version) || "0.1.11";
       let rel = null;
       try { const r = await fetch(RAW + "?t=" + Date.now(), { cache:"no-store" }); if (r.ok) rel = await r.json(); } catch {}
       const latestBuild = rel ? (rel.build || 0) : curBuild;
@@ -782,6 +782,10 @@ const OS = (() => {
         latest: latestBuild, latestName: rel ? (rel.version || "?") : curName,
         notes: rel ? (rel.notes || "") : "", apk: rel ? (rel.apk || "") : "",
         date: rel ? (rel.date || "") : "", reachable: !!rel, hasUpdate,
+        // aggiornamento OTA della sola shell: elenco file + build nativa minima richiesta
+        files: rel && Array.isArray(rel.files) ? rel.files : [],
+        minNative: rel ? (rel.minNative || 0) : 0,
+        nativeBuild: (ai && ai.code) || 0,
       };
       store.set("updLastCheck", Date.now());
       store.set("updAvailable", hasUpdate ? last.latestName : "");
@@ -799,14 +803,50 @@ const OS = (() => {
       if (Date.now() - store.get("updLastCheck", 0) < 6 * 3600 * 1000) return;
       setTimeout(() => check().catch(()=>{}), 4000);
     }
+    // base64 di un ArrayBuffer (per passare i file al bridge nativo)
+    function toBase64(buf) {
+      const bytes = new Uint8Array(buf); let bin = "";
+      const CH = 0x8000; for (let i=0;i<bytes.length;i+=CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i+CH));
+      return btoa(bin);
+    }
+    const RAWBASE = "https://raw.githubusercontent.com/dPlusOS21/NovaOS/main/shell/";
+    // scarica i file della nuova shell nella staging nativa; true se tutti scritti
+    async function downloadShell(files) {
+      try { NN().shellStageBegin(); } catch { return false; }
+      for (const rel of files) {
+        const r = await fetch(RAWBASE + rel + "?t=" + Date.now(), { cache:"no-store" });
+        if (!r.ok) return false;
+        const b64 = toBase64(await r.arrayBuffer());
+        let ok = false; try { ok = NN().shellWrite(rel, b64); } catch {}
+        if (!ok) return false;
+      }
+      return true;
+    }
     async function apply() {
       const info = last || await check();
-      // dispositivo: installazione APK nativa, con fallback all'apertura del download
-      if (window.NovaNative && info.apk) {
-        if (NN().installUpdate) { try { NN().installUpdate(info.apk); return { mode:"apk" }; } catch {} }
-        if (NN().openBrowser)   { try { NN().openBrowser(info.apk);   return { mode:"browser" }; } catch {} }
+      const nn = window.NovaNative;
+      // 1) AGGIORNAMENTO SOLO INTERFACCIA (shell) SENZA APK: se il bridge lo supporta e la
+      //    build nativa installata è sufficiente per la nuova shell (minNative). La parte
+      //    nativa (bridge Java) resta invariata: si aggiornano solo HTML/CSS/JS.
+      const nativeOk = !info.minNative || (info.nativeBuild >= info.minNative);
+      if (nn && nn.shellWrite && nn.shellCommit && info.files.length && nativeOk) {
+        try {
+          if (await downloadShell(info.files)) {
+            store.set("updAvailable", "");
+            let done = false; try { done = nn.shellCommit(); } catch {}
+            if (done) return { mode:"shell" };   // il bridge ricarica l'interfaccia
+          }
+        } catch {}
+        // se qualcosa va storto si prosegue col fallback APK (nessun rischio: la shell
+        // interna viene sostituita solo al commit atomico riuscito)
       }
-      // web/PWA: auto-aggiornamento reale (svuota cache + aggiorna service worker + reload)
+      // 2) dispositivo: installazione APK nativa (serve quando cambia il codice nativo),
+      //    con fallback all'apertura del download nel browser
+      if (nn && info.apk) {
+        if (nn.installUpdate) { try { nn.installUpdate(info.apk); return { mode:"apk" }; } catch {} }
+        if (nn.openBrowser)   { try { nn.openBrowser(info.apk);   return { mode:"browser" }; } catch {} }
+      }
+      // 3) web/PWA: auto-aggiornamento reale (svuota cache + aggiorna service worker + reload)
       try {
         if ("caches" in window) { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); }
         if (navigator.serviceWorker) { const rs = await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r => r.update())); }

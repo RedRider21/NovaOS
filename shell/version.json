@@ -1,7 +1,12 @@
 {
-  "version": "0.1.10",
-  "build": 11,
+  "version": "0.1.11",
+  "build": 12,
+  "minNative": 12,
   "date": "2026-08-13",
-  "notes": "Aggiornamenti di Sistema OTA: controllo automatico, notifica e installazione dalla UI. Pannello rapido One UI, modifica home multi-pagina, auto-blocco affidabile.",
-  "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk"
+  "notes": "Aggiornamento interfaccia OTA senza reinstallare l'APK: da ora gli update dell'interfaccia si applicano da dentro NovaOS.",
+  "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
+  "files": [
+    "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",
+    "version.json"
+  ]
 }

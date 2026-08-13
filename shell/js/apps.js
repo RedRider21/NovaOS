@@ -2067,7 +2067,7 @@ const NovaApps = (() => {
       const isPriv = () => { const ns = readSensors(); return !!(ns && ns.privileged); };
       // versione REALE installata (da PackageInfo) con fallback alla build web
       const appVer = (() => { try { return NN.appVersion ? JSON.parse(NN.appVersion()) : null; } catch { return null; } })();
-      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.10";
+      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.11";
       const VERLONG = appVer && appVer.code ? `${VER} · build ${appVer.code}` : `${VER} · build web`;
       // aggiornamento in attesa (rilevato dal controllo autonomo): mostra un pallino
       const updPend = () => { try { return os.store.get("updAvailable","") || ""; } catch { return ""; } };
@@ -2501,8 +2501,13 @@ const NovaApps = (() => {
             const ins = panel.querySelector("#upd-install");
             if (ins) ins.onclick = async () => {
               ins.disabled = true; ins.textContent = "Avvio aggiornamento…";
+              if (os.updater.last && os.updater.last.files && os.updater.last.files.length
+                  && window.NovaNative && window.NovaNative.shellWrite
+                  && (!os.updater.last.minNative || os.updater.last.nativeBuild >= os.updater.last.minNative)) {
+                panel.innerHTML = `<div style="color:var(--text-dim);font-size:13px;padding:6px 0"><span class="spin" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:8px"></span>Scarico e applico l'interfaccia aggiornata…</div>`;
+              }
               let r = {}; try { r = await os.updater.apply(); } catch {}
-              panel.innerHTML = r.mode === "web"
+              panel.innerHTML = (r.mode === "web" || r.mode === "shell")
                 ? `<div style="color:var(--text-dim);font-size:13px;padding:6px 0">Applico l'aggiornamento e riavvio l'interfaccia…</div>`
                 : `<div style="color:var(--text-dim);font-size:13px;padding:6px 0">Scaricamento e installazione avviati. Segui la richiesta del sistema per completare l'installazione.</div>`;
             };

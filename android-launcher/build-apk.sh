@@ -34,16 +34,28 @@ VNAME="$(grep -o 'versionName="[^"]*"' "$MANIFEST" | head -1 | sed 's/versionNam
 VCODE="$(grep -o 'versionCode="[^"]*"' "$MANIFEST" | head -1 | sed 's/versionCode="//;s/"//')"
 VDATE="$(date +%Y-%m-%d)"
 NOTES="${NOVA_UPDATE_NOTES:-Miglioramenti e correzioni.}"
+# minNative = build nativa minima capace di eseguire questa shell. Da alzare SOLO quando
+# la shell dipende da un nuovo metodo del bridge Java (allora serve un APK, non l'OTA-shell).
+MINNATIVE="${NOVA_MIN_NATIVE:-12}"
+# elenco dei file della shell da scaricare per l'aggiornamento OTA (esclusi gli harness di
+# test); version.json incluso in coda così la shell interna aggiorna il proprio numero.
+FILES_JSON="$(cd "$SHELL_SRC" && find . -type f ! -name '_t*.html' ! -name 'version.json' | sed 's#^\./##' | sort | sed 's/.*/    "&"/' | paste -sd, -)"
+FILES_JSON="$FILES_JSON,
+    \"version.json\""
 cat > "$SHELL_SRC/version.json" <<JSON
 {
   "version": "$VNAME",
   "build": $VCODE,
+  "minNative": $MINNATIVE,
   "date": "$VDATE",
   "notes": "$NOTES",
-  "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk"
+  "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
+  "files": [
+$FILES_JSON
+  ]
 }
 JSON
-echo "     version.json -> $VNAME (build $VCODE)"
+echo "     version.json -> $VNAME (build $VCODE, minNative $MINNATIVE)"
 
 rm -rf "$ASSETS/www"; mkdir -p "$ASSETS/www"
 cp -r "$SHELL_SRC"/. "$ASSETS/www/"

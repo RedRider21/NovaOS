@@ -56,6 +56,81 @@ public class MainActivity extends Activity {
     /** Esegue JS nella WebView dal thread UI (usato dai callback di rete della Mail). */
     void evalJs(String js) { runOnUiThread(() -> { if (web != null) web.evaluateJavascript(js, null); }); }
 
+    // ============================================================
+    //  Aggiornamento OTA della SOLA interfaccia (shell HTML/JS/CSS) senza reinstallare
+    //  l'APK. La shell può vivere in una cartella scrivibile interna (files/shell/): se
+    //  contiene una build più recente di quella impacchettata negli asset, viene caricata
+    //  da lì. L'updater JS scarica i file, li scrive in staging (files/shell_stage/) e poi
+    //  fa il commit atomico (rename). Stesso meccanismo riutilizzabile nella ROM finale,
+    //  dove la shell risiederà in una directory di sistema dedicata invece che nell'APK.
+    // ============================================================
+    private java.io.File shellDir() { return new java.io.File(getFilesDir(), "shell"); }
+    private java.io.File stageDir() { return new java.io.File(getFilesDir(), "shell_stage"); }
+
+    private int parseBuild(String json) {
+        try {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"build\"\\s*:\\s*(\\d+)").matcher(json);
+            if (m.find()) return Integer.parseInt(m.group(1));
+        } catch (Exception e) {}
+        return -1;
+    }
+    private int fileBuild(java.io.File versionJson) {
+        try {
+            byte[] b = new byte[(int) versionJson.length()];
+            java.io.FileInputStream in = new java.io.FileInputStream(versionJson);
+            int off = 0, n; while (off < b.length && (n = in.read(b, off, b.length - off)) > 0) off += n;
+            in.close();
+            return parseBuild(new String(b, "UTF-8"));
+        } catch (Exception e) { return -1; }
+    }
+    private int assetBuild() {
+        try {
+            java.io.InputStream in = getAssets().open("www/version.json");
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096]; int n; while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            in.close();
+            return parseBuild(bo.toString("UTF-8"));
+        } catch (Exception e) { return 0; }
+    }
+    /** URL da cui caricare la shell: interna se più recente degli asset, altrimenti asset. */
+    private String resolveShellUrl() {
+        if (DEV) return DEV_URL;
+        try {
+            java.io.File idx = new java.io.File(shellDir(), "index.html");
+            java.io.File ver = new java.io.File(shellDir(), "version.json");
+            if (idx.exists() && ver.exists() && fileBuild(ver) > assetBuild())
+                return "file://" + idx.getAbsolutePath();
+        } catch (Exception e) {}
+        return PROD_URL;   // fallback sicuro: la shell dell'APK non viene mai persa
+    }
+    private void deleteRec(java.io.File f) {
+        if (f == null || !f.exists()) return;
+        if (f.isDirectory()) { java.io.File[] ch = f.listFiles(); if (ch != null) for (java.io.File c : ch) deleteRec(c); }
+        f.delete();
+    }
+    /** Scrive un file nella staging, bloccando ogni path-traversal fuori da shell_stage/. */
+    private boolean writeStageFile(String rel, String base64) {
+        try {
+            if (rel == null) return false;
+            rel = rel.replace("\\", "/");
+            if (rel.contains("..") || rel.startsWith("/")) return false;
+            java.io.File out = new java.io.File(stageDir(), rel);
+            if (!out.getCanonicalPath().startsWith(stageDir().getCanonicalPath())) return false;
+            java.io.File parent = out.getParentFile(); if (parent != null) parent.mkdirs();
+            byte[] data = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+            java.io.FileOutputStream fo = new java.io.FileOutputStream(out);
+            fo.write(data); fo.close();
+            return true;
+        } catch (Exception e) { return false; }
+    }
+    /** Commit atomico: valida la staging, sostituisce shell/ e ricarica da lì. */
+    private boolean commitStage() {
+        java.io.File stage = stageDir();
+        if (!new java.io.File(stage, "index.html").exists() || !new java.io.File(stage, "version.json").exists()) return false;
+        deleteRec(shellDir());
+        return stage.renameTo(shellDir());
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -110,7 +185,7 @@ public class MainActivity extends Activity {
         requestDefaultDialer();
 
         immersive();
-        web.loadUrl(DEV ? DEV_URL : PROD_URL);
+        web.loadUrl(resolveShellUrl());   // shell interna (aggiornata OTA) o quella dell'APK
     }
 
     /** Chiede a NovaOS di diventare l'app telefono predefinita (serve per l'InCallService). */
@@ -536,6 +611,28 @@ public class MainActivity extends Activity {
                     Toast.makeText(MainActivity.this, "Errore aggiornamento: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 }
             });
+        }
+
+        // ---- Aggiornamento OTA della sola interfaccia (shell) senza reinstallare l'APK ----
+        /** Svuota e prepara la cartella di staging per una nuova shell. */
+        @JavascriptInterface public void shellStageBegin() { deleteRec(stageDir()); stageDir().mkdirs(); }
+        /** Scrive un file della nuova shell (contenuto in base64) nella staging. */
+        @JavascriptInterface public boolean shellWrite(String rel, String base64) { return writeStageFile(rel, base64); }
+        /** Rende attiva la shell in staging (commit atomico) e ricarica l'interfaccia. */
+        @JavascriptInterface public boolean shellCommit() {
+            boolean ok = commitStage();
+            if (ok) runOnUiThread(() -> { immersive(); web.loadUrl(resolveShellUrl()); });
+            return ok;
+        }
+        /** Ripristino: elimina la shell interna e torna a quella dell'APK. */
+        @JavascriptInterface public void shellReset() {
+            deleteRec(shellDir()); deleteRec(stageDir());
+            runOnUiThread(() -> { immersive(); web.loadUrl(PROD_URL); });
+        }
+        /** Diagnostica: da dove è caricata la shell ("internal" | "asset" | "dev"). */
+        @JavascriptInterface public String shellSource() {
+            String u = resolveShellUrl();
+            return DEV ? "dev" : (u.equals(PROD_URL) ? "asset" : "internal");
         }
 
         // ---- Mail reale (SMTP/IMAP). I risultati tornano via window.NovaMail.* ----
