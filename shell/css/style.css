@@ -89,6 +89,11 @@ body {
   content: ""; position: absolute; right: -3px; top: 3px; width: 2px; height: 4px;
   background: var(--text); border-radius: 0 1px 1px 0;
 }
+/* Lockscreen: la parte alta è sempre scura (gradiente navy) → status bar SEMPRE chiara,
+   anche in tema chiaro, altrimenti orario e percentuale batteria risultano invisibili. */
+#lockscreen .statusbar { color: #e8ecf4; }
+#lockscreen .statusbar .sb-batt-shell { border-color: #e8ecf4; }
+#lockscreen .statusbar .sb-batt-shell::after { background: #e8ecf4; }
 .sb-batt-fill { display: block; height: 100%; background: var(--text); border-radius: 1px; transition: width .4s, background .4s; }
 
 /* ============================================================
@@ -209,10 +214,19 @@ body {
 .folder-hint { font-size:calc(11px*var(--fscale,1)); color: var(--text-dim); text-align: center; line-height: 1.35; margin: 0 4px 12px; }
 .spin { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--surface-2); border-top-color: var(--accent); animation: spin .8s linear infinite; }
 .upd-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); vertical-align: middle; margin-left: 2px; }
+/* selettore icone (libreria Bootstrap offline) */
+.ip-ov { position: absolute; inset: 0; background: rgba(0,0,0,.5); z-index: 150; display: flex; align-items: flex-end; animation: fade-up .2s both; }
+.ip-card { background: var(--bg-2); width: 100%; max-height: 82%; border-radius: 24px 24px 0 0; padding: 16px; display: flex; flex-direction: column; }
+.ip-scroll { overflow-y: auto; flex: 1; }
+.ip-cat { color: var(--text-dim); font-size: calc(11px*var(--fscale,1)); text-transform: uppercase; letter-spacing: .5px; margin: 12px 2px 6px; }
+.ip-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.ip-cell { aspect-ratio: 1; background: var(--surface); border: none; border-radius: 12px; color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background .12s, transform .1s; }
+.ip-cell:active { background: var(--surface-2); transform: scale(.92); }
+.ip-cell svg { width: 22px; height: 22px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .folder-close { width: 100%; background: var(--surface); border: none; border-radius: 12px; padding: 12px; color: var(--text); cursor: pointer; }
 .app-icon .glyph {
-  width: 58px; height: 58px; border-radius: 17px;
+  width: 58px; height: 58px; border-radius: var(--icon-radius, 28%);
   display: flex; align-items: center; justify-content: center;
   font-size:calc(27px*var(--fscale,1)); color: #fff;
   box-shadow: 0 6px 16px rgba(0,0,0,.35);
@@ -324,19 +338,17 @@ body[data-theme="light"] .dock { background: rgba(255,255,255,.6); }
   background: var(--surface-2);
   display: flex; align-items: center; justify-content: center;
   font-size:calc(23px*var(--fscale,1)); color: var(--text);
-  transition: background .18s, transform .12s, box-shadow .18s;
+  transition: background .18s, transform .12s;
 }
+.qtile .q-ico svg { width: 25px; height: 25px; display: block; }
 .qtile:active .q-ico { transform: scale(.9); }
-.qtile.on .q-ico {
-  background: linear-gradient(155deg, color-mix(in srgb, var(--accent) 88%, #7db0ff), var(--accent));
-  color: #fff;
-  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 65%, transparent);
-}
+.qtile.on .q-ico { background: var(--accent); color: #fff; }   /* One UI: blu pieno, glifo bianco */
 .qtile.on { color: var(--text); font-weight: 600; }
 .qtile .q-lbl { max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* slider luminosità stile One UI: pillola con riempimento accent e pomello bianco */
 .qs-bright { display: flex; align-items: center; gap: 12px; background: var(--surface); border-radius: 30px; padding: 12px 18px; }
-.qs-sun { font-size:calc(17px*var(--fscale,1)); opacity: .8; }
+.qs-sun { font-size:calc(17px*var(--fscale,1)); opacity: .8; display: flex; align-items: center; color: var(--text-dim); }
+.qs-sun svg { width: 18px; height: 18px; }
 .qs-bright input[type=range] {
   flex: 1; -webkit-appearance: none; appearance: none; height: 10px; border-radius: 6px;
   background: linear-gradient(90deg, var(--accent) var(--fill,60%), var(--surface-2) var(--fill,60%));

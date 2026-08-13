@@ -9,6 +9,7 @@ import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.os.Environment;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -611,6 +612,18 @@ public class MainActivity extends Activity {
                     Toast.makeText(MainActivity.this, "Errore aggiornamento: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 }
             });
+        }
+
+        // ---- Persistenza impostazioni: SharedPreferences (affidabile tra i riavvii, a
+        //      differenza della localStorage della WebView su origine file://) ----
+        @JavascriptInterface public String prefGet(String k) {
+            return getSharedPreferences("novaos", MODE_PRIVATE).getString(k, null);
+        }
+        @JavascriptInterface public void prefSet(String k, String v) {
+            getSharedPreferences("novaos", MODE_PRIVATE).edit().putString(k, v).apply();
+        }
+        @JavascriptInterface public void prefDel(String k) {
+            getSharedPreferences("novaos", MODE_PRIVATE).edit().remove(k).apply();
         }
 
         // ---- Aggiornamento OTA della sola interfaccia (shell) senza reinstallare l'APK ----

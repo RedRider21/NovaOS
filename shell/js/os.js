@@ -13,11 +13,44 @@ const OS = (() => {
   };
 
   // ---------------- storage ----------------
+  // Persistenza doppia: SharedPreferences native (se presente il bridge) + localStorage.
+  // La localStorage della WebView su origine file:// NON è garantita tra i riavvii dell'app;
+  // le preferenze native lo sono. Scrive su entrambe; legge prima dal nativo con fallback.
+  const _prefs = () => window.NovaNative || {};
   const store = {
-    get(k, d) { try { const v = localStorage.getItem("nova:"+k); return v===null?d:JSON.parse(v); } catch { return d; } },
-    set(k, v) { try { localStorage.setItem("nova:"+k, JSON.stringify(v)); } catch {} },
-    del(k) { try { localStorage.removeItem("nova:"+k); } catch {} },
+    get(k, d) {
+      try {
+        let v = null;
+        if (_prefs().prefGet) { try { v = _prefs().prefGet("nova:"+k); } catch {} }
+        if (v === null || v === undefined) v = localStorage.getItem("nova:"+k);
+        return (v === null || v === undefined) ? d : JSON.parse(v);
+      } catch { return d; }
+    },
+    set(k, v) {
+      const s = JSON.stringify(v);
+      try { localStorage.setItem("nova:"+k, s); } catch {}
+      try { if (_prefs().prefSet) _prefs().prefSet("nova:"+k, s); } catch {}
+    },
+    del(k) {
+      try { localStorage.removeItem("nova:"+k); } catch {}
+      try { if (_prefs().prefDel) _prefs().prefDel("nova:"+k); } catch {}
+    },
   };
+  // migrazione una tantum: porta nelle preferenze native le impostazioni finora salvate
+  // solo in localStorage (così non si perdono al primo riavvio dopo l'aggiornamento).
+  (function migratePrefs() {
+    const nn = window.NovaNative;
+    if (!nn || !nn.prefSet || !nn.prefGet) return;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf("nova:") === 0) {
+          let ex = null; try { ex = nn.prefGet(k); } catch {}
+          if (ex === null || ex === undefined) { try { nn.prefSet(k, localStorage.getItem(k)); } catch {} }
+        }
+      }
+    } catch {}
+  })();
 
   // ---------------- stato di sistema ----------------
   const defaults = {
@@ -43,6 +76,8 @@ const OS = (() => {
     // aspetto icone/desktop: stile "filled" (tessere colorate) o "outline" (contorno
     // monocromatico); colori personalizzati opzionali (vuoto = default del tema)
     iconStyle: "filled", deskColor: "", iconColor: "",
+    // forma delle tessere icona (circle|squircle|square) e colore di risalto (accento/bordo)
+    iconShape: "squircle", accentColor: "",
   };
   const state = Object.fromEntries(Object.keys(defaults).map(k => [k, store.get(k, defaults[k])]));
 
@@ -133,6 +168,11 @@ const OS = (() => {
     const rootStyle = document.documentElement.style;
     rootStyle.setProperty("--icon-color", state.iconColor || (state.theme==="dark" ? "#e8ecf4" : "#141a24"));
     rootStyle.setProperty("--icon-bg", state.deskColor || "var(--bg)");
+    // forma delle tessere icona
+    rootStyle.setProperty("--icon-radius", { circle:"50%", squircle:"28%", square:"12%" }[state.iconShape] || "28%");
+    // colore di risalto (accento/bordo): se personalizzato sovrascrive il --accent del tema
+    if (state.accentColor) rootStyle.setProperty("--accent", state.accentColor);
+    else rootStyle.removeProperty("--accent");
     document.body.classList.toggle("a11y-bold", !!state.boldText);
     document.body.classList.toggle("a11y-contrast", !!state.highContrast);
     // riduci animazioni: attivo anche col risparmio energetico
@@ -576,9 +616,22 @@ const OS = (() => {
   }
   function setupLockUI() {
     const usePin = state.lockType === "pin" && state.pin;
-    $("#lock-hint").classList.toggle("hidden", usePin || state.lockType === "none");
-    $("#pinpad").classList.toggle("hidden", !usePin);
+    // Stato iniziale: orologio + suggerimento "scorri verso l'alto", tastierino NASCOSTO.
+    // Anche con PIN il tastierino compare DOPO lo scorrimento (vedi revealLock).
+    $("#lock-hint").classList.toggle("hidden", state.lockType === "none");
+    $("#pinpad").classList.add("hidden");
     if (usePin) { $("#pin-label").textContent = "Inserisci il PIN"; $("#pin-label").classList.remove("err"); renderPinpad(); renderPinDots(); }
+  }
+  // dopo lo scorrimento verso l'alto: se è impostato il PIN mostra il tastierino,
+  // altrimenti (nessuno/scorrimento) sblocca direttamente.
+  function revealLock() {
+    if (state.lockType === "pin" && state.pin) {
+      pinBuffer = ""; renderPinDots();
+      $("#lock-hint").classList.add("hidden");
+      $("#pinpad").classList.remove("hidden");
+    } else {
+      unlock();
+    }
   }
   function renderPinpad() {
     const keys = ["1","2","3","4","5","6","7","8","9","","0","⌫"];
@@ -777,7 +830,7 @@ const OS = (() => {
       const li = await localInfo();
       const ai = appInfo();
       const curBuild = (ai && ai.code) || (li && li.build) || 0;
-      const curName  = (ai && ai.name && ai.name !== "?") ? ai.name : (li && li.version) || "0.1.12";
+      const curName  = (ai && ai.name && ai.name !== "?") ? ai.name : (li && li.version) || "0.1.13";
       let rel = null;
       try { const r = await fetch(RAW + "?t=" + Date.now(), { cache:"no-store" }); if (r.ok) rel = await r.json(); } catch {}
       const latestBuild = rel ? (rel.build || 0) : curBuild;
@@ -868,26 +921,30 @@ const OS = (() => {
   function renderQuick() {
     if (hasNativeSensors()) syncQuickSensors();
     const native = hasNativeSensors();
-    // k = chiave stato · ic = icona · l = etichetta · sensor/panel = gestione hardware
+    // glifo monocromatico Bootstrap (offline) con fallback emoji, tinto via currentColor
+    const glyph = (id, em) => (window.NovaIcons && NovaIcons.svg[id])
+      ? `<svg viewBox="0 0 16 16" fill="currentColor">${NovaIcons.svg[id]}</svg>` : (em||"");
+    // k = chiave stato · g = id glifo · em = fallback emoji · l = etichetta · sensor/panel
+    const themeGlyph = state.theme === "dark" ? "moon-fill" : "sun-fill";
     const tiles = [
-      { k:"wifi",      ic:"📶", l:"Wi-Fi",      sensor:true, panel:"wifi" },
-      { k:"bt",        ic:"🔵", l:"Bluetooth",  sensor:true, panel:"bluetooth" },
-      { k:"dnd",       ic:"🌙", l:"Non dist." },
-      { k:"airplane",  ic:"✈️", l:"Aereo",      sensor:true, panel:"airplane" },
-      { k:"theme",     ic:"🌗", l:"Tema" },
-      { k:"location",  ic:"📍", l:"Posizione",  sensor:true, panel:"location" },
-      { k:"vibrate",   ic:"📳", l:"Vibrazione" },
-      { k:"saver",     ic:"🔋", l:"Risparmio" },
-      { k:"autoRotate",ic:"🔄", l:"Rotazione" },
-      { k:"nfc",       ic:"📡", l:"NFC",        sensor:true, panel:"nfc" },
+      { k:"wifi",      g:"wifi",            em:"📶", l:"Wi-Fi",      sensor:true, panel:"wifi" },
+      { k:"bt",        g:"bluetooth",       em:"🔵", l:"Bluetooth",  sensor:true, panel:"bluetooth" },
+      { k:"dnd",       g:"bell-slash-fill", em:"🌙", l:"Non dist." },
+      { k:"airplane",  g:"airplane-fill",   em:"✈️", l:"Aereo",      sensor:true, panel:"airplane" },
+      { k:"theme",     g:themeGlyph,        em:"🌗", l:"Tema" },
+      { k:"location",  g:"geo-alt-fill",    em:"📍", l:"Posizione",  sensor:true, panel:"location" },
+      { k:"vibrate",   g:"phone-vibrate-fill", em:"📳", l:"Vibrazione" },
+      { k:"saver",     g:"battery-half",    em:"🔋", l:"Risparmio" },
+      { k:"autoRotate",g:"arrow-repeat",    em:"🔄", l:"Rotazione" },
+      { k:"nfc",       g:"broadcast-pin",   em:"📡", l:"NFC",        sensor:true, panel:"nfc" },
     ];
     const briFill = Math.round((state.brightness - 20) / 80 * 100);
     $("#shade-quick").innerHTML = `
       <div class="qs-grid">
         ${tiles.map(t => `<button class="qtile ${quickOn(t.k)?'on':''}" data-q="${t.k}" data-sensor="${t.sensor?1:0}" data-panel="${t.panel||''}">
-          <span class="q-ico">${t.ic}</span><span class="q-lbl">${t.l}</span></button>`).join("")}
+          <span class="q-ico">${glyph(t.g, t.em)}</span><span class="q-lbl">${t.l}</span></button>`).join("")}
       </div>
-      <div class="qs-bright"><span class="qs-sun">☀</span><input type="range" id="qs-bri" min="20" max="100" value="${state.brightness}" style="--fill:${briFill}%"></div>`;
+      <div class="qs-bright"><span class="qs-sun">${glyph("brightness-high-fill","☀")}</span><input type="range" id="qs-bri" min="20" max="100" value="${state.brightness}" style="--fill:${briFill}%"></div>`;
     const SETFN = { wifi:"setWifi", bt:"setBluetooth", airplane:"setAirplane", location:"setLocation", nfc:"setNfc" };
     $("#shade-quick").querySelectorAll(".qtile").forEach(el => el.onclick = () => {
       const k = el.dataset.q, isSensor = el.dataset.sensor === "1";
@@ -916,8 +973,8 @@ const OS = (() => {
   // ============================================================
   function set(k, v) { state[k] = v; store.set(k, v);
     if (k==="theme") { applyTheme(); applyDisplay(); }
-    if (["brightness","textScale","wallpaper","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","saver","adaptiveBright"].includes(k)) applyDisplay();
-    if (["iconStyle","deskColor","iconColor"].includes(k) && screens.home.classList.contains("active")) renderHome();
+    if (["brightness","textScale","wallpaper","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","iconShape","accentColor","saver","adaptiveBright"].includes(k)) applyDisplay();
+    if (["iconStyle","deskColor","iconColor","iconShape"].includes(k) && screens.home.classList.contains("active")) renderHome();
     if (k==="notifLock") renderLockNotifs();
     renderStatusbars();
   }
@@ -941,24 +998,25 @@ const OS = (() => {
   function closeShade() { $("#shade").classList.remove("open"); $("#shade-scrim").classList.remove("show"); }
 
   function bindGestures() {
-    // swipe-up di sblocco (solo se non è richiesto il PIN)
+    // scorrimento verso l'alto per sbloccare. Con il PIN NON sblocca subito: rivela il
+    // tastierino (revealLock). Attivo solo quando il tastierino non è già mostrato.
     let sy = null;
-    const canSwipe = () => state.lockType !== "pin" || !state.pin;
-    const start = y => { if (screens.lock.classList.contains("active") && canSwipe()) sy = y; };
+    const swipeStage = () => $("#pinpad").classList.contains("hidden");   // fase "orologio"
+    const start = y => { if (screens.lock.classList.contains("active") && swipeStage()) sy = y; };
     const move  = y => { if (sy===null) return; const dy = Math.min(0, y - sy);
       screens.lock.classList.add("dragging");
       screens.lock.style.transform = `translateY(${dy}px)`; screens.lock.style.opacity = String(1 + dy/500); };
     const end = y => { if (sy===null) return; const dy = y - sy;
       screens.lock.classList.remove("dragging"); screens.lock.style.transform=""; screens.lock.style.opacity="";
-      if (dy < -80) unlock(); sy = null; };
+      if (dy < -80) revealLock(); sy = null; };
     screens.lock.addEventListener("touchstart", e => start(e.touches[0].clientY));
     screens.lock.addEventListener("touchmove",  e => move(e.touches[0].clientY));
     screens.lock.addEventListener("touchend",   e => end(e.changedTouches[0].clientY));
     screens.lock.addEventListener("mousedown",  e => start(e.clientY));
     window.addEventListener("mousemove", e => { if(sy!==null) move(e.clientY); });
     window.addEventListener("mouseup",   e => { if(sy!==null) end(e.clientY); });
-    // click semplice = sblocca solo se non serve PIN
-    screens.lock.addEventListener("click", e => { if (canSwipe() && !e.target.closest("#pinpad")) unlock(); });
+    // tocco semplice sull'orologio: rivela il PIN (o sblocca se non serve). Sul tastierino no.
+    screens.lock.addEventListener("click", e => { if (swipeStage() && !e.target.closest("#pinpad")) revealLock(); });
 
     // shade dalla status bar
     let ty = null;

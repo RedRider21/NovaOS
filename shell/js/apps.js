@@ -1936,6 +1936,41 @@ const NovaApps = (() => {
 
       let chosenIcon = "🌐", curColor = "#6d8bff", editId = null;
 
+      // icona Bootstrap -> data URI SVG (sfondo trasparente, glifo bianco con margine)
+      // così si integra col rendering immagine già esistente e si tinge sul colore app.
+      const svgData = (id, color = "#ffffff") => {
+        const inner = window.NovaIcons && NovaIcons.svg[id]; if (!inner) return null;
+        const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='-3 -3 22 22' fill='${color}'>${inner}</svg>`;
+        return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+      };
+      // overlay di scelta icona dalla libreria offline (ricerca + categorie)
+      const openIconPicker = onPick => {
+        if (!window.NovaIcons) return;
+        const ov = document.createElement("div"); ov.className = "ip-ov";
+        const cell = id => `<button class="ip-cell" data-id="${id}" title="${id}"><svg viewBox="0 0 16 16" fill="currentColor">${NovaIcons.svg[id]}</svg></button>`;
+        const groupsHtml = q => {
+          if (q) { const hits = Object.keys(NovaIcons.svg).filter(id => id.includes(q));
+            return hits.length ? `<div class="ip-grid">${hits.map(cell).join("")}</div>` : `<div style="color:var(--text-dim);padding:20px;text-align:center">Nessuna icona per «${q}»</div>`; }
+          return NovaIcons.groups.map(g => `<div class="ip-cat">${g.name}</div><div class="ip-grid">${g.ids.map(cell).join("")}</div>`).join("");
+        };
+        ov.innerHTML = `<div class="ip-card">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+            <input id="ip-q" placeholder="Cerca icona (in inglese, es. phone, star…)" style="flex:1;background:var(--surface-2);border:none;border-radius:12px;padding:11px 14px;color:var(--text);font-size:calc(14px*var(--fscale,1));outline:none">
+            <button class="btn ghost" id="ip-x" style="width:auto;padding:10px 12px">✕</button>
+          </div>
+          <div class="ip-scroll" id="ip-scroll">${groupsHtml("")}</div>
+          <div style="color:var(--text-dim);font-size:calc(11px*var(--fscale,1));text-align:center;padding-top:8px">Bootstrap Icons · ${Object.keys(NovaIcons.svg).length} icone offline</div>
+        </div>`;
+        const close = () => ov.remove();
+        (document.querySelector("#device") || document.body).appendChild(ov);
+        const scroll = ov.querySelector("#ip-scroll");
+        const bindCells = () => scroll.querySelectorAll(".ip-cell").forEach(b => b.onclick = () => { onPick(b.dataset.id); close(); });
+        bindCells();
+        ov.querySelector("#ip-x").onclick = close;
+        ov.onclick = e => { if (e.target === ov) close(); };
+        ov.querySelector("#ip-q").oninput = e => { scroll.innerHTML = groupsHtml(e.target.value.trim().toLowerCase()); bindCells(); };
+      };
+
       const draw = () => {
         const installed = os.userApps();
         const editing = editId ? installed.find(a => a.id === editId) : null;
@@ -1952,6 +1987,7 @@ const NovaApps = (() => {
             <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Icona sul desktop</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
               <input id="ap-emoji" value="🌐" maxlength="2" title="Emoji" style="width:50px;text-align:center;background:var(--surface-2);border:none;border-radius:10px;padding:10px;font-size:calc(20px*var(--fscale,1));outline:none">
+              <button class="btn ghost" id="ap-lib" style="width:auto;padding:10px 12px;font-size:calc(13px*var(--fscale,1))">⬡ Libreria icone</button>
               <button class="btn ghost" id="ap-fav" style="width:auto;padding:10px 12px;font-size:calc(13px*var(--fscale,1))">🌐 Favicon del sito</button>
               <label class="btn ghost" style="width:auto;padding:10px 12px;font-size:calc(13px*var(--fscale,1));cursor:pointer">🖼️ Immagine<input id="ap-file" type="file" accept="image/*" hidden></label>
               <input id="ap-color" type="color" value="${curColor}" title="Colore sfondo" style="width:44px;height:40px;border:none;background:none;border-radius:10px;cursor:pointer">
@@ -2009,6 +2045,8 @@ const NovaApps = (() => {
           const f = faviconFor(root.querySelector("#ap-url").value.trim());
           if (f) { chosenIcon = f; preview(); } else os.notify({ app:"store", title:"Store", text:"Inserisci prima l'indirizzo del sito." });
         };
+        const lib = root.querySelector("#ap-lib");
+        if (lib) lib.onclick = () => openIconPicker(id => { const d = svgData(id); if (d) { chosenIcon = d; iconTouched = true; preview(); } });
         root.querySelector("#ap-file").onchange = e => {
           const file = e.target.files[0]; if(!file) return;
           const r = new FileReader(); r.onload = () => { chosenIcon = r.result; preview(); }; r.readAsDataURL(file);
@@ -2067,7 +2105,7 @@ const NovaApps = (() => {
       const isPriv = () => { const ns = readSensors(); return !!(ns && ns.privileged); };
       // versione REALE installata (da PackageInfo) con fallback alla build web
       const appVer = (() => { try { return NN.appVersion ? JSON.parse(NN.appVersion()) : null; } catch { return null; } })();
-      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.12";
+      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.13";
       const VERLONG = appVer && appVer.code ? `${VER} · build ${appVer.code}` : `${VER} · build web`;
       // aggiornamento in attesa (rilevato dal controllo autonomo): mostra un pallino
       const updPend = () => { try { return os.store.get("updAvailable","") || ""; } catch { return ""; } };
@@ -2243,20 +2281,64 @@ const NovaApps = (() => {
             <div class="section-label">Sfondo</div>
             <div class="swatches">${os.WALLS.map((w,i)=>`<div class="swatch ${i===S.wallpaper?'on':''}" data-w="${i}" style="background:${w}"></div>`).join("")}</div>
 
-            <div class="section-label">Stile icone</div>
+            <div class="section-label">Tema · stile icone</div>
             <div class="seg"><button data-is="filled" class="${S.iconStyle!=='outline'?'on':''}">Colorate</button><button data-is="outline" class="${S.iconStyle==='outline'?'on':''}">Contorno</button></div>
+            <div class="section-label">Forma icone</div>
+            <div class="seg">${[["circle","Cerchio"],["squircle","Squircle"],["square","Quadrato"]].map(([v,l])=>`<button data-ish="${v}" class="${(S.iconShape||'squircle')===v?'on':''}">${l}</button>`).join("")}</div>
             <div class="group" style="padding:14px 16px">
               <div class="item" style="padding:6px 0"><div class="i-body"><div class="i-title">Colore di fondo</div><div class="i-sub">${S.deskColor?"Personalizzato":"Come il tema"}</div></div>
                 <input type="color" id="deskcol" value="${S.deskColor||(S.theme==='dark'?'#0b0f17':'#eef1f7')}" style="width:44px;height:38px;border:none;background:none;border-radius:10px;cursor:pointer"></div>
+              <div class="item" style="padding:6px 0"><div class="i-body"><div class="i-title">Colore di risalto</div><div class="i-sub">Accento e bordi${S.accentColor?" · personalizzato":""}</div></div>
+                <input type="color" id="acccol" value="${S.accentColor||(S.theme==='dark'?'#6d8bff':'#3f63ff')}" style="width:44px;height:38px;border:none;background:none;border-radius:10px;cursor:pointer"></div>
               <div class="item" style="padding:6px 0"><div class="i-body"><div class="i-title">Colore icone</div><div class="i-sub">Bordo e glifo${S.iconStyle==='outline'?'':' (attivo con "Contorno")'}</div></div>
                 <input type="color" id="iconcol" value="${S.iconColor||(S.theme==='dark'?'#e8ecf4':'#141a24')}" style="width:44px;height:38px;border:none;background:none;border-radius:10px;cursor:pointer"></div>
-              ${(S.deskColor||S.iconColor||S.iconStyle==='outline')?`<button class="btn ghost" id="icon-reset" style="margin-top:10px">Ripristina aspetto predefinito</button>`:''}
+              ${(S.deskColor||S.iconColor||S.accentColor||S.iconStyle==='outline'||(S.iconShape&&S.iconShape!=='squircle'))?`<button class="btn ghost" id="icon-reset" style="margin-top:10px">Ripristina aspetto predefinito</button>`:''}
+            </div>
+            <div class="section-label">Tema · condivisione</div>
+            <div class="group" style="padding:14px 16px">
+              <div style="display:flex;gap:10px">
+                <button class="btn ghost" id="th-export" style="flex:1">Esporta tema</button>
+                <label class="btn ghost" style="flex:1;text-align:center;cursor:pointer">Importa tema<input id="th-import" type="file" accept=".json,.novatheme" hidden></label>
+              </div>
+              <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));margin-top:8px">Salva o applica un tema (.novatheme): colori, forma e stile icone, sfondo, testo.</div>
             </div>`;
           sec.querySelectorAll("[data-th]").forEach(b => b.onclick = () => { os.set("theme", b.dataset.th); sections.display(); });
           sec.querySelectorAll("[data-is]").forEach(b => b.onclick = () => { os.set("iconStyle", b.dataset.is); sections.display(); });
+          sec.querySelectorAll("[data-ish]").forEach(b => b.onclick = () => { os.set("iconShape", b.dataset.ish); sections.display(); });
           sec.querySelector("#deskcol").oninput = e => os.set("deskColor", e.target.value);
+          sec.querySelector("#acccol").oninput = e => os.set("accentColor", e.target.value);
           sec.querySelector("#iconcol").oninput = e => os.set("iconColor", e.target.value);
-          const ir = sec.querySelector("#icon-reset"); if (ir) ir.onclick = () => { os.set("iconStyle","filled"); os.set("deskColor",""); os.set("iconColor",""); sections.display(); };
+          const ir = sec.querySelector("#icon-reset"); if (ir) ir.onclick = () => { ["iconStyle","deskColor","iconColor","accentColor"].forEach((k,i)=>os.set(k, i?"":"filled")); os.set("iconShape","squircle"); sections.display(); };
+          // esporta/importa tema nel formato .novatheme (allineato al Theme Studio)
+          sec.querySelector("#th-export").onclick = () => {
+            const t = { format:"novatheme/1", meta:{ id:"tema-"+Date.now(), name:"Tema personale", base:S.theme },
+              colors:{ accent:S.accentColor||undefined, bg:S.deskColor||undefined, icon:S.iconColor||undefined },
+              shape:{ iconStyle:S.iconStyle, iconShape:S.iconShape||"squircle" },
+              wallpaper: S.deskColor?{type:"solid",value:S.deskColor}:{type:"gradient",value:os.WALLS[S.wallpaper]},
+              typography:{ textScale:S.textScale } };
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(new Blob([JSON.stringify(t,null,2)],{type:"application/json"}));
+            a.download = "tema-novaos.novatheme.json"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+            os.notify({ app:"settings", title:"Tema", text:"Tema esportato come file." });
+          };
+          sec.querySelector("#th-import").onchange = e => {
+            const f = e.target.files[0]; if (!f) return;
+            const r = new FileReader();
+            r.onload = () => { try { const t = JSON.parse(r.result);
+              if (t.format !== "novatheme/1") { os.notify({app:"settings",title:"Tema",text:"File non riconosciuto."}); return; }
+              if (t.meta?.base) os.set("theme", t.meta.base);
+              if (t.colors?.accent) os.set("accentColor", t.colors.accent);
+              if (t.colors?.icon) os.set("iconColor", t.colors.icon);
+              if (t.shape?.iconStyle) os.set("iconStyle", t.shape.iconStyle);
+              if (t.shape?.iconShape) os.set("iconShape", t.shape.iconShape);
+              if (t.typography?.textScale) os.set("textScale", t.typography.textScale);
+              if (t.wallpaper?.type === "solid") os.set("deskColor", t.wallpaper.value);
+              else os.set("deskColor", "");
+              os.notify({ app:"settings", title:"Tema", text:`Tema «${t.meta?.name||"importato"}» applicato.` });
+              sections.display();
+            } catch (err) { os.notify({app:"settings",title:"Tema",text:"File non valido."}); } };
+            r.readAsText(f);
+          };
           sec.querySelector("#bri").oninput = e => os.set("brightness", +e.target.value);
           sec.querySelector("#ts").oninput = e => { os.set("textScale", +e.target.value); sec.querySelector("#ts-v").textContent = e.target.value+"%"; };
           sec.querySelectorAll("[data-w]").forEach(el => el.onclick = () => { os.set("wallpaper", +el.dataset.w); sections.display(); });
