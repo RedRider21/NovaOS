@@ -27,6 +27,24 @@ rm -rf "$OUT"; mkdir -p "$OUT/classes"
 
 echo "[0/6] sincronizzo la web shell negli assets (offline)"
 SHELL_SRC="$(cd "$(dirname "$0")/.." && pwd)/shell"
+
+# genera version.json (fonte di verità per l'auto-aggiornamento OTA): versione e build
+# vengono lette dal manifest così non vanno mai fuori sincrono col numero dell'APK.
+VNAME="$(grep -o 'versionName="[^"]*"' "$MANIFEST" | head -1 | sed 's/versionName="//;s/"//')"
+VCODE="$(grep -o 'versionCode="[^"]*"' "$MANIFEST" | head -1 | sed 's/versionCode="//;s/"//')"
+VDATE="$(date +%Y-%m-%d)"
+NOTES="${NOVA_UPDATE_NOTES:-Miglioramenti e correzioni.}"
+cat > "$SHELL_SRC/version.json" <<JSON
+{
+  "version": "$VNAME",
+  "build": $VCODE,
+  "date": "$VDATE",
+  "notes": "$NOTES",
+  "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk"
+}
+JSON
+echo "     version.json -> $VNAME (build $VCODE)"
+
 rm -rf "$ASSETS/www"; mkdir -p "$ASSETS/www"
 cp -r "$SHELL_SRC"/. "$ASSETS/www/"
 rm -f "$ASSETS/www"/_t*.html   # non impacchettare gli harness di test

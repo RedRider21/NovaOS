@@ -1,11 +1,15 @@
 package os.nova.launcher;
 
 import android.app.Activity;
+import android.app.DownloadManager;
 import android.app.role.RoleManager;
 import android.bluetooth.BluetoothAdapter;
+import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.Environment;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
@@ -483,6 +487,55 @@ public class MainActivity extends Activity {
                 long code = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ? p.getLongVersionCode() : p.versionCode;
                 return "{\"name\":\"" + p.versionName + "\",\"code\":" + code + "}";
             } catch (Exception e) { return "{\"name\":\"?\",\"code\":0}"; }
+        }
+
+        /**
+         * Aggiornamento OTA: scarica l'APK indicato e avvia l'installer di sistema.
+         * Usa DownloadManager, che espone da sé una URI content:// installabile (niente
+         * FileProvider). Se l'app non è ancora abilitata a installare da questa sorgente,
+         * porta l'utente al setting corrispondente. L'utente conferma sempre l'installazione.
+         */
+        @JavascriptInterface
+        public void installUpdate(String url) {
+            runOnUiThread(() -> {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                            && !getPackageManager().canRequestPackageInstalls()) {
+                        Toast.makeText(MainActivity.this, "Consenti l'installazione da NovaOS, poi riprova", Toast.LENGTH_LONG).show();
+                        try {
+                            startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                    Uri.parse("package:" + getPackageName())));
+                        } catch (Exception ignore) {}
+                        return;
+                    }
+                    DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                    DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
+                    req.setTitle("NovaOS — aggiornamento");
+                    req.setMimeType("application/vnd.android.package-archive");
+                    req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    req.setDestinationInExternalFilesDir(MainActivity.this, Environment.DIRECTORY_DOWNLOADS, "NovaOS-update.apk");
+                    final long id = dm.enqueue(req);
+                    Toast.makeText(MainActivity.this, "Scaricamento aggiornamento…", Toast.LENGTH_SHORT).show();
+                    BroadcastReceiver rcv = new BroadcastReceiver() {
+                        @Override public void onReceive(Context c, Intent i) {
+                            if (i.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) != id) return;
+                            try { c.unregisterReceiver(this); } catch (Exception ignore) {}
+                            Uri apk = dm.getUriForDownloadedFile(id);
+                            if (apk == null) { Toast.makeText(c, "Download non riuscito", Toast.LENGTH_LONG).show(); return; }
+                            Intent it = new Intent(Intent.ACTION_VIEW)
+                                    .setDataAndType(apk, "application/vnd.android.package-archive")
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            try { startActivity(it); }
+                            catch (Exception e) { Toast.makeText(c, "Installer non disponibile", Toast.LENGTH_LONG).show(); }
+                        }
+                    };
+                    IntentFilter flt = new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
+                    if (Build.VERSION.SDK_INT >= 33) registerReceiver(rcv, flt, Context.RECEIVER_EXPORTED);
+                    else registerReceiver(rcv, flt);
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "Errore aggiornamento: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            });
         }
 
         // ---- Mail reale (SMTP/IMAP). I risultati tornano via window.NovaMail.* ----

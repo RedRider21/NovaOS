@@ -207,6 +207,7 @@ body {
 .folder-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px 10px; margin-bottom: 14px; }
 .folder-hint { font-size: 11px; color: var(--text-dim); text-align: center; line-height: 1.35; margin: 0 4px 12px; }
 .spin { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--surface-2); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+.upd-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); vertical-align: middle; margin-left: 2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .folder-close { width: 100%; background: var(--surface); border: none; border-radius: 12px; padding: 12px; color: var(--text); cursor: pointer; }
 .app-icon .glyph {

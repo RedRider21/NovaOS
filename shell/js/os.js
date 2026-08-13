@@ -751,6 +751,72 @@ const OS = (() => {
   function syncQuickSensors() { const ns = readNativeSensors(); if (!ns) return;
     ["wifi","bt","nfc","location","airplane"].forEach(k => { if (k in ns) state[k] = ns[k]; }); }
 
+  // ============================================================
+  //  Aggiornamenti di sistema (OTA)
+  //  Confronta la build installata con shell/version.json pubblicato su GitHub (raw).
+  //  Controllo autonomo all'avvio (con throttle) → notifica; l'applicazione avviene
+  //  dalla UI in Impostazioni → Sistema → Aggiornamenti di Sistema.
+  //   · su dispositivo: scarica e installa l'APK (bridge nativo) o apre il download
+  //   · su web/PWA: svuota le cache e ricarica (la shell è servita via rete)
+  // ============================================================
+  const Updater = (() => {
+    const RAW = "https://raw.githubusercontent.com/dPlusOS21/NovaOS/main/shell/version.json";
+    const appInfo = () => { try { return JSON.parse(NN().appVersion()); } catch { return null; } };
+    let last = null;   // ultimo esito del controllo
+
+    async function localInfo() {
+      try { const r = await fetch("version.json", { cache:"no-store" }); if (r.ok) return await r.json(); } catch {}
+      return null;
+    }
+    async function check(/*force*/) {
+      const li = await localInfo();
+      const ai = appInfo();
+      const curBuild = (ai && ai.code) || (li && li.build) || 0;
+      const curName  = (ai && ai.name && ai.name !== "?") ? ai.name : (li && li.version) || "0.1.10";
+      let rel = null;
+      try { const r = await fetch(RAW + "?t=" + Date.now(), { cache:"no-store" }); if (r.ok) rel = await r.json(); } catch {}
+      const latestBuild = rel ? (rel.build || 0) : curBuild;
+      const hasUpdate = !!rel && latestBuild > curBuild;
+      last = {
+        current: curBuild, currentName: curName,
+        latest: latestBuild, latestName: rel ? (rel.version || "?") : curName,
+        notes: rel ? (rel.notes || "") : "", apk: rel ? (rel.apk || "") : "",
+        date: rel ? (rel.date || "") : "", reachable: !!rel, hasUpdate,
+      };
+      store.set("updLastCheck", Date.now());
+      store.set("updAvailable", hasUpdate ? last.latestName : "");
+      // notifica una sola volta per build
+      if (hasUpdate && store.get("updNotified", 0) !== latestBuild) {
+        store.set("updNotified", latestBuild);
+        notify({ app:"settings", title:"Aggiornamento disponibile",
+                 text:`NovaOS ${last.latestName} pronto · Impostazioni → Sistema → Aggiornamenti` });
+      }
+      return last;
+    }
+    // controllo autonomo all'avvio: solo se online e non già controllato di recente (~6h)
+    function autoCheck() {
+      if (!navigator.onLine) return;
+      if (Date.now() - store.get("updLastCheck", 0) < 6 * 3600 * 1000) return;
+      setTimeout(() => check().catch(()=>{}), 4000);
+    }
+    async function apply() {
+      const info = last || await check();
+      // dispositivo: installazione APK nativa, con fallback all'apertura del download
+      if (window.NovaNative && info.apk) {
+        if (NN().installUpdate) { try { NN().installUpdate(info.apk); return { mode:"apk" }; } catch {} }
+        if (NN().openBrowser)   { try { NN().openBrowser(info.apk);   return { mode:"browser" }; } catch {} }
+      }
+      // web/PWA: auto-aggiornamento reale (svuota cache + aggiorna service worker + reload)
+      try {
+        if ("caches" in window) { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); }
+        if (navigator.serviceWorker) { const rs = await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r => r.update())); }
+      } catch {}
+      setTimeout(() => location.reload(true), 400);
+      return { mode:"web" };
+    }
+    return { check, apply, autoCheck, get last(){ return last; } };
+  })();
+
   // pannello rapido stile Android: pulsanti tondi con icona + slider luminosità.
   // I sensori (Wi-Fi/BT/aereo/posizione/NFC) sul dispositivo agiscono davvero
   // (o aprono il pannello di sistema); gli interruttori software cambiano subito.
@@ -939,6 +1005,7 @@ const OS = (() => {
     // conferme delle app) e le notifiche persistono finché non le scarti.
     setInterval(() => { renderClocks(); renderStatusbars(); }, 1000);
     initAutolock();
+    Updater.autoCheck();   // controlla in autonomia se c'è un aggiornamento (e notifica)
     setTimeout(() => lockDevice(), 2600);
   }
 
@@ -1012,7 +1079,7 @@ const OS = (() => {
   // API esposta alle app
   const api = {
     state, store, notify, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
-    WALLS, photos, vibrate, sounds: Sounds,
+    WALLS, photos, vibrate, sounds: Sounds, updater: Updater,
     // gestione app di terze parti
     installApp, uninstallApp, updateApp, userApps,
     // impostazione PIN: chiede due volte tramite pinpad sul lockscreen non serve qui,

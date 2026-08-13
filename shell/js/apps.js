@@ -2067,8 +2067,10 @@ const NovaApps = (() => {
       const isPriv = () => { const ns = readSensors(); return !!(ns && ns.privileged); };
       // versione REALE installata (da PackageInfo) con fallback alla build web
       const appVer = (() => { try { return NN.appVersion ? JSON.parse(NN.appVersion()) : null; } catch { return null; } })();
-      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.9";
+      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.10";
       const VERLONG = appVer && appVer.code ? `${VER} · build ${appVer.code}` : `${VER} · build web`;
+      // aggiornamento in attesa (rilevato dal controllo autonomo): mostra un pallino
+      const updPend = () => { try { return os.store.get("updAvailable","") || ""; } catch { return ""; } };
 
       const nav = (title, bodyFn) => {
         root.innerHTML = `<div class="back-bar"><button class="back-btn"></button><div class="back-title">${title}</div></div><div id="sec" style="padding-bottom:90px"></div>`;
@@ -2108,7 +2110,9 @@ const NovaApps = (() => {
             ${row("battery","🔋","#34c759","Batteria", S.battery+"%"+(S.saver?" · Risparmio":""))}
             ${row("storage","💾","#5e5ce6","Archiviazione", "Dati, foto e cache di NovaOS")}
             ${row("accessibility","♿","#0a84ff","Accessibilità", (S.boldText||S.highContrast||S.reduceMotion)?"Personalizzata":"Standard")}
-            ${row("system","⚙️","#8e8e93","Sistema", "Lingua, data e ora, aggiornamenti")}
+            ${updPend()
+              ? `<div class="item" data-go="system"><div class="i-ico" style="background:#8e8e93">⚙️</div><div class="i-body"><div class="i-title">Sistema <span class="upd-dot"></span></div><div class="i-sub" style="color:var(--accent)">Aggiornamento a NovaOS ${updPend()} disponibile</div></div><div class="chev"></div></div>`
+              : row("system","⚙️","#8e8e93","Sistema", "Lingua, data e ora, aggiornamenti")}
             ${row("about","ℹ️","#8e8e93","Info sul telefono", "NovaOS "+VER+" · Nova N1")}
           </div><div style="height:80px"></div>`;
         root.querySelectorAll("[data-go]").forEach(el => el.onclick = () => sections[el.dataset.go]());
@@ -2472,35 +2476,40 @@ const NovaApps = (() => {
               <div class="item"><div class="i-ico" style="background:#8e8e93">💾</div><div class="i-body"><div class="i-title">Backup dati</div><div class="i-sub">Esporta/importa i dati di NovaOS</div></div><div class="chev" id="sys-backup"></div></div>
             </div>
             <div class="group" style="margin-top:12px">
-              <div class="item" id="upd"><div class="i-ico" style="background:#34c759">⬆️</div><div class="i-body"><div class="i-title">Aggiornamenti di sistema</div><div class="i-sub" id="upd-sub">Versione installata: NovaOS ${VER}</div></div><div class="chev"></div></div>
-              <div id="upd-panel"></div>
+              <div class="item"><div class="i-ico" style="background:#34c759">⬆️</div><div class="i-body"><div class="i-title">Aggiornamenti di Sistema</div><div class="i-sub" id="upd-sub">Versione installata: NovaOS ${VER}</div></div></div>
+              <div id="upd-panel" style="padding:2px 16px 14px"></div>
             </div>
             <button class="btn ghost" id="reset" style="margin:16px;color:var(--danger)">Ripristina impostazioni di fabbrica</button>`;
           const panel = sec.querySelector("#upd-panel");
           const sub = sec.querySelector("#upd-sub");
-          sec.querySelector("#upd").onclick = () => {
-            panel.innerHTML = `<div style="padding:12px 16px;color:var(--text-dim);font-size:13px"><span class="spin" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:8px"></span>Verifica su GitHub…</div>`;
-            fetch("https://api.github.com/repos/dPlusOS21/NovaOS/releases/latest", { headers:{Accept:"application/vnd.github+json"} })
-              .then(r => r.ok ? r.json() : Promise.reject(r.status))
-              .then(rel => {
-                const tag = rel.tag_name || rel.name || "?";
-                const when = rel.published_at ? new Date(rel.published_at).toLocaleDateString("it-IT",{day:"numeric",month:"long",year:"numeric"}) : "";
-                const blob = ((rel.name||"")+" "+(rel.body||"")+" "+tag);
-                const upToDate = blob.includes(VER);
-                sub.textContent = upToDate ? `NovaOS ${VER} · aggiornato` : `NovaOS ${VER} · potrebbe esserci un aggiornamento`;
-                panel.innerHTML = `
-                  <div style="padding:8px 16px 14px">
-                    <div class="item" style="padding:6px 0"><div class="i-body"><div class="i-sub">Versione installata</div><div class="i-title">NovaOS ${VER}</div></div></div>
-                    <div class="item" style="padding:6px 0"><div class="i-body"><div class="i-sub">Ultima release pubblicata</div><div class="i-title">${tag}${when?` · ${when}`:""}</div></div></div>
-                    <div style="color:${upToDate?'var(--ok)':'var(--accent)'};font-size:13px;margin:8px 0">${upToDate?"✓ Il sistema è aggiornato all'ultima versione pubblicata.":"⬇ Apri la pagina della release per scaricare l'APK più recente."}</div>
-                    <button class="btn ghost" id="upd-open">Apri la release su GitHub</button>
-                  </div>`;
-                const ob = panel.querySelector("#upd-open");
-                if (ob) ob.onclick = () => { const u = rel.html_url || "https://github.com/dPlusOS21/NovaOS/releases/latest";
-                  if (NN.openBrowser) { try { NN.openBrowser(u); return; } catch {} } window.open(u,"_blank"); };
-              })
-              .catch(() => { panel.innerHTML = `<div style="padding:8px 16px 14px;color:var(--text-dim);font-size:13px">Impossibile contattare GitHub. Versione installata: NovaOS ${VER}.</div>`; });
+          const esc = s => String(s==null?"":s).replace(/[<>&]/g, c => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;" }[c]));
+          const btag = n => n ? ` · build ${n}` : "";
+          const renderUpd = (info, checking) => {
+            if (checking) { panel.innerHTML = `<div style="color:var(--text-dim);font-size:13px;padding:6px 0"><span class="spin" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:8px"></span>Verifica aggiornamenti…</div>`; return; }
+            if (!info) {
+              panel.innerHTML = `<div style="color:var(--text-dim);font-size:13px;padding:6px 0 10px">Impossibile contattare il server aggiornamenti. Riprova quando sei online.</div><button class="btn ghost" id="upd-retry">Riprova</button>`;
+              const rt = panel.querySelector("#upd-retry"); if (rt) rt.onclick = doCheck; return;
+            }
+            const up = info.hasUpdate;
+            sub.textContent = up ? `NovaOS ${info.currentName} · aggiornamento disponibile` : `NovaOS ${info.currentName} · aggiornato`;
+            panel.innerHTML = `
+              <div class="item" style="padding:6px 0"><div class="i-body"><div class="i-sub">Versione installata</div><div class="i-title">NovaOS ${esc(info.currentName)}${btag(info.current)}</div></div></div>
+              ${info.reachable ? `<div class="item" style="padding:6px 0"><div class="i-body"><div class="i-sub">Ultima disponibile</div><div class="i-title">NovaOS ${esc(info.latestName)}${btag(info.latest)}${info.date?` · ${esc(info.date)}`:""}</div></div></div>` : ""}
+              ${up && info.notes ? `<div style="background:var(--surface);border-radius:12px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--text-dim)">${esc(info.notes)}</div>` : ""}
+              <div style="color:${up?'var(--accent)':'var(--ok)'};font-size:13px;margin:8px 0">${up?"⬇ È disponibile una versione più recente.":"✓ Il sistema è aggiornato all'ultima versione."}</div>
+              ${up ? `<button class="btn" id="upd-install">Installa aggiornamento</button>` : `<button class="btn ghost" id="upd-recheck">Cerca aggiornamenti</button>`}`;
+            const ins = panel.querySelector("#upd-install");
+            if (ins) ins.onclick = async () => {
+              ins.disabled = true; ins.textContent = "Avvio aggiornamento…";
+              let r = {}; try { r = await os.updater.apply(); } catch {}
+              panel.innerHTML = r.mode === "web"
+                ? `<div style="color:var(--text-dim);font-size:13px;padding:6px 0">Applico l'aggiornamento e riavvio l'interfaccia…</div>`
+                : `<div style="color:var(--text-dim);font-size:13px;padding:6px 0">Scaricamento e installazione avviati. Segui la richiesta del sistema per completare l'installazione.</div>`;
+            };
+            const rc = panel.querySelector("#upd-recheck"); if (rc) rc.onclick = doCheck;
           };
+          const doCheck = async () => { renderUpd(null, true); let info=null; try { info = await os.updater.check(); } catch {} renderUpd(info); };
+          doCheck();   // controllo automatico all'apertura della sezione
           sec.querySelector("#reset").onclick = () => { if (confirm("Ripristinare NovaOS? Verranno cancellati impostazioni e app installate.")) os.factoryReset(); };
           // Data e ora / Lingua: aprono i pannelli reali di sistema (sul dispositivo)
           sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
