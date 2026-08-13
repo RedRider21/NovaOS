@@ -2105,7 +2105,7 @@ const NovaApps = (() => {
       const isPriv = () => { const ns = readSensors(); return !!(ns && ns.privileged); };
       // versione REALE installata (da PackageInfo) con fallback alla build web
       const appVer = (() => { try { return NN.appVersion ? JSON.parse(NN.appVersion()) : null; } catch { return null; } })();
-      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.14";
+      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.15";
       const VERLONG = appVer && appVer.code ? `${VER} · build ${appVer.code}` : `${VER} · build web`;
       // aggiornamento in attesa (rilevato dal controllo autonomo): mostra un pallino
       const updPend = () => { try { return os.store.get("updAvailable","") || ""; } catch { return ""; } };
@@ -2666,7 +2666,9 @@ const NovaApps = (() => {
         };
       }
 
-      home();
+      // deep-link dalla tendina rapida (es. tile "Audio" → sezione Suoni)
+      const deep = os.takeSettingsSection && os.takeSettingsSection();
+      if (deep && sections[deep]) sections[deep](); else home();
     }});
 
   const list = [phone, contacts, messages, mail, browser, camera, gallery, clock, calendar, weather, notes, calc, files, store, settings];

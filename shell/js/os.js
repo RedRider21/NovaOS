@@ -78,6 +78,8 @@ const OS = (() => {
     iconStyle: "filled", deskColor: "", iconColor: "",
     // forma delle tessere icona (circle|squircle|square) e colore di risalto (accento/bordo)
     iconShape: "squircle", accentColor: "",
+    // torcia (flash) e protezione occhi (filtro luce blu)
+    torch: false, eyeComfort: false,
   };
   const state = Object.fromEntries(Object.keys(defaults).map(k => [k, store.get(k, defaults[k])]));
 
@@ -154,9 +156,12 @@ const OS = (() => {
     document.documentElement.style.setProperty("--fscale", String(state.textScale/100));
     // luminosità effettiva: risparmio energetico limita il massimo; la luminosità
     // adattiva attenua la sera/notte (effetti reali sull'overlay di luminosità).
-    let eff = state.saver ? Math.min(state.brightness, 55) : state.brightness;
+    let eff = state.saver ? Math.min(state.brightness, 45) : state.brightness;
     if (state.adaptiveBright) { const h = new Date().getHours(); if (h >= 20 || h < 7) eff = Math.round(eff * 0.75); }
     $("#bright-overlay").style.opacity = String((100 - eff) / 100 * 0.7);
+    // protezione occhi: velo ambra (più marcato di notte); indipendente dalla luminosità
+    const eyeEl = $("#eye-overlay");
+    if (eyeEl) eyeEl.style.opacity = state.eyeComfort ? "0.22" : "0";
     // il colore base viene dal tema (CSS var --bg); il wallpaper è solo la tinta sopra.
     // se l'utente ha scelto un colore di fondo, quello vince (tinta unita, niente wallpaper).
     const w = WALLS[state.wallpaper] || WALLS[0];
@@ -830,7 +835,7 @@ const OS = (() => {
       const li = await localInfo();
       const ai = appInfo();
       const curBuild = (ai && ai.code) || (li && li.build) || 0;
-      const curName  = (ai && ai.name && ai.name !== "?") ? ai.name : (li && li.version) || "0.1.14";
+      const curName  = (ai && ai.name && ai.name !== "?") ? ai.name : (li && li.version) || "0.1.15";
       let rel = null;
       try { const r = await fetch(RAW + "?t=" + Date.now(), { cache:"no-store" }); if (r.ok) rel = await r.json(); } catch {}
       const latestBuild = rel ? (rel.build || 0) : curBuild;
@@ -858,6 +863,7 @@ const OS = (() => {
     // controllo autonomo all'avvio: solo se online e non già controllato di recente (~6h)
     function autoCheck() {
       if (!navigator.onLine) return;
+      if (state.saver) return;   // risparmio energetico: niente controlli in background
       if (Date.now() - store.get("updLastCheck", 0) < 6 * 3600 * 1000) return;
       setTimeout(() => check().catch(()=>{}), 4000);
     }
@@ -918,62 +924,144 @@ const OS = (() => {
   // pannello rapido stile Android: pulsanti tondi con icona + slider luminosità.
   // I sensori (Wi-Fi/BT/aereo/posizione/NFC) sul dispositivo agiscono davvero
   // (o aprono il pannello di sistema); gli interruttori software cambiano subito.
+  // glifo monocromatico Bootstrap (offline) con fallback emoji, tinto via currentColor
+  const qGlyph = (id, em) => (window.NovaIcons && NovaIcons.svg[id])
+    ? `<svg viewBox="0 0 16 16" fill="currentColor">${NovaIcons.svg[id]}</svg>` : (em||"");
+  const SETFN = { wifi:"setWifi", bt:"setBluetooth", airplane:"setAirplane", location:"setLocation", nfc:"setNfc", mobileData:"setMobileData" };
+
   function renderQuick() {
     if (hasNativeSensors()) syncQuickSensors();
     const native = hasNativeSensors();
-    // glifo monocromatico Bootstrap (offline) con fallback emoji, tinto via currentColor
-    const glyph = (id, em) => (window.NovaIcons && NovaIcons.svg[id])
-      ? `<svg viewBox="0 0 16 16" fill="currentColor">${NovaIcons.svg[id]}</svg>` : (em||"");
-    // k = chiave stato · g = id glifo · em = fallback emoji · l = etichetta · sensor/panel
-    const themeGlyph = state.theme === "dark" ? "moon-fill" : "sun-fill";
+    // k = chiave/azione · g = id glifo · em = fallback emoji · l = etichetta
+    // sensor/panel = hardware (dual-mode) · act = azione speciale (torcia, qr, ...)
     const tiles = [
-      { k:"wifi",      g:"wifi",            em:"📶", l:"Wi-Fi",      sensor:true, panel:"wifi" },
-      { k:"bt",        g:"bluetooth",       em:"🔵", l:"Bluetooth",  sensor:true, panel:"bluetooth" },
-      { k:"dnd",       g:"bell-slash-fill", em:"🌙", l:"Non dist." },
-      { k:"airplane",  g:"airplane-fill",   em:"✈️", l:"Aereo",      sensor:true, panel:"airplane" },
-      { k:"theme",     g:themeGlyph,        em:"🌗", l:"Tema" },
-      { k:"location",  g:"geo-alt-fill",    em:"📍", l:"Posizione",  sensor:true, panel:"location" },
-      { k:"vibrate",   g:"phone-vibrate-fill", em:"📳", l:"Vibrazione" },
-      { k:"saver",     g:"battery-half",    em:"🔋", l:"Risparmio" },
-      { k:"autoRotate",g:"arrow-repeat",    em:"🔄", l:"Rotazione" },
-      { k:"nfc",       g:"broadcast-pin",   em:"📡", l:"NFC",        sensor:true, panel:"nfc" },
+      { k:"wifi",       g:"wifi",               em:"📶", l:"Wi-Fi",     sensor:true, panel:"wifi" },
+      { k:"mobileData", g:"reception-4",        em:"📱", l:"Dati",      sensor:true, panel:"data" },
+      { k:"bt",         g:"bluetooth",          em:"🔵", l:"Bluetooth", sensor:true, panel:"bluetooth" },
+      { k:"torch",      g:"lightning-charge-fill", em:"🔦", l:"Torcia",  act:"torch" },
+      { k:"airplane",   g:"airplane-fill",      em:"✈️", l:"Aereo",     sensor:true, panel:"airplane" },
+      { k:"dnd",        g:"bell-slash-fill",    em:"🌙", l:"Non dist." },
+      { k:"autoRotate", g:"arrow-repeat",       em:"🔄", l:"Rotazione" },
+      { k:"location",   g:"geo-alt-fill",       em:"📍", l:"Posizione", sensor:true, panel:"location" },
+      // pagina 2
+      { k:"nightMode",  g:"moon-stars-fill",    em:"🌙", l:"Notte",     act:"night" },
+      { k:"eyeComfort", g:"eye-fill",           em:"👁️", l:"Comfort occhi", act:"eye" },
+      { k:"vibrate",    g:"phone-vibrate-fill", em:"📳", l:"Vibrazione" },
+      { k:"saver",      g:"battery-half",       em:"🔋", l:"Risparmio" },
+      { k:"nfc",        g:"broadcast-pin",      em:"📡", l:"NFC",       sensor:true, panel:"nfc" },
+      { k:"audio",      g:"sliders",            em:"🎚️", l:"Audio",     act:"audio" },
+      { k:"qr",         g:"qr-code-scan",       em:"🔳", l:"Scansione QR", act:"qr" },
+      { k:"screenshot", g:"aspect-ratio-fill",  em:"🖼️", l:"Schermata", act:"shot" },
     ];
+    const PERQ = 8;
+    const pages = []; for (let i=0;i<tiles.length;i+=PERQ) pages.push(tiles.slice(i,i+PERQ));
+    const tileHtml = t => `<button class="qtile ${quickOn(t.k)?'on':''}" data-q="${t.k}" data-sensor="${t.sensor?1:0}" data-panel="${t.panel||''}" data-act="${t.act||''}">
+        <span class="q-ico">${qGlyph(t.g, t.em)}</span><span class="q-lbl">${t.l}</span></button>`;
     const briFill = Math.round((state.brightness - 20) / 80 * 100);
     $("#shade-quick").innerHTML = `
-      <div class="qs-grid">
-        ${tiles.map(t => `<button class="qtile ${quickOn(t.k)?'on':''}" data-q="${t.k}" data-sensor="${t.sensor?1:0}" data-panel="${t.panel||''}">
-          <span class="q-ico">${glyph(t.g, t.em)}</span><span class="q-lbl">${t.l}</span></button>`).join("")}
+      <div class="qs-pager" id="qs-pager">
+        ${pages.map(pg => `<div class="qs-page">${pg.map(tileHtml).join("")}</div>`).join("")}
       </div>
-      <div class="qs-bright"><span class="qs-sun">${glyph("brightness-high-fill","☀")}</span><input type="range" id="qs-bri" min="20" max="100" value="${state.brightness}" style="--fill:${briFill}%"></div>`;
-    const SETFN = { wifi:"setWifi", bt:"setBluetooth", airplane:"setAirplane", location:"setLocation", nfc:"setNfc" };
-    $("#shade-quick").querySelectorAll(".qtile").forEach(el => el.onclick = () => {
-      const k = el.dataset.q, isSensor = el.dataset.sensor === "1";
-      if (isSensor && native) {
-        // sul dispositivo: prova l'azione reale; se applicata in-process (ROM
-        // privilegiato) aggiorna la tile senza uscire, altrimenti si apre il
-        // pannello di sistema e chiudiamo la tendina per renderlo visibile.
-        let applied = false;
-        try { const fn = SETFN[k]; if (fn && NN()[fn]) applied = NN()[fn](!state[k]); } catch (e) {}
-        if (applied) { syncQuickSensors(); renderQuick(); }
-        else closeShade();
-        return;
-      }
-      toggle(k);        // software (o simulazione sensori in sviluppo)
-      el.classList.toggle("on", quickOn(k));
-    });
+      ${pages.length>1 ? `<div class="qs-dots">${pages.map((_,i)=>`<span class="qd ${i===0?'on':''}"></span>`).join("")}</div>` : ""}
+      <div class="qs-bright"><span class="qs-sun">${qGlyph("brightness-high-fill","☀")}</span><input type="range" id="qs-bri" min="20" max="100" value="${state.brightness}" style="--fill:${briFill}%"></div>`;
+    // scorrimento orizzontale dei gruppi (scroll-snap CSS) → aggiorna i puntini
+    const pager = $("#qs-pager");
+    if (pager && pages.length>1) pager.onscroll = () => {
+      const i = Math.round(pager.scrollLeft / pager.clientWidth);
+      $("#shade-quick").querySelectorAll(".qd").forEach((d,di)=>d.classList.toggle("on", di===i));
+    };
+    $("#shade-quick").querySelectorAll(".qtile").forEach(el => el.onclick = () => quickTap(el, native));
     const bri = $("#qs-bri"); if (bri) bri.oninput = e => {
       const v = +e.target.value; e.target.style.setProperty("--fill", Math.round((v-20)/80*100)+"%");
       set("brightness", v);
     };
   }
-  function quickOn(k) { return k==="theme" ? state.theme==="dark" : !!state[k]; }
+  function quickTap(el, native) {
+    const k = el.dataset.q, isSensor = el.dataset.sensor === "1", act = el.dataset.act;
+    if (act) { quickAct(act, k, el); return; }
+    if (isSensor && native) {
+      let applied = false;
+      try { const fn = SETFN[k]; if (fn && NN()[fn]) applied = NN()[fn](!state[k]); } catch (e) {}
+      if (applied) { syncQuickSensors(); renderQuick(); }
+      else closeShade();
+      return;
+    }
+    toggle(k);
+    el.classList.toggle("on", quickOn(k));
+  }
+  function quickAct(act, k, el) {
+    if (act === "torch") {
+      const on = !state.torch; let applied = false;
+      try { if (NN().setTorch) applied = NN().setTorch(on); } catch {}
+      if (window.NovaNative && !applied) { notify({ app:"camera", title:"Torcia", text:"Torcia non disponibile su questo dispositivo." }); return; }
+      set("torch", on); el.classList.toggle("on", state.torch); return;
+    }
+    if (act === "night")  { set("theme", state.theme === "dark" ? "light" : "dark"); renderQuick(); return; }
+    if (act === "eye")    { toggle("eyeComfort"); el.classList.toggle("on", quickOn("eyeComfort")); return; }
+    if (act === "audio")  { openSettings("sound"); return; }
+    if (act === "qr")     { closeShade(); openQrScanner(); return; }
+    if (act === "shot")   {
+      closeShade();
+      if (NN().screenshot) setTimeout(() => { try { NN().screenshot(); } catch {} }, 420);
+      else setTimeout(() => notify({ app:"settings", title:"Schermata", text:"Acquisizione disponibile solo sul dispositivo." }), 300);
+      return;
+    }
+  }
+  function quickOn(k) {
+    if (k === "nightMode") return state.theme === "dark";
+    if (k === "audio" || k === "qr" || k === "screenshot") return false;   // azioni momentanee
+    return !!state[k];
+  }
+  // apre le Impostazioni direttamente su una sezione (deep-link dalla tendina)
+  let _settingsSection = null;
+  function openSettings(sec) { _settingsSection = sec; closeShade(); openApp("settings"); }
+  function takeSettingsSection() { const s = _settingsSection; _settingsSection = null; return s; }
+
+  // scanner QR: usa BarcodeDetector (nativo, offline) + fotocamera; nessuna libreria esterna
+  async function openQrScanner() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      notify({ app:"camera", title:"Scansione QR", text:"Fotocamera non disponibile." }); return;
+    }
+    const ov = document.createElement("div"); ov.className = "qr-ov";
+    ov.innerHTML = `<video id="qr-video" autoplay muted playsinline></video>
+      <div class="qr-frame"></div><div class="qr-hint" id="qr-hint">Inquadra un codice QR</div>
+      <button class="qr-close" id="qr-x">✕</button><div class="qr-result" id="qr-res"></div>`;
+    (document.querySelector("#device") || document.body).appendChild(ov);
+    let stream = null, raf = 0, stopped = false;
+    const close = () => { stopped = true; cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t=>t.stop()); ov.remove(); };
+    ov.querySelector("#qr-x").onclick = close;
+    try { stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" } }); }
+    catch (e) { ov.remove(); notify({ app:"camera", title:"Scansione QR", text:"Permesso fotocamera negato." }); return; }
+    const video = ov.querySelector("#qr-video"); video.srcObject = stream;
+    const Det = window.BarcodeDetector;
+    if (!Det) { ov.querySelector("#qr-hint").textContent = "Scanner QR non supportato su questo dispositivo."; return; }
+    let det; try { det = new Det({ formats:["qr_code"] }); } catch { ov.querySelector("#qr-hint").textContent = "Scanner non disponibile."; return; }
+    const onResult = val => {
+      stopped = true; cancelAnimationFrame(raf); vibrate(40);
+      const res = ov.querySelector("#qr-res");
+      const isUrl = /^https?:\/\//i.test(val);
+      res.innerHTML = `<div class="qr-val">${escH(val)}</div>
+        ${isUrl ? `<button class="btn" id="qr-open">Apri il link</button>` : `<button class="btn" id="qr-copy">Copia</button>`}
+        <button class="btn ghost" id="qr-again">Scansiona ancora</button>`;
+      res.classList.add("show");
+      const op = res.querySelector("#qr-open"); if (op) op.onclick = () => { close(); if (window.NovaNative && NN().openBrowser) { try { NN().openBrowser(val); return; } catch {} } window.open(val, "_blank"); };
+      const cp = res.querySelector("#qr-copy"); if (cp) cp.onclick = () => { try { navigator.clipboard.writeText(val); } catch {} notify({ app:"camera", title:"QR", text:"Testo copiato." }); };
+      const ag = res.querySelector("#qr-again"); if (ag) ag.onclick = () => { res.classList.remove("show"); stopped = false; scan(); };
+    };
+    const scan = async () => {
+      if (stopped) return;
+      try { const codes = await det.detect(video); if (codes && codes[0] && codes[0].rawValue) { onResult(codes[0].rawValue); return; } } catch {}
+      raf = requestAnimationFrame(scan);
+    };
+    video.onloadedmetadata = () => scan();
+  }
 
   // ============================================================
   //  API stato (usata dalle app, es. Impostazioni)
   // ============================================================
   function set(k, v) { state[k] = v; store.set(k, v);
     if (k==="theme") { applyTheme(); applyDisplay(); }
-    if (["brightness","textScale","wallpaper","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","iconShape","accentColor","saver","adaptiveBright"].includes(k)) applyDisplay();
+    if (["brightness","textScale","wallpaper","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","iconShape","accentColor","saver","adaptiveBright","eyeComfort"].includes(k)) applyDisplay();
     if (["iconStyle","deskColor","iconColor","iconShape"].includes(k) && screens.home.classList.contains("active")) renderHome();
     if (k==="notifLock") renderLockNotifs();
     renderStatusbars();
@@ -1183,6 +1271,7 @@ const OS = (() => {
   const api = {
     state, store, notify, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
     WALLS, photos, vibrate, sounds: Sounds, updater: Updater,
+    openSettings, takeSettingsSection,
     // gestione app di terze parti
     installApp, uninstallApp, updateApp, userApps,
     // impostazione PIN: chiede due volte tramite pinpad sul lockscreen non serve qui,

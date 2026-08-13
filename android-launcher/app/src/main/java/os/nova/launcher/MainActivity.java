@@ -626,6 +626,62 @@ public class MainActivity extends Activity {
             getSharedPreferences("novaos", MODE_PRIVATE).edit().remove(k).apply();
         }
 
+        // ---- Torcia (flash fotocamera posteriore) ----
+        @JavascriptInterface public boolean setTorch(boolean on) {
+            try {
+                android.hardware.camera2.CameraManager cm =
+                        (android.hardware.camera2.CameraManager) getSystemService(CAMERA_SERVICE);
+                for (String id : cm.getCameraIdList()) {
+                    Boolean flash = cm.getCameraCharacteristics(id)
+                            .get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                    Integer facing = cm.getCameraCharacteristics(id)
+                            .get(android.hardware.camera2.CameraCharacteristics.LENS_FACING);
+                    if (Boolean.TRUE.equals(flash) && (facing == null
+                            || facing == android.hardware.camera2.CameraMetadata.LENS_FACING_BACK)) {
+                        cm.setTorchMode(id, on);
+                        return true;
+                    }
+                }
+            } catch (Exception e) {}
+            return false;
+        }
+
+        // ---- Acquisizione schermata: disegna la WebView e salva in Galleria ----
+        @JavascriptInterface public void screenshot() {
+            runOnUiThread(() -> {
+                try {
+                    android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(
+                            Math.max(1, web.getWidth()), Math.max(1, web.getHeight()),
+                            android.graphics.Bitmap.Config.ARGB_8888);
+                    web.draw(new android.graphics.Canvas(bmp));
+                    String fn = "NovaOS-" + System.currentTimeMillis() + ".png";
+                    java.io.OutputStream out; String where;
+                    if (Build.VERSION.SDK_INT >= 29) {
+                        android.content.ContentValues cv = new android.content.ContentValues();
+                        cv.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, fn);
+                        cv.put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png");
+                        cv.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                                android.os.Environment.DIRECTORY_PICTURES + "/NovaOS");
+                        android.net.Uri uri = getContentResolver().insert(
+                                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
+                        out = getContentResolver().openOutputStream(uri);
+                        where = "Galleria";
+                    } else {
+                        java.io.File dir = new java.io.File(getExternalFilesDir(
+                                android.os.Environment.DIRECTORY_PICTURES), "NovaOS");
+                        dir.mkdirs();
+                        out = new java.io.FileOutputStream(new java.io.File(dir, fn));
+                        where = "Immagini di NovaOS";
+                    }
+                    bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+                    out.close();
+                    Toast.makeText(MainActivity.this, "Schermata salvata (" + where + ")", Toast.LENGTH_SHORT).show();
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "Screenshot non riuscito", Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+
         // ---- Aggiornamento OTA della sola interfaccia (shell) senza reinstallare l'APK ----
         /** Svuota e prepara la cartella di staging per una nuova shell. */
         @JavascriptInterface public void shellStageBegin() { deleteRec(stageDir()); stageDir().mkdirs(); }
