@@ -55,16 +55,16 @@ const NovaApps = (() => {
                       ["7","PQRS"],["8","TUV"],["9","WXYZ"],["*",""],["0","+"],["#",""]];
         shell(`
           <div style="text-align:center;height:56px">
-            <div id="dial-num" style="font-size:32px;letter-spacing:2px;line-height:34px;min-height:34px"></div>
-            <div id="dial-name" style="font-size:14px;color:var(--accent);min-height:18px"></div>
+            <div id="dial-num" style="font-size:calc(32px*var(--fscale,1));letter-spacing:2px;line-height:34px;min-height:34px"></div>
+            <div id="dial-name" style="font-size:calc(14px*var(--fscale,1));color:var(--accent);min-height:18px"></div>
           </div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:10px 40px">
             ${keys.map(([k,sub])=>`<button class="dial-k" data-k="${k}" style="aspect-ratio:1;border-radius:50%;border:none;background:var(--surface);color:var(--text);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1">
-              <span style="font-size:26px">${k}</span><span style="font-size:9px;letter-spacing:2px;color:var(--text-dim);height:10px">${sub}</span></button>`).join("")}
+              <span style="font-size:calc(26px*var(--fscale,1))">${k}</span><span style="font-size:calc(9px*var(--fscale,1));letter-spacing:2px;color:var(--text-dim);height:10px">${sub}</span></button>`).join("")}
           </div>
           <div style="display:flex;justify-content:center;align-items:center;gap:24px;padding-top:4px">
-            <button id="call" style="width:70px;height:70px;border-radius:50%;border:none;background:#35c759;font-size:26px;cursor:pointer">📞</button>
-            <button id="del" style="width:52px;height:52px;border-radius:50%;border:none;background:var(--surface);color:var(--text);font-size:20px;cursor:pointer;display:none">⌫</button>
+            <button id="call" style="width:70px;height:70px;border-radius:50%;border:none;background:#35c759;font-size:calc(26px*var(--fscale,1));cursor:pointer">📞</button>
+            <button id="del" style="width:52px;height:52px;border-radius:50%;border:none;background:var(--surface);color:var(--text);font-size:calc(20px*var(--fscale,1));cursor:pointer;display:none">⌫</button>
           </div>`);
         const out = root.querySelector("#dial-num");
         const nm  = root.querySelector("#dial-name");
@@ -98,8 +98,8 @@ const NovaApps = (() => {
           <div class="card tappable" data-i="${i}"><div class="c-ico" style="background:${D.col}">📞</div>
             <div class="c-body"><div class="c-title" style="color:${D.txt}">${c.name||c.num}</div>
               <div class="c-sub">${D.ico} ${D.label}${known?" · "+c.num:""} · ${ago(c.time)}</div></div>
-            ${known?"":`<button data-add="${c.num}" title="Aggiungi a contatti" style="background:none;border:none;font-size:19px;cursor:pointer;color:var(--accent)">➕</button>`}
-            <button data-call="${c.num}" style="background:none;border:none;font-size:20px;cursor:pointer">📞</button></div>`;}).join("")}
+            ${known?"":`<button data-add="${c.num}" title="Aggiungi a contatti" style="background:none;border:none;font-size:calc(19px*var(--fscale,1));cursor:pointer;color:var(--accent)">➕</button>`}
+            <button data-call="${c.num}" style="background:none;border:none;font-size:calc(20px*var(--fscale,1));cursor:pointer">📞</button></div>`;}).join("")}
           <button class="btn ghost" id="clear" style="margin:12px 0">Cancella cronologia</button></div>`
           : `<div style="text-align:center;color:var(--text-dim);padding:40px">Nessuna chiamata recente</div>`);
         root.querySelectorAll("[data-call]").forEach(b => b.onclick = (e) => { e.stopPropagation(); placeCall(b.dataset.call); });
@@ -152,7 +152,7 @@ const NovaApps = (() => {
       const drawList = () => {
         root.innerHTML = `<div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
             <div class="app-title">Messaggi</div><button class="btn" id="new" style="width:auto;padding:10px 16px">✍️ Nuovo</button></div>
-          <div style="padding:0 16px 10px"><input id="q" placeholder="Cerca nelle conversazioni" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px;color:var(--text);font-size:15px;outline:none"></div>
+          <div style="padding:0 16px 10px"><input id="q" placeholder="Cerca nelle conversazioni" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none"></div>
           <div class="list" id="mlist"></div>`;
         const drawRows = (filter="") => {
           const f = filter.trim().toLowerCase();
@@ -164,7 +164,7 @@ const NovaApps = (() => {
           box.innerHTML = names.length?names.map(n=>{const l=last(threads[n]);return `
             <div class="card tappable" data-n="${n}"><div class="c-ico" style="background:${color(n)}">${initials(n)}</div>
             <div class="c-body"><div class="c-title">${n}</div><div class="c-sub">${l?(l[0]==='out'?'Tu: ':'')+esc(l[1]):'—'}</div></div>
-            <div style="color:var(--text-dim);font-size:12px">${l?l[2]:''}</div></div>`;}).join("")
+            <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1))">${l?l[2]:''}</div></div>`;}).join("")
             :`<div style="text-align:center;color:var(--text-dim);padding:40px">${f?'Nessun risultato':'Nessuna conversazione'}</div>`;
           box.querySelectorAll("[data-n]").forEach(el => el.onclick = () => drawThread(el.dataset.n));
         };
@@ -177,7 +177,7 @@ const NovaApps = (() => {
       const drawNew = () => {
         const contacts = os.store.get("contacts", []);
         root.innerHTML = `<div class="back-bar"><button class="back-btn"></button><div class="back-title">Nuovo messaggio</div></div>
-          <div style="padding:0 16px 8px"><input id="to" placeholder="A: nome o numero" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:12px 14px;color:var(--text);font-size:15px;outline:none"></div>
+          <div style="padding:0 16px 8px"><input id="to" placeholder="A: nome o numero" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:12px 14px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none"></div>
           <div class="section-label">Contatti</div><div class="group" id="clist"></div>
           <div style="padding:16px"><button class="btn" id="ok">Avvia conversazione</button></div>`;
         root.querySelector(".back-btn").onclick = drawList;
@@ -200,17 +200,17 @@ const NovaApps = (() => {
         const msgs = threads[name];
         const bubbles = () => msgs.map(([dir,txt,t])=>`
           <div style="display:flex;flex-direction:column;align-items:${dir==='out'?'flex-end':'flex-start'};padding:2px 12px">
-            <div style="max-width:76%;padding:9px 14px;border-radius:16px;font-size:15px;background:${dir==='out'?'var(--accent)':'var(--surface)'};color:${dir==='out'?'#fff':'var(--text)'};white-space:pre-wrap;word-break:break-word">${esc(txt)}</div>
-            <div style="font-size:10px;color:var(--text-dim);margin:1px 6px">${t||''}</div>
+            <div style="max-width:76%;padding:9px 14px;border-radius:16px;font-size:calc(15px*var(--fscale,1));background:${dir==='out'?'var(--accent)':'var(--surface)'};color:${dir==='out'?'#fff':'var(--text)'};white-space:pre-wrap;word-break:break-word">${esc(txt)}</div>
+            <div style="font-size:calc(10px*var(--fscale,1));color:var(--text-dim);margin:1px 6px">${t||''}</div>
           </div>`).join("");
         root.innerHTML = `
           <div class="back-bar"><button class="back-btn"></button>
             <div class="i-ico" style="background:${color(name)};width:34px;height:34px;border-radius:50%">${initials(name)}</div>
-            <div class="back-title" style="flex:1;font-size:18px">${name}</div>
-            <button id="delc" style="background:none;border:none;font-size:17px;cursor:pointer">🗑️</button></div>
+            <div class="back-title" style="flex:1;font-size:calc(18px*var(--fscale,1))">${name}</div>
+            <button id="delc" style="background:none;border:none;font-size:calc(17px*var(--fscale,1));cursor:pointer">🗑️</button></div>
           <div id="thread" style="flex:1;padding:8px 0 12px;display:flex;flex-direction:column;gap:2px;overflow-y:auto">${bubbles()}</div>
           <div style="display:flex;gap:8px;padding:10px 12px;position:sticky;bottom:0;background:var(--bg)">
-            <input id="msg" placeholder="Messaggio" style="flex:1;background:var(--surface);border:none;border-radius:20px;padding:12px 16px;color:var(--text);font-size:15px;outline:none">
+            <input id="msg" placeholder="Messaggio" style="flex:1;background:var(--surface);border:none;border-radius:20px;padding:12px 16px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
             <button class="btn" id="send" style="width:auto;padding:0 18px;border-radius:20px">Invia</button>
           </div>`;
         root.querySelector(".back-btn").onclick = drawList;
@@ -248,25 +248,25 @@ const NovaApps = (() => {
         <div style="height:100%;display:flex;flex-direction:column;background:#000">
           <div style="display:flex;align-items:center;justify-content:center;gap:22px;padding:12px 0 6px;background:#000">
             <button id="grid" class="cam-top" title="Griglia">⊞</button>
-            <button id="timer" class="cam-top" title="Autoscatto">⏱️<span id="timer-lbl" style="font-size:11px;margin-left:2px">off</span></button>
+            <button id="timer" class="cam-top" title="Autoscatto">⏱️<span id="timer-lbl" style="font-size:calc(11px*var(--fscale,1));margin-left:2px">off</span></button>
           </div>
           <div style="flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center">
             <video id="cam" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover"></video>
             <div id="grid-ov" style="position:absolute;inset:0;pointer-events:none;display:none;
               background-image:linear-gradient(rgba(255,255,255,.35) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.35) 1px,transparent 1px);
               background-size:33.33% 33.33%"></div>
-            <div id="count" style="position:absolute;color:#fff;font-size:96px;font-weight:200;text-shadow:0 2px 20px rgba(0,0,0,.6);display:none"></div>
+            <div id="count" style="position:absolute;color:#fff;font-size:calc(96px*var(--fscale,1));font-weight:200;text-shadow:0 2px 20px rgba(0,0,0,.6);display:none"></div>
             <div id="flash" style="position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none"></div>
-            <div id="cam-msg" style="position:absolute;color:#fff;text-align:center;padding:24px;font-size:14px;display:none"></div>
+            <div id="cam-msg" style="position:absolute;color:#fff;text-align:center;padding:24px;font-size:calc(14px*var(--fscale,1));display:none"></div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 26px;background:#000">
-            <button id="thumb" style="width:52px;height:52px;border-radius:12px;border:2px solid rgba(255,255,255,.4);background:#222 center/cover no-repeat;cursor:pointer;font-size:22px;color:#fff">🖼️</button>
+            <button id="thumb" style="width:52px;height:52px;border-radius:12px;border:2px solid rgba(255,255,255,.4);background:#222 center/cover no-repeat;cursor:pointer;font-size:calc(22px*var(--fscale,1));color:#fff">🖼️</button>
             <button id="shot" style="width:72px;height:72px;border-radius:50%;border:5px solid #fff;background:rgba(255,255,255,.25);cursor:pointer"></button>
-            <button id="flip" style="width:52px;height:52px;border-radius:50%;color:#fff;font-size:24px;background:rgba(255,255,255,.12);border:none;cursor:pointer">🔄</button>
+            <button id="flip" style="width:52px;height:52px;border-radius:50%;color:#fff;font-size:calc(24px*var(--fscale,1));background:rgba(255,255,255,.12);border:none;cursor:pointer">🔄</button>
           </div>
           <input id="pick" type="file" accept="image/*" hidden>
           <canvas id="cv" hidden></canvas>
-          <style>.cam-top{background:rgba(255,255,255,.12);border:none;color:#fff;font-size:15px;padding:7px 12px;border-radius:16px;cursor:pointer;display:flex;align-items:center}</style>
+          <style>.cam-top{background:rgba(255,255,255,.12);border:none;color:#fff;font-size:calc(15px*var(--fscale,1));padding:7px 12px;border-radius:16px;cursor:pointer;display:flex;align-items:center}</style>
         </div>`;
       const video = root.querySelector("#cam"), msg = root.querySelector("#cam-msg"), flash = root.querySelector("#flash");
       let stream = null, cams = [], curCam = 0, facing = "environment", timerSec = 0;
@@ -375,7 +375,7 @@ const NovaApps = (() => {
         root.innerHTML = `<div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
             <div><div class="app-title">Rubrica</div><div class="app-sub">${list.length} contatti</div></div>
             <button class="btn" id="add" style="width:auto;padding:10px 16px">+ Nuovo</button></div>
-          <div style="padding:0 16px 10px"><input id="q" placeholder="Cerca per nome o numero" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px;color:var(--text);font-size:15px;outline:none"></div>
+          <div style="padding:0 16px 10px"><input id="q" placeholder="Cerca per nome o numero" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none"></div>
           <div id="clist"></div><div style="height:80px"></div>`;
         const drawRows = (filter="") => {
           const box = root.querySelector("#clist");
@@ -406,11 +406,11 @@ const NovaApps = (() => {
       const drawDetail = (id) => {
         const c = list.find(x=>x.id===id);
         root.innerHTML = `<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1">Contatto</div>
-            <button id="fav" title="Preferito" style="background:none;border:none;color:${c.fav?'#ffcf3f':'var(--text-dim)'};font-size:20px;cursor:pointer;margin-right:6px">${c.fav?'★':'☆'}</button>
-            <button id="edit" style="background:none;border:none;color:var(--accent);font-size:15px;cursor:pointer">Modifica</button></div>
+            <button id="fav" title="Preferito" style="background:none;border:none;color:${c.fav?'#ffcf3f':'var(--text-dim)'};font-size:calc(20px*var(--fscale,1));cursor:pointer;margin-right:6px">${c.fav?'★':'☆'}</button>
+            <button id="edit" style="background:none;border:none;color:var(--accent);font-size:calc(15px*var(--fscale,1));cursor:pointer">Modifica</button></div>
           <div style="text-align:center;padding:10px 16px 20px">
-            <div style="width:88px;height:88px;border-radius:50%;margin:0 auto 12px;${avatarBg(c)};display:flex;align-items:center;justify-content:center;font-size:38px;color:#fff">${avatarTxt(c)}</div>
-            <div style="font-size:24px;font-weight:700">${c.name}</div></div>
+            <div style="width:88px;height:88px;border-radius:50%;margin:0 auto 12px;${avatarBg(c)};display:flex;align-items:center;justify-content:center;font-size:calc(38px*var(--fscale,1));color:#fff">${avatarTxt(c)}</div>
+            <div style="font-size:calc(24px*var(--fscale,1));font-weight:700">${c.name}</div></div>
           <div style="display:flex;justify-content:center;gap:16px;padding-bottom:16px">
             <button class="cbtn" id="call" style="background:#35c759">📞</button>
             <button class="cbtn" id="sms" style="background:#0a84ff">💬</button>
@@ -421,7 +421,7 @@ const NovaApps = (() => {
             ${c.email?`<div class="item"><div class="i-body"><div class="i-sub">Email</div><div class="i-title">${c.email}</div></div></div>`:''}
           </div>
           <button class="btn ghost" id="del" style="margin:16px;color:var(--danger)">Elimina contatto</button>
-          <style>.cbtn{width:56px;height:56px;border-radius:50%;border:none;color:#fff;font-size:22px;cursor:pointer}</style>`;
+          <style>.cbtn{width:56px;height:56px;border-radius:50%;border:none;color:#fff;font-size:calc(22px*var(--fscale,1));cursor:pointer}</style>`;
         root.querySelector(".back-btn").onclick = drawList;
         root.querySelector("#fav").onclick = () => { c.fav = !c.fav; save(); drawDetail(id); };
         root.querySelector("#edit").onclick = () => drawEdit(id);
@@ -446,15 +446,15 @@ const NovaApps = (() => {
           root.innerHTML = `<div class="back-bar"><button class="back-btn"></button><div class="back-title">${id?"Modifica":"Nuovo contatto"}</div></div>
             <div style="text-align:center;margin:6px 0 16px">
               <label style="cursor:pointer;display:inline-block">
-                <div id="av-prev" style="width:88px;height:88px;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:34px;color:#fff;${photo?`background:#232c3d center/cover no-repeat url('${photo}')`:`background:${color(c.name||'?')}`}">${photo?'':'📷'}</div>
-                <div style="color:var(--accent);font-size:13px;margin-top:8px">${photo?'Cambia foto':'Aggiungi foto'}</div>
+                <div id="av-prev" style="width:88px;height:88px;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:calc(34px*var(--fscale,1));color:#fff;${photo?`background:#232c3d center/cover no-repeat url('${photo}')`:`background:${color(c.name||'?')}`}">${photo?'':'📷'}</div>
+                <div style="color:var(--accent);font-size:calc(13px*var(--fscale,1));margin-top:8px">${photo?'Cambia foto':'Aggiungi foto'}</div>
                 <input id="f-photo" type="file" accept="image/*" hidden></label>
-              ${photo?`<div><button id="rm-photo" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;margin-top:2px">Rimuovi foto</button></div>`:''}
+              ${photo?`<div><button id="rm-photo" style="background:none;border:none;color:var(--danger);font-size:calc(12px*var(--fscale,1));cursor:pointer;margin-top:2px">Rimuovi foto</button></div>`:''}
             </div>
             <div class="group" style="padding:16px">
-              <input id="f-name" value="${c.name}" placeholder="Nome" style="width:100%;background:var(--surface-2);border:none;border-radius:12px;padding:13px;color:var(--text);font-size:15px;outline:none;margin-bottom:10px">
-              <input id="f-phone" value="${c.phone}" inputmode="tel" placeholder="Telefono" style="width:100%;background:var(--surface-2);border:none;border-radius:12px;padding:13px;color:var(--text);font-size:15px;outline:none;margin-bottom:10px">
-              <input id="f-email" value="${c.email||''}" inputmode="email" placeholder="Email (facoltativa)" style="width:100%;background:var(--surface-2);border:none;border-radius:12px;padding:13px;color:var(--text);font-size:15px;outline:none;margin-bottom:12px">
+              <input id="f-name" value="${c.name}" placeholder="Nome" style="width:100%;background:var(--surface-2);border:none;border-radius:12px;padding:13px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none;margin-bottom:10px">
+              <input id="f-phone" value="${c.phone}" inputmode="tel" placeholder="Telefono" style="width:100%;background:var(--surface-2);border:none;border-radius:12px;padding:13px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none;margin-bottom:10px">
+              <input id="f-email" value="${c.email||''}" inputmode="email" placeholder="Email (facoltativa)" style="width:100%;background:var(--surface-2);border:none;border-radius:12px;padding:13px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none;margin-bottom:12px">
               <button class="btn" id="save">Salva</button>
             </div>`;
           root.querySelector(".back-btn").onclick = () => id ? drawDetail(id) : drawList();
@@ -508,7 +508,7 @@ const NovaApps = (() => {
         drawHome();
       };
       const bar = (val="") => `<div style="display:flex;gap:8px;padding:10px 14px">
-          <input id="url" value="${val}" placeholder="Cerca o inserisci indirizzo" style="flex:1;background:var(--surface);border:none;border-radius:20px;padding:12px 16px;color:var(--text);font-size:14px;outline:none">
+          <input id="url" value="${val}" placeholder="Cerca o inserisci indirizzo" style="flex:1;background:var(--surface);border:none;border-radius:20px;padding:12px 16px;color:var(--text);font-size:calc(14px*var(--fscale,1));outline:none">
           <button class="btn ghost" id="star" style="width:auto;padding:0 14px">☆</button>
           <button class="btn" id="go" style="width:auto;padding:0 16px">Vai</button></div>`;
       const bind = () => {
@@ -524,10 +524,10 @@ const NovaApps = (() => {
           <div class="section-label">Preferiti</div>
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:6px 16px">
             ${bookmarks.length?bookmarks.map((b,i)=>`<div class="bm" data-url="${b.url}" style="text-align:center;cursor:pointer;position:relative">
-              <div style="width:52px;height:52px;border-radius:15px;margin:0 auto;background:hsl(${hue(b.url)} 60% 45%);display:flex;align-items:center;justify-content:center;font-size:22px">🌐</div>
-              <div style="font-size:11px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.name}</div>
-              <button data-rm="${i}" style="position:absolute;top:-4px;right:6px;width:18px;height:18px;border-radius:50%;background:var(--surface-2);border:none;color:var(--text-dim);font-size:10px;cursor:pointer">✕</button></div>`).join("")
-              :'<div style="grid-column:span 4;color:var(--text-dim);font-size:13px">Nessun preferito. Apri un sito e tocca ☆.</div>'}
+              <div style="width:52px;height:52px;border-radius:15px;margin:0 auto;background:hsl(${hue(b.url)} 60% 45%);display:flex;align-items:center;justify-content:center;font-size:calc(22px*var(--fscale,1))">🌐</div>
+              <div style="font-size:calc(11px*var(--fscale,1));margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.name}</div>
+              <button data-rm="${i}" style="position:absolute;top:-4px;right:6px;width:18px;height:18px;border-radius:50%;background:var(--surface-2);border:none;color:var(--text-dim);font-size:calc(10px*var(--fscale,1));cursor:pointer">✕</button></div>`).join("")
+              :'<div style="grid-column:span 4;color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">Nessun preferito. Apri un sito e tocca ☆.</div>'}
           </div>
           <div class="section-label">Cronologia</div>
           <div class="group">${history.length?history.slice(0,8).map(h=>`
@@ -544,14 +544,14 @@ const NovaApps = (() => {
 
       const drawFrame = (u) => {
         root.innerHTML = `<div class="back-bar" style="padding:6px 12px"><button class="back-btn"></button>
-            <div class="back-title" style="flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${host(u)}</div>
-            <button class="btn ghost" id="newtab" style="width:auto;padding:0 12px;font-size:13px">↗ Nuova scheda</button></div>
+            <div class="back-title" style="flex:1;font-size:calc(14px*var(--fscale,1));overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${host(u)}</div>
+            <button class="btn ghost" id="newtab" style="width:auto;padding:0 12px;font-size:calc(13px*var(--fscale,1))">↗ Nuova scheda</button></div>
           ${bar(u)}
           <div style="padding:0 12px 90px;position:relative">
-            <div id="fload" style="position:absolute;left:12px;right:12px;top:0;height:500px;border-radius:12px;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--text-dim);font-size:13px">
+            <div id="fload" style="position:absolute;left:12px;right:12px;top:0;height:500px;border-radius:12px;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">
               <div class="spin"></div>Caricamento di ${host(u)}…</div>
             <iframe id="frame" src="${u}" style="width:100%;height:500px;border:none;border-radius:12px;background:#fff"></iframe>
-            <div id="fblock" style="display:none;color:var(--text-dim);font-size:13px;padding:14px 6px;line-height:1.5">
+            <div id="fblock" style="display:none;color:var(--text-dim);font-size:calc(13px*var(--fscale,1));padding:14px 6px;line-height:1.5">
               ⚠️ <b>${host(u)}</b> non consente l'anteprima incorporata (protezione anti-iframe, tipica di banche e Google).<br>
               <button class="btn" id="opnew" style="margin-top:10px;width:auto;padding:10px 16px">Apri in una nuova scheda</button></div>
           </div>`;
@@ -597,7 +597,7 @@ const NovaApps = (() => {
       let items = [], tab = "foto";
       const cell = (p,i) => p.real
         ? `<div class="ph" data-i="${i}" style="aspect-ratio:1;border-radius:6px;background-image:url('${p.data}');background-size:cover;background-position:center;cursor:pointer"></div>`
-        : `<div class="ph" data-i="${i}" style="aspect-ratio:1;background:${p.bg};border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:30px;cursor:pointer">${p.emoji}</div>`;
+        : `<div class="ph" data-i="${i}" style="aspect-ratio:1;background:${p.bg};border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:calc(30px*var(--fscale,1));cursor:pointer">${p.emoji}</div>`;
 
       const header = (real) => `<div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
           <div><div class="app-title">Galleria</div><div class="app-sub">${real} tue foto · ${demo.length} demo</div></div>
@@ -626,7 +626,7 @@ const NovaApps = (() => {
           root.innerHTML = header(real.length) + `<div style="padding:0 12px 90px">${albums.map(([nome,arr],ai)=>`
             <div class="alb" data-alb="${ai}" style="margin-bottom:14px;cursor:pointer">
               <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:3px;border-radius:14px;overflow:hidden;aspect-ratio:2">
-                ${(arr.length?arr:[{emoji:'📭',bg:'var(--surface)'}]).slice(0,4).map(p=>p.real?`<div style="background-image:url('${p.data}');background-size:cover"></div>`:`<div style="background:${p.bg};display:flex;align-items:center;justify-content:center;font-size:26px">${p.emoji}</div>`).join("")}
+                ${(arr.length?arr:[{emoji:'📭',bg:'var(--surface)'}]).slice(0,4).map(p=>p.real?`<div style="background-image:url('${p.data}');background-size:cover"></div>`:`<div style="background:${p.bg};display:flex;align-items:center;justify-content:center;font-size:calc(26px*var(--fscale,1))">${p.emoji}</div>`).join("")}
               </div><div style="padding:8px 4px"><b>${nome}</b> <span style="color:var(--text-dim)">${arr.length}</span></div></div>`).join("")}</div>`;
           root.querySelectorAll("[data-alb]").forEach(el=>el.onclick=()=>{const arr=albums[+el.dataset.alb][1];openAlbum(albums[+el.dataset.alb][0],arr);});
         }
@@ -650,23 +650,23 @@ const NovaApps = (() => {
         const go = j => openViewer((j+items.length)%items.length);
         const big = p.real
           ? `<img id="vimg" src="${p.data}" style="max-width:100%;max-height:100%;object-fit:contain;transition:transform .18s;touch-action:none;will-change:transform">`
-          : `<div id="vimg" style="width:80%;aspect-ratio:3/4;border-radius:16px;background:${p.bg};display:flex;align-items:center;justify-content:center;font-size:96px">${p.emoji}</div>`;
+          : `<div id="vimg" style="width:80%;aspect-ratio:3/4;border-radius:16px;background:${p.bg};display:flex;align-items:center;justify-content:center;font-size:calc(96px*var(--fscale,1))">${p.emoji}</div>`;
         root.innerHTML = `
           <div style="height:100%;display:flex;flex-direction:column;background:#000">
             <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;color:#fff">
-              <button id="vclose" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:18px;cursor:pointer">✕</button>
-              <div style="flex:1"><div style="font-weight:600">${p.name}</div><div style="font-size:12px;opacity:.6">${i+1} di ${items.length}</div></div>
-              <button id="vslide" title="Presentazione" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:15px;cursor:pointer">▶️</button>
-              <button id="vinfo" title="Info" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:15px;cursor:pointer">ℹ️</button>
-              ${p.real?`<button id="vshare" title="Condividi" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:15px;cursor:pointer">📤</button>
-              <button id="vedit" title="Modifica" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:15px;cursor:pointer">✏️</button>`:''}
-              <button id="vdel" title="Elimina" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,80,90,.35);color:#fff;font-size:16px;cursor:pointer">🗑</button>
+              <button id="vclose" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(18px*var(--fscale,1));cursor:pointer">✕</button>
+              <div style="flex:1"><div style="font-weight:600">${p.name}</div><div style="font-size:calc(12px*var(--fscale,1));opacity:.6">${i+1} di ${items.length}</div></div>
+              <button id="vslide" title="Presentazione" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">▶️</button>
+              <button id="vinfo" title="Info" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">ℹ️</button>
+              ${p.real?`<button id="vshare" title="Condividi" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">📤</button>
+              <button id="vedit" title="Modifica" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">✏️</button>`:''}
+              <button id="vdel" title="Elimina" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,80,90,.35);color:#fff;font-size:calc(16px*var(--fscale,1));cursor:pointer">🗑</button>
             </div>
             <div id="vstage" style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">
-              <button id="vprev" style="position:absolute;left:8px;z-index:2;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.12);color:#fff;font-size:20px;cursor:pointer">‹</button>
+              <button id="vprev" style="position:absolute;left:8px;z-index:2;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.12);color:#fff;font-size:calc(20px*var(--fscale,1));cursor:pointer">‹</button>
               ${big}
-              <button id="vnext" style="position:absolute;right:8px;z-index:2;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.12);color:#fff;font-size:20px;cursor:pointer">›</button>
-              <div id="vinfobox" style="display:none;position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.72);color:#fff;padding:14px 18px;font-size:13px;line-height:1.7">
+              <button id="vnext" style="position:absolute;right:8px;z-index:2;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.12);color:#fff;font-size:calc(20px*var(--fscale,1));cursor:pointer">›</button>
+              <div id="vinfobox" style="display:none;position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.72);color:#fff;padding:14px 18px;font-size:calc(13px*var(--fscale,1));line-height:1.7">
                 <div><b>${p.real?'Foto':p.name}</b></div>
                 <div style="opacity:.8;text-transform:capitalize">📅 ${fmtDate(p.ts)}</div>
                 ${p.real?`<div style="opacity:.8" id="vdim">🖼️ dimensioni…</div><div style="opacity:.8">💾 ${sizeOf(p.data)}</div>`:'<div style="opacity:.8">Immagine dimostrativa</div>'}
@@ -746,11 +746,11 @@ const NovaApps = (() => {
         const apply = () => { const el = root.querySelector("#edit-img");
           el.style.filter = cssFilter(); el.style.transform = `rotate(${rot}deg)` + (rot%180?" scale(.75)":""); };
         const slider = (id,label,min,max,val) => `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <div style="color:#fff;font-size:12px;width:78px">${label}</div><input type="range" class="slider" style="flex:1" min="${min}" max="${max}" value="${val}" id="${id}"></div>`;
+          <div style="color:#fff;font-size:calc(12px*var(--fscale,1));width:78px">${label}</div><input type="range" class="slider" style="flex:1" min="${min}" max="${max}" value="${val}" id="${id}"></div>`;
         root.innerHTML = `
           <div style="height:100%;display:flex;flex-direction:column;background:#000">
             <div class="back-bar"><button class="back-btn" style="background:rgba(255,255,255,.15)"></button><div class="back-title" style="color:#fff;flex:1">Modifica</div>
-              <button id="rot" title="Ruota" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:16px;cursor:pointer;margin-right:8px">↻</button>
+              <button id="rot" title="Ruota" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(16px*var(--fscale,1));cursor:pointer;margin-right:8px">↻</button>
               <button class="btn" id="save" style="width:auto;padding:8px 16px">Salva</button></div>
             <div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden"><img id="edit-img" src="${p.data}" style="max-width:90%;max-height:100%;border-radius:12px;transition:transform .2s"></div>
             <div style="padding:12px 16px 4px">
@@ -758,7 +758,7 @@ const NovaApps = (() => {
               ${slider("co","Contrasto",50,150,100)}
               ${slider("sa","Saturazione",0,200,100)}</div>
             <div style="display:flex;gap:8px;overflow-x:auto;padding:8px 16px 20px">${FILTERS.map((f,fi)=>`
-              <button data-fil="${fi}" style="flex:0 0 auto;padding:10px 14px;border-radius:12px;border:none;background:${fi===0?'var(--accent)':'rgba(255,255,255,.12)'};color:#fff;cursor:pointer;font-size:13px">${f[0]}</button>`).join("")}</div>
+              <button data-fil="${fi}" style="flex:0 0 auto;padding:10px 14px;border-radius:12px;border:none;background:${fi===0?'var(--accent)':'rgba(255,255,255,.12)'};color:#fff;cursor:pointer;font-size:calc(13px*var(--fscale,1))">${f[0]}</button>`).join("")}</div>
           </div>`;
         apply();
         root.querySelector(".back-btn").onclick = () => openViewer(items.indexOf(p));
@@ -822,7 +822,7 @@ const NovaApps = (() => {
 
       root.innerHTML = `<div class="app-header"><div class="app-title">Orologio</div></div>
         <div style="text-align:center;padding:12px">
-          <div id="big-clock" style="font-size:60px;font-weight:200;font-variant-numeric:tabular-nums"></div>
+          <div id="big-clock" style="font-size:calc(60px*var(--fscale,1));font-weight:200;font-variant-numeric:tabular-nums"></div>
           <div style="color:var(--text-dim);text-transform:capitalize" id="big-date"></div></div>
 
         <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
@@ -832,14 +832,14 @@ const NovaApps = (() => {
 
         <div class="section-label">Cronometro</div>
         <div class="group" style="padding:16px;display:flex;align-items:center;gap:14px">
-          <div id="chrono" style="flex:1;font-size:28px;font-variant-numeric:tabular-nums">00:00.0</div>
+          <div id="chrono" style="flex:1;font-size:calc(28px*var(--fscale,1));font-variant-numeric:tabular-nums">00:00.0</div>
           <button class="btn ghost" style="width:auto;padding:10px 16px" id="chrono-lap">Giro</button>
           <button class="btn" style="width:auto;padding:10px 20px" id="chrono-btn">Avvia</button></div>
         <div class="group" id="laps" style="display:none"></div>
 
         <div class="section-label">Timer</div>
         <div class="group" style="padding:16px">
-          <div id="tmr" style="text-align:center;font-size:44px;font-weight:200;font-variant-numeric:tabular-nums;margin-bottom:10px">00:00</div>
+          <div id="tmr" style="text-align:center;font-size:calc(44px*var(--fscale,1));font-weight:200;font-variant-numeric:tabular-nums;margin-bottom:10px">00:00</div>
           <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px" id="tmr-presets">
             <button class="tpz" data-s="60">1 min</button><button class="tpz" data-s="300">5 min</button>
             <button class="tpz" data-s="600">10 min</button><button class="tpz" data-s="1800">30 min</button></div>
@@ -852,11 +852,11 @@ const NovaApps = (() => {
         <div id="tz-panel"></div>
         <div class="group" id="world"></div>
         <div style="height:80px"></div>
-        <style>.mini-add{width:30px;height:30px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:20px;line-height:1;cursor:pointer}
+        <style>.mini-add{width:30px;height:30px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:calc(20px*var(--fscale,1));line-height:1;cursor:pointer}
           .inline-panel{background:var(--surface);border-radius:var(--radius-sm);margin:0 16px 10px;padding:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-          .inline-panel input,.inline-panel select{background:var(--surface-2);border:none;border-radius:10px;padding:11px;color:var(--text);font-size:15px;outline:none}
+          .inline-panel input,.inline-panel select{background:var(--surface-2);border:none;border-radius:10px;padding:11px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none}
           .inline-panel input[type=time]{flex:1}.inline-panel select{flex:1}
-          .tpz{background:var(--surface-2);border:none;border-radius:14px;padding:9px 12px;color:var(--text);font-size:13px;cursor:pointer}</style>`;
+          .tpz{background:var(--surface-2);border:none;border-radius:14px;padding:9px 12px;color:var(--text);font-size:calc(13px*var(--fscale,1));cursor:pointer}</style>`;
 
       const bc=root.querySelector("#big-clock"), bd=root.querySelector("#big-date");
 
@@ -864,8 +864,8 @@ const NovaApps = (() => {
       const drawAlarms = () => {
         const box = root.querySelector("#alarms");
         box.innerHTML = alarms.length ? alarms.map(a=>`
-          <div class="item"><div class="i-body"><div class="i-title" style="font-size:26px;font-weight:300">${a.time}</div></div>
-            <button data-del="${a.id}" style="background:none;border:none;color:var(--text-dim);font-size:16px;cursor:pointer;margin-right:8px">🗑</button>
+          <div class="item"><div class="i-body"><div class="i-title" style="font-size:calc(26px*var(--fscale,1));font-weight:300">${a.time}</div></div>
+            <button data-del="${a.id}" style="background:none;border:none;color:var(--text-dim);font-size:calc(16px*var(--fscale,1));cursor:pointer;margin-right:8px">🗑</button>
             <div class="switch ${a.on?'on':''}" data-al="${a.id}"></div></div>`).join("")
           : `<div class="item"><div class="i-sub" style="padding:6px">Nessuna sveglia impostata</div></div>`;
         box.querySelectorAll("[data-al]").forEach(el => el.onclick = () => { const a=alarms.find(x=>x.id==el.dataset.al); a.on=!a.on; saveA(); el.classList.toggle("on"); });
@@ -891,8 +891,8 @@ const NovaApps = (() => {
           const t = now.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit",timeZone:w.tz});
           const off = new Intl.DateTimeFormat("en-US",{timeZone:w.tz,timeZoneName:"shortOffset"}).formatToParts(now).find(p=>p.type==="timeZoneName");
           return `<div class="item"><div class="i-body"><div class="i-title">${w.city}</div><div class="i-sub">${off?off.value:''}</div></div>
-            <div style="font-size:24px;font-weight:300;font-variant-numeric:tabular-nums;margin-right:10px">${t}</div>
-            <button data-tzdel="${w.id}" style="background:none;border:none;color:var(--text-dim);font-size:16px;cursor:pointer">🗑</button></div>`;
+            <div style="font-size:calc(24px*var(--fscale,1));font-weight:300;font-variant-numeric:tabular-nums;margin-right:10px">${t}</div>
+            <button data-tzdel="${w.id}" style="background:none;border:none;color:var(--text-dim);font-size:calc(16px*var(--fscale,1));cursor:pointer">🗑</button></div>`;
         }).join("") : `<div class="item"><div class="i-sub" style="padding:6px">Nessun fuso aggiunto</div></div>`;
         worldBox.querySelectorAll("[data-tzdel]").forEach(b => b.onclick = () => { world=world.filter(x=>x.id!=b.dataset.tzdel); saveW(); drawWorld(); });
       };
@@ -968,7 +968,7 @@ const NovaApps = (() => {
       const md = t => t.split("\n").map((l,i) => {
         const cb = l.match(/^-\s\[([ xX])\]\s?(.*)$/);
         if (cb) { const done=cb[1].toLowerCase()==="x"; return `<div class="chk" data-ln="${i}" style="display:flex;gap:8px;align-items:flex-start;padding:3px 0;cursor:pointer">
-          <span style="font-size:18px;line-height:1.3;color:${done?'var(--accent)':'var(--text-dim)'}">${done?'☑':'☐'}</span>
+          <span style="font-size:calc(18px*var(--fscale,1));line-height:1.3;color:${done?'var(--accent)':'var(--text-dim)'}">${done?'☑':'☐'}</span>
           <span style="${done?'text-decoration:line-through;color:var(--text-dim)':''}">${inline(cb[2])||'&nbsp;'}</span></div>`; }
         return /^#\s/.test(l) ? `<h3 style="margin:10px 0 4px">${inline(l.slice(2))}</h3>`
           : /^-\s/.test(l) ? `<div style="padding-left:14px">• ${inline(l.slice(2))}</div>` : `<div>${inline(l)||"<br>"}</div>`;
@@ -980,13 +980,13 @@ const NovaApps = (() => {
         root.innerHTML = `<div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
             <div><div class="app-title">Note</div><div class="app-sub">${list.length} note</div></div>
             <button class="btn" id="new" style="width:auto;padding:10px 16px">+ Nuova</button></div>
-          <div style="padding:0 16px 8px"><input id="q" value="${query}" placeholder="Cerca" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px;color:var(--text);font-size:15px;outline:none"></div>
+          <div style="padding:0 16px 8px"><input id="q" value="${query}" placeholder="Cerca" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none"></div>
           <div class="seg" style="margin-bottom:8px;flex-wrap:wrap"><button data-cat="Tutte" class="${filterCat==='Tutte'?'on':''}">Tutte</button>${CATS.map(c=>`<button data-cat="${c}" class="${filterCat===c?'on':''}">${c}</button>`).join("")}</div>
           <div class="list">${shown.length?shown.map(n=>`
             <div class="card tappable" data-id="${n.id}" style="border-left:4px solid ${n.color}">
               <div class="c-body"><div class="c-title">${n.pin?'📌 ':''}${esc(title(n.text))}</div>
                 <div class="c-sub">${esc(preview(n.text))}</div>
-                <div style="font-size:11px;color:var(--text-dim);margin-top:3px">${n.cat} · ${when(n.updated)}</div></div></div>`).join("")
+                <div style="font-size:calc(11px*var(--fscale,1));color:var(--text-dim);margin-top:3px">${n.cat} · ${when(n.updated)}</div></div></div>`).join("")
             :`<div style="text-align:center;color:var(--text-dim);padding:30px">Nessuna nota</div>`}</div>`;
         root.querySelector("#new").onclick = () => { const n={id:Date.now(),text:"",color:COLORS[0],cat:"Personale",pin:false,updated:Date.now()}; list.unshift(n); save(); drawEditor(n.id); };
         root.querySelector("#q").oninput = e => { query=e.target.value; const p=e.target.selectionStart; drawList(); const q2=root.querySelector("#q"); q2.focus(); q2.setSelectionRange(p,p); };
@@ -998,9 +998,9 @@ const NovaApps = (() => {
         const n = list.find(x=>x.id===id); let editMode = true;
         const render = () => {
           root.innerHTML = `<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1">Nota</div>
-              <button id="pin" style="background:none;border:none;font-size:17px;cursor:pointer">${n.pin?'📌':'📍'}</button>
-              <button id="prev" style="background:none;border:none;color:var(--accent);font-size:14px;cursor:pointer;margin:0 8px">${editMode?'Anteprima':'Modifica'}</button>
-              <button id="del" style="background:none;border:none;color:var(--danger);font-size:14px;cursor:pointer">Elimina</button></div>
+              <button id="pin" style="background:none;border:none;font-size:calc(17px*var(--fscale,1));cursor:pointer">${n.pin?'📌':'📍'}</button>
+              <button id="prev" style="background:none;border:none;color:var(--accent);font-size:calc(14px*var(--fscale,1));cursor:pointer;margin:0 8px">${editMode?'Anteprima':'Modifica'}</button>
+              <button id="del" style="background:none;border:none;color:var(--danger);font-size:calc(14px*var(--fscale,1));cursor:pointer">Elimina</button></div>
             ${editMode?`<div style="display:flex;gap:6px;padding:0 16px 8px">
               <button class="fmt" data-f="b" style="width:38px;height:36px;border:none;border-radius:9px;background:var(--surface);color:var(--text);font-weight:700;cursor:pointer">B</button>
               <button class="fmt" data-f="i" style="width:38px;height:36px;border:none;border-radius:9px;background:var(--surface);color:var(--text);font-style:italic;cursor:pointer">I</button>
@@ -1009,8 +1009,8 @@ const NovaApps = (() => {
               <button class="fmt" data-f="c" style="width:38px;height:36px;border:none;border-radius:9px;background:var(--surface);color:var(--text);cursor:pointer">☑</button></div>`:''}
             <div style="padding:0 16px">
               ${editMode
-                ? `<textarea id="ed" placeholder="Scrivi qui… usa **grassetto**, # Titolo, - elenco" style="width:100%;min-height:300px;background:var(--surface);border:none;border-radius:14px;padding:16px;color:var(--text);font-size:16px;line-height:1.5;resize:none;outline:none">${esc(n.text)}</textarea>`
-                : `<div style="background:var(--surface);border-radius:14px;padding:16px;min-height:300px;font-size:16px;line-height:1.6">${md(n.text)}</div>`}
+                ? `<textarea id="ed" placeholder="Scrivi qui… usa **grassetto**, # Titolo, - elenco" style="width:100%;min-height:300px;background:var(--surface);border:none;border-radius:14px;padding:16px;color:var(--text);font-size:calc(16px*var(--fscale,1));line-height:1.5;resize:none;outline:none">${esc(n.text)}</textarea>`
+                : `<div style="background:var(--surface);border-radius:14px;padding:16px;min-height:300px;font-size:calc(16px*var(--fscale,1));line-height:1.6">${md(n.text)}</div>`}
             </div>
             <div class="section-label">Cartella</div>
             <div class="seg" style="flex-wrap:wrap">${CATS.map(c=>`<button data-c="${c}" class="${n.cat===c?'on':''}">${c}</button>`).join("")}</div>
@@ -1077,13 +1077,13 @@ const NovaApps = (() => {
             <div style="display:flex;gap:8px"><button class="btn ghost" id="hist" style="width:auto;padding:8px 12px">🕓</button>
             <button class="btn ghost" id="scitog" style="width:auto;padding:8px 12px">${sci?"Base":"Sci"}</button></div></div>
           <div id="hist-panel"></div>
-          <div id="calc-out" style="text-align:right;font-size:46px;font-weight:300;padding:14px 24px 0;min-height:60px;word-break:break-all">${expr||"0"}</div>
-          <div id="calc-prev" style="text-align:right;font-size:20px;color:var(--text-dim);padding:0 24px 8px;min-height:26px;font-variant-numeric:tabular-nums"></div>
+          <div id="calc-out" style="text-align:right;font-size:calc(46px*var(--fscale,1));font-weight:300;padding:14px 24px 0;min-height:60px;word-break:break-all">${expr||"0"}</div>
+          <div id="calc-prev" style="text-align:right;font-size:calc(20px*var(--fscale,1));color:var(--text-dim);padding:0 24px 8px;min-height:26px;font-variant-numeric:tabular-nums"></div>
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;padding:8px 16px 90px">
             ${sciRows}${base.map(([k,t])=>`<button class="ck ${t}" data-k="${k}">${k}</button>`).join("")}
           </div>
-          <style>.ck{border:none;border-radius:16px;aspect-ratio:1.15;font-size:22px;cursor:pointer;background:var(--surface);color:var(--text)}
-            .ck.op,.ck.eq{background:var(--accent);color:#fff}.ck.act{background:var(--danger);color:#fff}.ck.fn{background:var(--surface-2);font-size:17px}
+          <style>.ck{border:none;border-radius:16px;aspect-ratio:1.15;font-size:calc(22px*var(--fscale,1));cursor:pointer;background:var(--surface);color:var(--text)}
+            .ck.op,.ck.eq{background:var(--accent);color:#fff}.ck.act{background:var(--danger);color:#fff}.ck.fn{background:var(--surface-2);font-size:calc(17px*var(--fscale,1))}
             .ck:active{opacity:.7}</style>`;
         root.querySelector("#scitog").onclick = () => { sci=!sci; draw(); };
         root.querySelector("#hist").onclick = () => {
@@ -1208,18 +1208,18 @@ const NovaApps = (() => {
               <button class="btn" id="compose" style="width:auto;padding:10px 14px">✍️ Scrivi</button>
               <button class="btn ghost" id="msettings" style="width:auto;padding:10px 13px">⚙️</button></div></div>
           <div style="padding:0 16px 8px;position:relative">
-            <input id="q" value="${esc(query)}" placeholder="Cerca nella posta" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px 11px 38px;color:var(--text);font-size:15px;outline:none">
+            <input id="q" value="${esc(query)}" placeholder="Cerca nella posta" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px 11px 38px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
             <span style="position:absolute;left:28px;top:11px;opacity:.5">🔍</span></div>
-          <div class="seg" style="margin-bottom:8px">${folders.map(f=>`<button data-f="${f[0]}" class="${folder===f[0]?'on':''}" style="font-size:12px">${f[2]}${f[0]==='drafts'&&box.drafts.length?` ${box.drafts.length}`:''}</button>`).join("")}</div>
+          <div class="seg" style="margin-bottom:8px">${folders.map(f=>`<button data-f="${f[0]}" class="${folder===f[0]?'on':''}" style="font-size:calc(12px*var(--fscale,1))">${f[2]}${f[0]==='drafts'&&box.drafts.length?` ${box.drafts.length}`:''}</button>`).join("")}</div>
           <div class="list" style="padding-top:4px">${msgs.length?msgs.map(m=>`
             <div class="card tappable" data-id="${m.id}" style="${m.read?'':'border-left:3px solid var(--accent)'}">
               <div class="c-ico" style="background:${color(m.from)}">${initials(m.from)}</div>
               <div class="c-body"><div class="c-title" style="${m.read?'':'font-weight:700'}">${esc(m.from)} ${m.attachments&&m.attachments.length?'📎':''}</div>
-                <div style="font-size:14px;${m.read?'color:var(--text-dim)':''}">${esc(m.subj)}</div>
+                <div style="font-size:calc(14px*var(--fscale,1));${m.read?'color:var(--text-dim)':''}">${esc(m.subj)}</div>
                 <div class="c-sub">${esc(clip(m.body))}</div></div>
               <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-                <div style="color:var(--text-dim);font-size:12px">${m.time}</div>
-                <button data-star="${m.id}" style="background:none;border:none;font-size:15px;cursor:pointer">${m.star?'⭐':'☆'}</button></div></div>`).join("")
+                <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1))">${m.time}</div>
+                <button data-star="${m.id}" style="background:none;border:none;font-size:calc(15px*var(--fscale,1));cursor:pointer">${m.star?'⭐':'☆'}</button></div></div>`).join("")
             :`<div style="text-align:center;color:var(--text-dim);padding:30px">${q?'Nessun risultato':'Nessun messaggio'}</div>`}</div>`;
         root.querySelector("#compose").onclick = () => drawCompose();
         root.querySelector("#msettings").onclick = drawSettings;
@@ -1248,7 +1248,7 @@ const NovaApps = (() => {
       const provByDomain = (email) => { const d = (email.split("@")[1]||"").toLowerCase();
         return PROVIDERS.find(p => p.domains.includes(d)) || null; };
       const provPreset = (email) => { const p = provByDomain(email); return p ? [p.imap[0], p.smtp[0]] : null; };
-      const inp = (id,val,ph,type,extra="") => `<input id="${id}" value="${esc(val||"")}" placeholder="${ph}" ${type?`type="${type}"`:''} ${extra} style="width:100%;background:var(--surface-2);border:none;border-radius:12px;padding:12px;color:var(--text);font-size:15px;outline:none;margin-bottom:10px">`;
+      const inp = (id,val,ph,type,extra="") => `<input id="${id}" value="${esc(val||"")}" placeholder="${ph}" ${type?`type="${type}"`:''} ${extra} style="width:100%;background:var(--surface-2);border:none;border-radius:12px;padding:12px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none;margin-bottom:10px">`;
 
       const drawSettings = () => {
         const a = acct();
@@ -1261,22 +1261,22 @@ const NovaApps = (() => {
           ${nativeMail ? `
           <div class="section-label">Provider di posta</div>
           <div style="display:flex;gap:8px;overflow-x:auto;padding:2px 16px 10px;-webkit-overflow-scrolling:touch">
-            ${PROVIDERS.map(p=>`<button class="prov-chip" data-prov="${p.id}" style="flex:0 0 auto;background:var(--surface-2);border:1.5px solid transparent;border-radius:14px;padding:9px 13px;color:var(--text);font-size:13px;white-space:nowrap;cursor:pointer">${p.ic} ${p.name}</button>`).join("")}
+            ${PROVIDERS.map(p=>`<button class="prov-chip" data-prov="${p.id}" style="flex:0 0 auto;background:var(--surface-2);border:1.5px solid transparent;border-radius:14px;padding:9px 13px;color:var(--text);font-size:calc(13px*var(--fscale,1));white-space:nowrap;cursor:pointer">${p.ic} ${p.name}</button>`).join("")}
           </div>
-          <div id="c-provnote" style="padding:0 16px 8px;color:var(--text-dim);font-size:12px;line-height:1.5"></div>
+          <div id="c-provnote" style="padding:0 16px 8px;color:var(--text-dim);font-size:calc(12px*var(--fscale,1));line-height:1.5"></div>
           <div class="section-label">Account posta (IMAP/SMTP)</div>
           <div class="group" style="padding:14px 16px">
             <div style="display:flex;gap:8px">${inp("c-imaphost", a.imapHost, "Server IMAP (in arrivo)")}<div style="width:84px;flex:0 0 84px">${inp("c-imapport", a.imapPort||993, "Porta", "number")}</div></div>
             <div style="display:flex;gap:8px">${inp("c-smtphost", a.smtpHost, "Server SMTP (in uscita)")}<div style="width:84px;flex:0 0 84px">${inp("c-smtpport", a.smtpPort||465, "Porta", "number")}</div></div>
             ${inp("c-user", a.user||a.email, "Nome utente (di solito l'email)")}
             ${inp("c-pass", "", a.hasPassword?"Password ····· (invariata)":"Password", "password", 'autocomplete="off"')}
-            <div style="font-size:12px;color:var(--text-dim);line-height:1.5">La password è cifrata nel dispositivo (Android Keystore) e non viene mai salvata in chiaro. Per Gmail/Outlook con 2FA serve una <b>password per app</b>.</div>
+            <div style="font-size:calc(12px*var(--fscale,1));color:var(--text-dim);line-height:1.5">La password è cifrata nel dispositivo (Android Keystore) e non viene mai salvata in chiaro. Per Gmail/Outlook con 2FA serve una <b>password per app</b>.</div>
           </div>
           <div style="padding:0 16px 6px"><button class="btn" id="c-connect">${a.configured?'Aggiorna account':'Collega account'}</button>
             ${a.configured?`<button class="btn ghost" id="c-disc" style="color:var(--danger);margin-top:8px">Scollega account</button>`:''}</div>`
           : `<div class="group" style="margin:0 16px"><div class="item"><div class="i-ico" style="background:#e0245e">ℹ️</div><div class="i-body"><div class="i-title">Posta reale non disponibile qui</div><div class="i-sub">Installa NovaOS come app per collegare un account IMAP/SMTP reale.</div></div></div></div>`}
           <div class="section-label">Firma</div>
-          <div class="group" style="padding:14px 16px"><textarea id="c-sig" style="width:100%;min-height:70px;background:var(--surface-2);border:none;border-radius:12px;padding:12px;color:var(--text);font-size:15px;outline:none;resize:none">${cfg.signature.replace(/</g,"&lt;")}</textarea></div>
+          <div class="group" style="padding:14px 16px"><textarea id="c-sig" style="width:100%;min-height:70px;background:var(--surface-2);border:none;border-radius:12px;padding:12px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none;resize:none">${cfg.signature.replace(/</g,"&lt;")}</textarea></div>
           <div class="group" style="margin-top:12px"><div class="item"><div class="i-ico" style="background:#e0245e">🔔</div><div class="i-body"><div class="i-title">Notifiche email</div></div><div class="switch ${cfg.notify?'on':''}" id="c-notify"></div></div></div>
           <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
             <button class="btn" id="c-save">Salva impostazioni</button>
@@ -1359,19 +1359,19 @@ const NovaApps = (() => {
         m.read = true; save();
         const atts = m.attachments||[];
         root.innerHTML = `
-          <div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1;font-size:18px">${esc(m.subj)}</div>
-            <button id="star" style="background:none;border:none;font-size:18px;cursor:pointer">${m.star?'⭐':'☆'}</button>
-            <button id="del" style="background:none;border:none;font-size:18px;cursor:pointer;margin-left:6px">🗑️</button></div>
+          <div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1;font-size:calc(18px*var(--fscale,1))">${esc(m.subj)}</div>
+            <button id="star" style="background:none;border:none;font-size:calc(18px*var(--fscale,1));cursor:pointer">${m.star?'⭐':'☆'}</button>
+            <button id="del" style="background:none;border:none;font-size:calc(18px*var(--fscale,1));cursor:pointer;margin-left:6px">🗑️</button></div>
           <div style="padding:0 16px">
             <div style="display:flex;align-items:center;gap:12px;padding:8px 0 16px;border-bottom:1px solid var(--surface-2)">
               <div style="width:44px;height:44px;border-radius:50%;background:${color(m.from)};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600">${initials(m.from)}</div>
-              <div style="flex:1"><div style="font-weight:600">${esc(m.from)}</div><div style="color:var(--text-dim);font-size:13px">${m.time}</div></div></div>
-            <div style="padding:16px 0;font-size:15px;line-height:1.6;white-space:pre-wrap">${esc(m.body)}</div>
-            ${atts.length?`<div style="border-top:1px solid var(--surface-2);padding:12px 0"><div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${atts.length} allegato${atts.length>1?'i':''}</div>
+              <div style="flex:1"><div style="font-weight:600">${esc(m.from)}</div><div style="color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">${m.time}</div></div></div>
+            <div style="padding:16px 0;font-size:calc(15px*var(--fscale,1));line-height:1.6;white-space:pre-wrap">${esc(m.body)}</div>
+            ${atts.length?`<div style="border-top:1px solid var(--surface-2);padding:12px 0"><div style="font-size:calc(12px*var(--fscale,1));color:var(--text-dim);margin-bottom:8px">${atts.length} allegato${atts.length>1?'i':''}</div>
               <div style="display:flex;gap:8px;flex-wrap:wrap">${atts.map((a,ai)=>`
                 <div class="att" data-att="${ai}" style="display:flex;align-items:center;gap:8px;background:var(--surface);border-radius:12px;padding:8px 12px;cursor:pointer;max-width:100%">
-                  <span style="font-size:20px">${/^image\//.test(a.type)?'🖼️':'📄'}</span>
-                  <div style="overflow:hidden"><div style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</div><div style="font-size:11px;color:var(--text-dim)">${kb(a.size)}</div></div></div>`).join("")}</div></div>`:''}
+                  <span style="font-size:calc(20px*var(--fscale,1))">${/^image\//.test(a.type)?'🖼️':'📄'}</span>
+                  <div style="overflow:hidden"><div style="font-size:calc(13px*var(--fscale,1));overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</div><div style="font-size:calc(11px*var(--fscale,1));color:var(--text-dim)">${kb(a.size)}</div></div></div>`).join("")}</div></div>`:''}
             <div style="display:flex;gap:10px;margin:12px 0 20px">
               <button class="btn" id="reply" style="flex:1">↩️ Rispondi</button>
               <button class="btn ghost" id="fwd" style="flex:1">➡️ Inoltra</button></div></div>`;
@@ -1392,7 +1392,7 @@ const NovaApps = (() => {
         ov.style.cssText = "position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px";
         ov.innerHTML = (/^image\//.test(a.type)
           ? `<img src="${a.data}" style="max-width:100%;max-height:78%;border-radius:12px">`
-          : `<div style="font-size:60px">📄</div><div style="color:#fff;text-align:center"><div>${esc(a.name)}</div><div style="opacity:.6;font-size:13px">${kb(a.size)} · anteprima non disponibile</div></div>`)
+          : `<div style="font-size:calc(60px*var(--fscale,1))">📄</div><div style="color:#fff;text-align:center"><div>${esc(a.name)}</div><div style="opacity:.6;font-size:calc(13px*var(--fscale,1))">${kb(a.size)} · anteprima non disponibile</div></div>`)
           + `<button style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:20px;padding:10px 22px;cursor:pointer">Chiudi</button>`;
         ov.querySelector("button").onclick = () => ov.remove();
         document.body.appendChild(ov);
@@ -1411,17 +1411,17 @@ const NovaApps = (() => {
               <button class="btn ghost" id="attach" style="width:auto;padding:8px 12px">📎</button>
               <button class="btn" id="send" style="width:auto;padding:8px 16px;margin-left:8px">Invia</button></div>
             <div style="padding:0 16px">
-              <input id="to" list="mailto" value="${esc(pre.to||'')}" placeholder="A" style="width:100%;background:none;border:none;border-bottom:1px solid var(--surface-2);padding:12px 2px;color:var(--text);font-size:15px;outline:none">
+              <input id="to" list="mailto" value="${esc(pre.to||'')}" placeholder="A" style="width:100%;background:none;border:none;border-bottom:1px solid var(--surface-2);padding:12px 2px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
               <datalist id="mailto">${suggestions.map(e=>`<option value="${esc(e)}">`).join("")}</datalist>
-              <input id="subj" value="${esc(pre.subj||'')}" placeholder="Oggetto" style="width:100%;background:none;border:none;border-bottom:1px solid var(--surface-2);padding:12px 2px;color:var(--text);font-size:15px;outline:none">
+              <input id="subj" value="${esc(pre.subj||'')}" placeholder="Oggetto" style="width:100%;background:none;border:none;border-bottom:1px solid var(--surface-2);padding:12px 2px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
               <div id="attbox" style="display:${atts.length?'flex':'none'};gap:8px;flex-wrap:wrap;padding:10px 0"></div>
-              <textarea id="body" placeholder="Scrivi il messaggio..." style="width:100%;min-height:300px;background:none;border:none;padding:12px 2px;color:var(--text);font-size:15px;line-height:1.6;resize:none;outline:none">${esc(pre.body||'')}</textarea></div>
+              <textarea id="body" placeholder="Scrivi il messaggio..." style="width:100%;min-height:300px;background:none;border:none;padding:12px 2px;color:var(--text);font-size:calc(15px*var(--fscale,1));line-height:1.6;resize:none;outline:none">${esc(pre.body||'')}</textarea></div>
             <input id="afile" type="file" multiple hidden>`;
           const attbox = root.querySelector("#attbox");
           attbox.style.display = atts.length?'flex':'none';
           attbox.innerHTML = atts.map((a,ai)=>`<div style="display:flex;align-items:center;gap:6px;background:var(--surface);border-radius:10px;padding:6px 10px">
-            <span>${/^image\//.test(a.type)?'🖼️':'📄'}</span><span style="font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</span>
-            <button data-rma="${ai}" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:14px">✕</button></div>`).join("");
+            <span>${/^image\//.test(a.type)?'🖼️':'📄'}</span><span style="font-size:calc(12px*var(--fscale,1));max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</span>
+            <button data-rma="${ai}" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:calc(14px*var(--fscale,1))">✕</button></div>`).join("");
           attbox.querySelectorAll("[data-rma]").forEach(b=>b.onclick=()=>{ atts.splice(+b.dataset.rma,1); pre={...fields(),attachments:atts}; render(); });
 
           root.querySelector(".back-btn").onclick = () => {
@@ -1496,9 +1496,9 @@ const NovaApps = (() => {
           <div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
             <div class="app-title">${months[mo]} ${y}</div>
             <div style="display:flex;gap:6px">
-              <button class="mini-add" id="today" style="background:var(--surface);color:var(--text);width:auto;padding:0 12px;font-size:13px">Oggi</button>
+              <button class="mini-add" id="today" style="background:var(--surface);color:var(--text);width:auto;padding:0 12px;font-size:calc(13px*var(--fscale,1))">Oggi</button>
               <button class="mini-add" id="prev" style="background:var(--surface);color:var(--text)">‹</button><button class="mini-add" id="next" style="background:var(--surface);color:var(--text)">›</button></div></div>
-          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:0 12px;color:var(--text-dim);font-size:12px;text-align:center;margin-bottom:4px">${dows.map(d=>`<div>${d}</div>`).join("")}</div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:0 12px;color:var(--text-dim);font-size:calc(12px*var(--fscale,1));text-align:center;margin-bottom:4px">${dows.map(d=>`<div>${d}</div>`).join("")}</div>
           <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:0 12px">${cells}</div>
           <div class="section-label" style="display:flex;justify-content:space-between;align-items:center"><span>${isToday?"Oggi":sel.split("-").reverse().join("/")}</span><button class="mini-add" id="add">+</button></div>
           <div id="ev-panel"></div>
@@ -1507,7 +1507,7 @@ const NovaApps = (() => {
               <div class="i-body"><div class="i-title">${e.title}</div><div class="i-sub">${e.time}${e.note?" · "+e.note:""}</div></div>
               <button data-del="${e.id}" style="background:none;border:none;color:var(--text-dim);cursor:pointer">🗑</button></div>`).join("")
             :`<div class="item"><div class="i-sub" style="padding:6px">Nessun evento</div></div>`}</div>
-          <style>.mini-add{height:32px;min-width:32px;border-radius:16px;border:none;background:var(--accent);color:#fff;font-size:18px;cursor:pointer}
+          <style>.mini-add{height:32px;min-width:32px;border-radius:16px;border:none;background:var(--accent);color:#fff;font-size:calc(18px*var(--fscale,1));cursor:pointer}
             .inline-panel{background:var(--surface);border-radius:14px;margin:0 16px 10px;padding:14px;display:flex;gap:10px;flex-wrap:wrap}
             .inline-panel input{background:var(--surface-2);border:none;border-radius:10px;padding:11px;color:var(--text);outline:none}
             .cdot{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent}.cdot.on{border-color:var(--text)}</style>
@@ -1597,13 +1597,13 @@ const NovaApps = (() => {
         const c = cities[Math.min(sel, cities.length-1)];
         root.innerHTML = `
           <div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
-            <div class="app-title">Meteo</div><button class="mini-add" id="addc" style="width:32px;height:32px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:18px;cursor:pointer">+</button></div>
+            <div class="app-title">Meteo</div><button class="mini-add" id="addc" style="width:32px;height:32px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:calc(18px*var(--fscale,1));cursor:pointer">+</button></div>
           <div id="c-panel"></div>
           <div id="wx-main" style="text-align:center;padding:24px"><div style="color:var(--text-dim)">Caricamento previsioni…</div>
             <div class="boot-spinner" style="margin:16px auto"></div></div>
           <div id="wx-hourly"></div>
           <div id="wx-days"></div>
-          <div class="section-label" style="display:flex;justify-content:space-between;align-items:center"><span>Le mie città</span><button id="geoloc" style="background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0">📍 Posizione attuale</button></div>
+          <div class="section-label" style="display:flex;justify-content:space-between;align-items:center"><span>Le mie città</span><button id="geoloc" style="background:none;border:none;color:var(--accent);font-size:calc(12px*var(--fscale,1));cursor:pointer;text-transform:none;letter-spacing:0">📍 Posizione attuale</button></div>
           <div class="group" id="wx-cities"></div>
           <div style="height:80px"></div>
           <style>.inline-panel{background:var(--surface);border-radius:14px;margin:10px 16px;padding:14px;display:flex;gap:10px}
@@ -1613,9 +1613,9 @@ const NovaApps = (() => {
           const d = await fetchWeather(c);
           const cur = d.current, [ic,txt] = WMO(cur.weather_code);
           root.querySelector("#wx-main").innerHTML = `
-            <div style="font-size:20px;color:var(--text-dim)">${c.name}</div>
-            <div style="font-size:76px;font-weight:200;line-height:1.1">${Math.round(cur.temperature_2m)}°</div>
-            <div style="font-size:40px">${ic}</div><div style="font-size:17px">${txt}</div>
+            <div style="font-size:calc(20px*var(--fscale,1));color:var(--text-dim)">${c.name}</div>
+            <div style="font-size:calc(76px*var(--fscale,1));font-weight:200;line-height:1.1">${Math.round(cur.temperature_2m)}°</div>
+            <div style="font-size:calc(40px*var(--fscale,1))">${ic}</div><div style="font-size:calc(17px*var(--fscale,1))">${txt}</div>
             <div style="color:var(--text-dim);margin-top:8px">Percepita ${Math.round(cur.apparent_temperature)}° · Umidità ${cur.relative_humidity_2m}% · Vento ${Math.round(cur.wind_speed_10m)} km/h</div>`;
           // fascia oraria: prossime 24 ore a partire dall'ora corrente
           if (d.hourly && d.hourly.time) {
@@ -1629,17 +1629,17 @@ const NovaApps = (() => {
               + slots.map((t,k)=>{const idx=start+k;const [hi]=WMO(d.hourly.weather_code[idx]);
                 const pp=d.hourly.precipitation_probability?d.hourly.precipitation_probability[idx]:null;
                 return `<div style="flex:0 0 auto;min-width:52px;text-align:center;background:var(--surface);border-radius:12px;padding:8px 4px">
-                  <div style="font-size:11px;color:var(--text-dim)">${k===0?"Ora":new Date(t).getHours()+""}</div>
-                  <div style="font-size:20px;margin:2px 0">${hi}</div>
+                  <div style="font-size:calc(11px*var(--fscale,1));color:var(--text-dim)">${k===0?"Ora":new Date(t).getHours()+""}</div>
+                  <div style="font-size:calc(20px*var(--fscale,1));margin:2px 0">${hi}</div>
                   <div style="font-weight:600;font-variant-numeric:tabular-nums">${Math.round(d.hourly.temperature_2m[idx])}°</div>
-                  ${pp!=null?`<div style="font-size:10px;color:#4aa3ff">${pp}%</div>`:''}</div>`;}).join("")
+                  ${pp!=null?`<div style="font-size:calc(10px*var(--fscale,1));color:#4aa3ff">${pp}%</div>`:''}</div>`;}).join("")
               + `</div>`;
           }
           root.querySelector("#wx-days").innerHTML = `<div class="section-label">Prossimi giorni</div><div class="group">`
             + d.daily.time.map((t,i)=>{const [di]=WMO(d.daily.weather_code[i]);
               const pp=d.daily.precipitation_probability_max?d.daily.precipitation_probability_max[i]:null;
               return `<div class="item"><div class="i-body"><div class="i-title">${i===0?"Oggi":dayName(t)}</div>${pp?`<div class="i-sub" style="color:#4aa3ff">💧 ${pp}%</div>`:''}</div>
-                <div style="font-size:20px;margin-right:14px">${di}</div>
+                <div style="font-size:calc(20px*var(--fscale,1));margin-right:14px">${di}</div>
                 <div style="font-variant-numeric:tabular-nums;color:var(--text-dim);margin-right:8px">${Math.round(d.daily.temperature_2m_min[i])}°</div>
                 <div style="font-variant-numeric:tabular-nums;font-weight:600">${Math.round(d.daily.temperature_2m_max[i])}°</div></div>`;}).join("") + `</div>`;
           // alba / tramonto
@@ -1650,7 +1650,7 @@ const NovaApps = (() => {
               <div class="item"><div class="i-body"><div class="i-title">🌇 Tramonto</div></div><div style="margin-right:14px">${hm(d.daily.sunset[0])}</div></div></div>`;
           }
         } catch(e) {
-          root.querySelector("#wx-main").innerHTML = `<div style="font-size:20px">${c.name}</div>
+          root.querySelector("#wx-main").innerHTML = `<div style="font-size:calc(20px*var(--fscale,1))">${c.name}</div>
             <div style="color:var(--text-dim);padding:20px">⚠️ Impossibile caricare le previsioni.<br>Verifica la connessione a internet.</div>`;
         }
       };
@@ -1686,7 +1686,7 @@ const NovaApps = (() => {
         const panel = root.querySelector("#c-panel"); const btn = root.querySelector("#addc"); if(!btn) return;
         btn.onclick = () => {
           if(panel.innerHTML){panel.innerHTML="";return;}
-          panel.innerHTML=`<div class="inline-panel"><input id="cn" placeholder="Cerca città (es. Torino)"><button class="btn" id="cok" style="width:auto;padding:11px 16px">Cerca</button></div><div id="cmsg" style="color:var(--text-dim);font-size:13px;padding:0 16px"></div>`;
+          panel.innerHTML=`<div class="inline-panel"><input id="cn" placeholder="Cerca città (es. Torino)"><button class="btn" id="cok" style="width:auto;padding:11px 16px">Cerca</button></div><div id="cmsg" style="color:var(--text-dim);font-size:calc(13px*var(--fscale,1));padding:0 16px"></div>`;
           const go = async () => {
             const n = panel.querySelector("#cn").value.trim(); if(!n) return;
             panel.querySelector("#cmsg").textContent = "Ricerca…";
@@ -1732,7 +1732,7 @@ const NovaApps = (() => {
         const ov = document.createElement("div");
         ov.style.cssText="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.4);display:flex;align-items:flex-end";
         ov.innerHTML=`<div style="width:100%;background:var(--bg);border-radius:18px 18px 0 0;padding:8px 0 20px">
-          <div style="text-align:center;padding:10px;color:var(--text-dim);font-size:13px">${esc(node.name)}</div>
+          <div style="text-align:center;padding:10px;color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">${esc(node.name)}</div>
           <div class="item tappable" data-a="rename"><div class="i-ico" style="background:#5e5ce6">✏️</div><div class="i-body"><div class="i-title">Rinomina</div></div></div>
           <div class="item tappable" data-a="move"><div class="i-ico" style="background:#0a84ff">📂</div><div class="i-body"><div class="i-title">Sposta</div></div></div>
           <div class="item tappable" data-a="del"><div class="i-ico" style="background:var(--danger)">🗑️</div><div class="i-body"><div class="i-title" style="color:var(--danger)">Elimina</div></div></div>
@@ -1751,7 +1751,7 @@ const NovaApps = (() => {
         ov.style.cssText="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:24px";
         ov.innerHTML=`<div style="width:100%;max-width:320px;background:var(--bg);border-radius:16px;padding:18px">
           <div style="font-weight:600;margin-bottom:12px">Rinomina</div>
-          <input id="rn" value="${esc(node.name)}" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:12px;color:var(--text);font-size:15px;outline:none">
+          <input id="rn" value="${esc(node.name)}" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:12px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
           <div style="display:flex;gap:10px;margin-top:14px"><button class="btn ghost" id="rc">Annulla</button><button class="btn" id="ro">Salva</button></div></div>`;
         document.body.appendChild(ov);
         const inp=ov.querySelector("#rn"); inp.focus(); inp.select();
@@ -1791,10 +1791,10 @@ const NovaApps = (() => {
 
       // ---------- editor testo (file reali dell'utente, modificabili) ----------
       const openText = (n) => {
-        root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1;font-size:16px">${esc(n.name)}</div>
+        root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1;font-size:calc(16px*var(--fscale,1))">${esc(n.name)}</div>
             <button class="btn" id="save" style="width:auto;padding:8px 16px">Salva</button></div>
-          <div style="padding:0 16px"><textarea id="ta" placeholder="Scrivi qui…" style="width:100%;min-height:380px;background:var(--surface);border:none;border-radius:14px;padding:16px;color:var(--text);font-size:15px;line-height:1.6;resize:none;outline:none">${esc(n.data||"")}</textarea>
-            <div style="color:var(--text-dim);font-size:12px;padding:10px 4px" id="meta"></div></div>`;
+          <div style="padding:0 16px"><textarea id="ta" placeholder="Scrivi qui…" style="width:100%;min-height:380px;background:var(--surface);border:none;border-radius:14px;padding:16px;color:var(--text);font-size:calc(15px*var(--fscale,1));line-height:1.6;resize:none;outline:none">${esc(n.data||"")}</textarea>
+            <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));padding:10px 4px" id="meta"></div></div>`;
         const ta=root.querySelector("#ta");
         const meta=()=>root.querySelector("#meta").textContent=`${(ta.value||"").length} caratteri · ${kb((ta.value||"").length)}`;
         meta(); ta.oninput=meta;
@@ -1803,16 +1803,16 @@ const NovaApps = (() => {
       };
       // visualizzatore sola-lettura (note derivate)
       const openReadonly = (name,text,jump) => {
-        root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1;font-size:16px">${esc(name)}</div>
+        root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1;font-size:calc(16px*var(--fscale,1))">${esc(name)}</div>
             ${jump?`<button class="btn ghost" id="jump" style="width:auto;padding:8px 14px">Apri in ${jump[0]}</button>`:''}</div>
-          <div style="padding:16px"><div class="group" style="padding:16px;white-space:pre-wrap;font-size:15px;line-height:1.6">${esc(text)}</div></div>`;
+          <div style="padding:16px"><div class="group" style="padding:16px;white-space:pre-wrap;font-size:calc(15px*var(--fscale,1));line-height:1.6">${esc(text)}</div></div>`;
         root.querySelector(".back-btn").onclick=()=>draw();
         const j=root.querySelector("#jump"); if(j) j.onclick=()=>os.openApp(jump[1]);
       };
       // visualizzatore immagine (foto reale) con eliminazione e apri in Galleria
       const openImage = (ph,label) => {
         root.innerHTML=`<div style="height:100%;display:flex;flex-direction:column;background:#000">
-          <div class="back-bar"><button class="back-btn" style="background:rgba(255,255,255,.15)"></button><div class="back-title" style="color:#fff;flex:1;font-size:15px">${esc(label)}</div>
+          <div class="back-bar"><button class="back-btn" style="background:rgba(255,255,255,.15)"></button><div class="back-title" style="color:#fff;flex:1;font-size:calc(15px*var(--fscale,1))">${esc(label)}</div>
             <button id="gal" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;cursor:pointer">🖼️</button>
             <button id="dl" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,80,90,.35);color:#fff;cursor:pointer;margin-left:6px">🗑️</button></div>
           <div style="flex:1;display:flex;align-items:center;justify-content:center"><img src="${ph.data}" style="max-width:96%;max-height:100%;border-radius:12px"></div></div>`;
@@ -1837,14 +1837,14 @@ const NovaApps = (() => {
               <div><div class="app-title">File</div><div class="app-sub">Memoria interna</div></div>
               <button class="btn" id="new" style="width:auto;padding:10px 16px">＋ Nuovo</button></div>
             <div style="padding:0 16px 8px;position:relative">
-              <input id="q" value="${esc(query)}" placeholder="Cerca file e cartelle" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px 11px 38px;color:var(--text);font-size:15px;outline:none">
+              <input id="q" value="${esc(query)}" placeholder="Cerca file e cartelle" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px 11px 38px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
               <span style="position:absolute;left:28px;top:11px;opacity:.5">🔍</span></div>
             <div class="group" style="padding:14px 16px;margin:0 16px 6px">
-              <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-dim);margin-bottom:8px"><span>Spazio usato dai tuoi contenuti</span><b style="color:var(--text)" id="st-total">…</b></div>
+              <div style="display:flex;justify-content:space-between;font-size:calc(13px*var(--fscale,1));color:var(--text-dim);margin-bottom:8px"><span>Spazio usato dai tuoi contenuti</span><b style="color:var(--text)" id="st-total">…</b></div>
               <div style="height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden;display:flex">
                 <div id="st-bar-p" style="width:0;background:#af52de"></div>
                 <div id="st-bar-u" style="width:${userBytes?100:0}%;background:#5e5ce6"></div></div>
-              <div style="display:flex;gap:14px;font-size:11px;color:var(--text-dim);margin-top:6px"><span id="st-p">🟣 Foto …</span><span>🔵 File ${kb(userBytes)}</span></div></div>
+              <div style="display:flex;gap:14px;font-size:calc(11px*var(--fscale,1));color:var(--text-dim);margin-top:6px"><span id="st-p">🟣 Foto …</span><span>🔵 File ${kb(userBytes)}</span></div></div>
             <div class="section-label">Cartelle rapide</div>
             <div class="group">${smart.map(([id,ic,nm,sub,col])=>`<div class="item tappable" data-loc="${id}"><div class="i-ico" style="background:${col}">${ic}</div><div class="i-body"><div class="i-title">${nm}</div><div class="i-sub" ${id==='images'?'id="sm-img"':''}>${sub}</div></div><div class="chev"></div></div>`).join("")}</div>
             <div class="section-label">I miei file</div>
@@ -1861,14 +1861,14 @@ const NovaApps = (() => {
           }).catch(()=>{});
         } else if (loc === "images") {
           const photos = await os.photos.all();
-          root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="font-size:16px">Immagini</div></div>
+          root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="font-size:calc(16px*var(--fscale,1))">Immagini</div></div>
             ${photos.length?`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:0 4px 90px">${photos.map((p,i)=>`<div class="ph" data-img="${i}" style="aspect-ratio:1;border-radius:6px;background:url('${p.data}') center/cover;cursor:pointer"></div>`).join("")}</div>`
               :`<div style="text-align:center;color:var(--text-dim);padding:40px">Nessuna foto. Scatta con la Fotocamera.</div>`}`;
           root.querySelector(".back-btn").onclick=()=>{loc="root";draw();};
           root.querySelectorAll("[data-img]").forEach(el=>el.onclick=()=>openImage(photos[+el.dataset.img],"IMG_"+String(+el.dataset.img+1).padStart(4,"0")+".jpg"));
         } else if (loc === "notes") {
           const notes = os.store.get("notesList2", []);
-          root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="font-size:16px">Note</div></div>
+          root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="font-size:calc(16px*var(--fscale,1))">Note</div></div>
             <div class="group">${notes.length?notes.map((n,i)=>{const t=(n.text.split("\n")[0].replace(/^#\s*/,"")||"Nota "+(i+1)).slice(0,30);return `<div class="item tappable" data-note="${i}"><div class="i-ico" style="background:#ffcc00">📝</div><div class="i-body"><div class="i-title">${esc(t)}.txt</div><div class="i-sub">${kb(n.text.length)}</div></div></div>`;}).join("")
               :`<div class="item"><div class="i-sub" style="padding:6px">Nessuna nota. Creane una nell'app Note.</div></div>`}</div>`;
           root.querySelector(".back-btn").onclick=()=>{loc="root";draw();};
@@ -1876,7 +1876,7 @@ const NovaApps = (() => {
         } else { // dentro una cartella utente
           const uf = rowsUserFiles(loc).filter(n=>!q||n.name.toLowerCase().includes(q));
           const folder = byId(loc);
-          root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1;font-size:16px">${esc(folder?folder.name:"Cartella")}</div>
+          root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1;font-size:calc(16px*var(--fscale,1))">${esc(folder?folder.name:"Cartella")}</div>
               <button class="btn" id="new" style="width:auto;padding:8px 14px">＋</button></div>
             <div class="group">${uf.length?uf.map(n=>fileRow(n)).join("")
               :`<div class="item"><div class="i-sub" style="padding:6px">Cartella vuota</div></div>`}</div><div style="height:80px"></div>`;
@@ -1889,7 +1889,7 @@ const NovaApps = (() => {
       const fileRow = (n) => `<div class="item tappable" data-node="${n.id}">
           <div class="i-ico" style="background:${n.kind==="folder"?'#f4b400':'#5e5ce6'}">${n.kind==="folder"?'📁':'📄'}</div>
           <div class="i-body"><div class="i-title">${esc(n.name)}</div><div class="i-sub">${n.kind==="folder"?kids(n.id).length+" elementi":kb((n.data||"").length)}</div></div>
-          <button class="fmore" data-more="${n.id}" style="background:none;border:none;color:var(--text-dim);font-size:20px;cursor:pointer;padding:0 6px">⋯</button></div>`;
+          <button class="fmore" data-more="${n.id}" style="background:none;border:none;color:var(--text-dim);font-size:calc(20px*var(--fscale,1));cursor:pointer;padding:0 6px">⋯</button></div>`;
 
       const bindRoot = () => {
         root.querySelector("#new").onclick=createPanel;
@@ -1945,15 +1945,15 @@ const NovaApps = (() => {
           <div class="section-label">${editing?`Modifica «${editing.name}»`:"Installa una web app"}</div>
           <div class="group" style="padding:14px 16px${editing?';outline:2px solid var(--accent);outline-offset:-2px;border-radius:14px':''}">
             <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
-              <div id="ap-preview" style="width:54px;height:54px;border-radius:15px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff;overflow:hidden"></div>
-              <input id="ap-name" placeholder="Nome dell'app" style="flex:1;background:var(--surface-2);border:none;border-radius:12px;padding:12px;color:var(--text);font-size:15px;outline:none">
+              <div id="ap-preview" style="width:54px;height:54px;border-radius:15px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:calc(26px*var(--fscale,1));color:#fff;overflow:hidden"></div>
+              <input id="ap-name" placeholder="Nome dell'app" style="flex:1;background:var(--surface-2);border:none;border-radius:12px;padding:12px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
             </div>
-            <input id="ap-url" placeholder="Indirizzo (es. it.wikipedia.org)" inputmode="url" style="width:100%;background:var(--surface-2);border:none;border-radius:12px;padding:12px;color:var(--text);font-size:15px;outline:none;margin-bottom:12px">
-            <div style="color:var(--text-dim);font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Icona sul desktop</div>
+            <input id="ap-url" placeholder="Indirizzo (es. it.wikipedia.org)" inputmode="url" style="width:100%;background:var(--surface-2);border:none;border-radius:12px;padding:12px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none;margin-bottom:12px">
+            <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Icona sul desktop</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
-              <input id="ap-emoji" value="🌐" maxlength="2" title="Emoji" style="width:50px;text-align:center;background:var(--surface-2);border:none;border-radius:10px;padding:10px;font-size:20px;outline:none">
-              <button class="btn ghost" id="ap-fav" style="width:auto;padding:10px 12px;font-size:13px">🌐 Favicon del sito</button>
-              <label class="btn ghost" style="width:auto;padding:10px 12px;font-size:13px;cursor:pointer">🖼️ Immagine<input id="ap-file" type="file" accept="image/*" hidden></label>
+              <input id="ap-emoji" value="🌐" maxlength="2" title="Emoji" style="width:50px;text-align:center;background:var(--surface-2);border:none;border-radius:10px;padding:10px;font-size:calc(20px*var(--fscale,1));outline:none">
+              <button class="btn ghost" id="ap-fav" style="width:auto;padding:10px 12px;font-size:calc(13px*var(--fscale,1))">🌐 Favicon del sito</button>
+              <label class="btn ghost" style="width:auto;padding:10px 12px;font-size:calc(13px*var(--fscale,1));cursor:pointer">🖼️ Immagine<input id="ap-file" type="file" accept="image/*" hidden></label>
               <input id="ap-color" type="color" value="${curColor}" title="Colore sfondo" style="width:44px;height:40px;border:none;background:none;border-radius:10px;cursor:pointer">
             </div>
             <button class="btn" id="ap-install">${editing?"Salva modifiche":"Installa sul desktop"}</button>
@@ -1971,7 +1971,7 @@ const NovaApps = (() => {
                 <div class="i-body"><div class="i-title">${a.name}</div><div class="i-sub">${a.url}</div></div>
                 <button class="btn ghost" style="width:auto;padding:8px 12px" data-ed="${a.id}">Modifica</button>
                 <button class="btn ghost" style="width:auto;padding:8px 12px;color:var(--danger)" data-rm="${a.id}">Rimuovi</button></div>`).join("")
-              : `<div style="color:var(--text-dim);font-size:14px">Nessuna web app installata. Aggiungine una qui sopra: comparirà tra le icone della home.</div>`}
+              : `<div style="color:var(--text-dim);font-size:calc(14px*var(--fscale,1))">Nessuna web app installata. Aggiungine una qui sopra: comparirà tra le icone della home.</div>`}
           </div>
           <div style="height:80px"></div>`;
 
@@ -2067,7 +2067,7 @@ const NovaApps = (() => {
       const isPriv = () => { const ns = readSensors(); return !!(ns && ns.privileged); };
       // versione REALE installata (da PackageInfo) con fallback alla build web
       const appVer = (() => { try { return NN.appVersion ? JSON.parse(NN.appVersion()) : null; } catch { return null; } })();
-      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.11";
+      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.12";
       const VERLONG = appVer && appVer.code ? `${VER} · build ${appVer.code}` : `${VER} · build web`;
       // aggiornamento in attesa (rilevato dal controllo autonomo): mostra un pallino
       const updPend = () => { try { return os.store.get("updAvailable","") || ""; } catch { return ""; } };
@@ -2083,7 +2083,7 @@ const NovaApps = (() => {
         syncSensors();   // riflette lo stato reale dei sensori nei sottotitoli
         root.innerHTML = `
           <div class="app-header"><div class="app-title">Impostazioni</div><div class="app-sub">NovaOS ${VERLONG}</div></div>
-          <div style="padding:0 16px 8px"><input id="q" placeholder="Cerca nelle impostazioni" style="width:100%;background:var(--surface);border:none;border-radius:20px;padding:12px 16px;color:var(--text);font-size:15px;outline:none"></div>
+          <div style="padding:0 16px 8px"><input id="q" placeholder="Cerca nelle impostazioni" style="width:100%;background:var(--surface);border:none;border-radius:20px;padding:12px 16px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none"></div>
 
           <div class="section-label">Rete e connettività</div>
           <div class="group">
@@ -2145,7 +2145,7 @@ const NovaApps = (() => {
               : "Stato reale dell'hardware. Da Android 10 un'app non può cambiare in silenzio Wi-Fi/dati/aereo: tocca un interruttore e si apre il pannello ufficiale. Al ritorno tocca «Aggiorna».";
             const tog = (k,ic,bg,t,sub) => `<div class="item" data-sens="${k}"><div class="i-ico" style="background:${bg}">${ic}</div><div class="i-body"><div class="i-title">${t}</div><div class="i-sub">${sub}</div></div>${sw(S[k])}</div>`;
             sec.innerHTML = `
-              <div class="group" style="padding:12px 14px;color:${priv?'var(--ok)':'var(--text-dim)'};font-size:12.5px;line-height:1.5">${priv?'✓ ':''}${banner}</div>
+              <div class="group" style="padding:12px 14px;color:${priv?'var(--ok)':'var(--text-dim)'};font-size:calc(12.5px*var(--fscale,1));line-height:1.5">${priv?'✓ ':''}${banner}</div>
               <div class="group">
                 ${tog("airplane","✈️","#8e8e93","Modalità aereo",S.airplane?"Attiva":"Disattivata")}
                 ${tog("wifi","📶","#0a84ff","Wi-Fi",S.wifi?"Attivo":"Disattivato")}
@@ -2154,7 +2154,7 @@ const NovaApps = (() => {
               </div>
               <div class="group" style="margin-top:12px"><div class="item" data-open="wifi"><div class="i-ico" style="background:#2a3550">📡</div><div class="i-body"><div class="i-title">Reti Wi-Fi disponibili</div><div class="i-sub">Apri l'elenco reti del sistema</div></div><div class="chev"></div></div></div>
               <button class="btn ghost" id="net-refresh" style="margin:14px 16px 4px">🔄 Aggiorna stato</button>
-              <div style="padding:0 16px 20px;color:var(--text-dim);font-size:11px;word-break:break-all">Diagnostica hardware: ${raw}</div>`;
+              <div style="padding:0 16px 20px;color:var(--text-dim);font-size:calc(11px*var(--fscale,1));word-break:break-all">Diagnostica hardware: ${raw}</div>`;
             sec.querySelectorAll("[data-sens]").forEach(el => el.onclick = () => sensorAct(el.dataset.sens, () => sections.net()));
             sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
             sec.querySelector("#net-refresh").onclick = () => sections.net();
@@ -2201,7 +2201,7 @@ const NovaApps = (() => {
               </div>
               <div class="group" style="margin-top:12px"><div class="item" data-open="bluetooth"><div class="i-ico" style="background:#2a3550">🎧</div><div class="i-body"><div class="i-title">Accoppia un nuovo dispositivo</div><div class="i-sub">Apri le impostazioni Bluetooth</div></div><div class="chev"></div></div></div>
               <button class="btn ghost" id="conn-refresh" style="margin:14px 16px 4px">🔄 Aggiorna stato</button>
-              <div style="padding:0 16px 20px;color:var(--text-dim);font-size:11px;word-break:break-all">${priv?'✓ Integrato · ':''}Diagnostica hardware: ${raw}</div>`;
+              <div style="padding:0 16px 20px;color:var(--text-dim);font-size:calc(11px*var(--fscale,1));word-break:break-all">${priv?'✓ Integrato · ':''}Diagnostica hardware: ${raw}</div>`;
             sec.querySelectorAll("[data-sens]").forEach(el => el.onclick = () => sensorAct(el.dataset.sens, () => sections.connected()));
             sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
             sec.querySelector("#conn-refresh").onclick = () => sections.connected();
@@ -2363,7 +2363,7 @@ const NovaApps = (() => {
         battery: () => nav("Batteria", sec => {
           sec.innerHTML = `
             <div class="group" style="padding:20px;text-align:center">
-              <div style="font-size:52px;font-weight:200">${S.battery}%</div>
+              <div style="font-size:calc(52px*var(--fscale,1));font-weight:200">${S.battery}%</div>
               <div style="color:var(--text-dim)">${S.saver?"Risparmio energetico attivo":"Autonomia stimata ~9 h"}</div>
               <div style="height:10px;border-radius:5px;background:var(--surface-2);margin-top:16px;overflow:hidden"><div style="height:100%;width:${S.battery}%;background:${S.battery<20?'var(--danger)':'var(--ok)'}"></div></div>
             </div>
@@ -2381,7 +2381,7 @@ const NovaApps = (() => {
               ${u.length ? u.map(a=>`<div class="item"><div class="i-ico" style="background:${a.color}">${a.icon}</div>
                 <div class="i-body"><div class="i-title">${a.name}</div><div class="i-sub">${a.url}</div></div>
                 <button class="btn ghost" style="width:auto;padding:8px 14px;color:var(--danger)" data-rm="${a.id}">Rimuovi</button></div>`).join("")
-              : `<div style="color:var(--text-dim);font-size:14px">Nessuna. Apri lo Store per aggiungere web app.</div>`}
+              : `<div style="color:var(--text-dim);font-size:calc(14px*var(--fscale,1))">Nessuna. Apri lo Store per aggiungere web app.</div>`}
             </div>
             <button class="btn" id="open-store" style="margin:16px">Apri lo Store</button>`;
           sec.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { os.uninstallApp(b.dataset.rm); sections.apps(); });
@@ -2440,7 +2440,7 @@ const NovaApps = (() => {
               top.innerHTML = `
                 <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b>${fmt(used)} usati</b><span style="color:var(--text-dim)">quota ${fmt(quota)}</span></div>
                 <div style="height:12px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:${pct.toFixed(1)}%;background:var(--accent)"></div></div>
-                <div style="color:var(--text-dim);font-size:12px;margin-top:8px">Spazio effettivamente occupato da NovaOS in questo dispositivo (dati, foto, cache).</div>`;
+                <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));margin-top:8px">Spazio effettivamente occupato da NovaOS in questo dispositivo (dati, foto, cache).</div>`;
             }).catch(()=>{ const top=sec.querySelector("#st-top"); if(top) top.innerHTML = `<div style="color:var(--text-dim)">Dati app: ${fmt(lsBytes)}. Stima complessiva non disponibile.</div>`; });
           } else { const top=sec.querySelector("#st-top"); if(top) top.innerHTML = `<div style="padding:4px"><b>${fmt(lsBytes)}</b> usati dai dati dell'app.</div>`; }
           // dimensione foto: numero e byte reali da IndexedDB (non blocca la UI)
@@ -2485,9 +2485,9 @@ const NovaApps = (() => {
           const esc = s => String(s==null?"":s).replace(/[<>&]/g, c => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;" }[c]));
           const btag = n => n ? ` · build ${n}` : "";
           const renderUpd = (info, checking) => {
-            if (checking) { panel.innerHTML = `<div style="color:var(--text-dim);font-size:13px;padding:6px 0"><span class="spin" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:8px"></span>Verifica aggiornamenti…</div>`; return; }
+            if (checking) { panel.innerHTML = `<div style="color:var(--text-dim);font-size:calc(13px*var(--fscale,1));padding:6px 0"><span class="spin" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:8px"></span>Verifica aggiornamenti…</div>`; return; }
             if (!info) {
-              panel.innerHTML = `<div style="color:var(--text-dim);font-size:13px;padding:6px 0 10px">Impossibile contattare il server aggiornamenti. Riprova quando sei online.</div><button class="btn ghost" id="upd-retry">Riprova</button>`;
+              panel.innerHTML = `<div style="color:var(--text-dim);font-size:calc(13px*var(--fscale,1));padding:6px 0 10px">Impossibile contattare il server aggiornamenti. Riprova quando sei online.</div><button class="btn ghost" id="upd-retry">Riprova</button>`;
               const rt = panel.querySelector("#upd-retry"); if (rt) rt.onclick = doCheck; return;
             }
             const up = info.hasUpdate;
@@ -2495,8 +2495,8 @@ const NovaApps = (() => {
             panel.innerHTML = `
               <div class="item" style="padding:6px 0"><div class="i-body"><div class="i-sub">Versione installata</div><div class="i-title">NovaOS ${esc(info.currentName)}${btag(info.current)}</div></div></div>
               ${info.reachable ? `<div class="item" style="padding:6px 0"><div class="i-body"><div class="i-sub">Ultima disponibile</div><div class="i-title">NovaOS ${esc(info.latestName)}${btag(info.latest)}${info.date?` · ${esc(info.date)}`:""}</div></div></div>` : ""}
-              ${up && info.notes ? `<div style="background:var(--surface);border-radius:12px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--text-dim)">${esc(info.notes)}</div>` : ""}
-              <div style="color:${up?'var(--accent)':'var(--ok)'};font-size:13px;margin:8px 0">${up?"⬇ È disponibile una versione più recente.":"✓ Il sistema è aggiornato all'ultima versione."}</div>
+              ${up && info.notes ? `<div style="background:var(--surface);border-radius:12px;padding:10px 12px;margin:6px 0;font-size:calc(13px*var(--fscale,1));color:var(--text-dim)">${esc(info.notes)}</div>` : ""}
+              <div style="color:${up?'var(--accent)':'var(--ok)'};font-size:calc(13px*var(--fscale,1));margin:8px 0">${up?"⬇ È disponibile una versione più recente.":"✓ Il sistema è aggiornato all'ultima versione."}</div>
               ${up ? `<button class="btn" id="upd-install">Installa aggiornamento</button>` : `<button class="btn ghost" id="upd-recheck">Cerca aggiornamenti</button>`}`;
             const ins = panel.querySelector("#upd-install");
             if (ins) ins.onclick = async () => {
@@ -2504,12 +2504,12 @@ const NovaApps = (() => {
               if (os.updater.last && os.updater.last.files && os.updater.last.files.length
                   && window.NovaNative && window.NovaNative.shellWrite
                   && (!os.updater.last.minNative || os.updater.last.nativeBuild >= os.updater.last.minNative)) {
-                panel.innerHTML = `<div style="color:var(--text-dim);font-size:13px;padding:6px 0"><span class="spin" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:8px"></span>Scarico e applico l'interfaccia aggiornata…</div>`;
+                panel.innerHTML = `<div style="color:var(--text-dim);font-size:calc(13px*var(--fscale,1));padding:6px 0"><span class="spin" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:8px"></span>Scarico e applico l'interfaccia aggiornata…</div>`;
               }
               let r = {}; try { r = await os.updater.apply(); } catch {}
               panel.innerHTML = (r.mode === "web" || r.mode === "shell")
-                ? `<div style="color:var(--text-dim);font-size:13px;padding:6px 0">Applico l'aggiornamento e riavvio l'interfaccia…</div>`
-                : `<div style="color:var(--text-dim);font-size:13px;padding:6px 0">Scaricamento e installazione avviati. Segui la richiesta del sistema per completare l'installazione.</div>`;
+                ? `<div style="color:var(--text-dim);font-size:calc(13px*var(--fscale,1));padding:6px 0">Applico l'aggiornamento e riavvio l'interfaccia…</div>`
+                : `<div style="color:var(--text-dim);font-size:calc(13px*var(--fscale,1));padding:6px 0">Scaricamento e installazione avviati. Segui la richiesta del sistema per completare l'installazione.</div>`;
             };
             const rc = panel.querySelector("#upd-recheck"); if (rc) rc.onclick = doCheck;
           };
@@ -2551,7 +2551,7 @@ const NovaApps = (() => {
           sec.innerHTML = `
             <div style="text-align:center;padding:16px">
               <svg viewBox="0 0 120 120" style="width:72px;height:72px"><circle cx="60" cy="60" r="40" fill="none" stroke="#8a63ff" stroke-width="3" stroke-dasharray="150 90"/><circle cx="60" cy="60" r="28" fill="#8a63ff"/><path fill="#fff" d="M60 36 C62 51,69 58,84 60 C69 62,62 69,60 84 C58 69,51 62,36 60 C51 58,58 51,60 36 Z"/></svg>
-              <div style="font-size:22px;font-weight:700;margin-top:8px">NovaOS</div></div>
+              <div style="font-size:calc(22px*var(--fscale,1));font-weight:700;margin-top:8px">NovaOS</div></div>
             <div class="group">${rows.map(([k,v])=>`<div class="item"><div class="i-body"><div class="i-sub">${k}</div><div class="i-title">${v}</div></div></div>`).join("")}</div>`;
         }),
       };
@@ -2569,9 +2569,9 @@ const NovaApps = (() => {
         box.innerHTML = `
           <div class="section-label">${has?"PIN impostato":"Imposta un PIN"}</div>
           <div class="group" style="padding:16px">
-            <input id="pin1" type="password" inputmode="numeric" maxlength="4" placeholder="Nuovo PIN (4 cifre)" style="width:100%;letter-spacing:8px;text-align:center;background:var(--surface-2);border:none;border-radius:12px;padding:14px;color:var(--text);font-size:18px;outline:none;margin-bottom:10px">
-            <input id="pin2" type="password" inputmode="numeric" maxlength="4" placeholder="Conferma PIN" style="width:100%;letter-spacing:8px;text-align:center;background:var(--surface-2);border:none;border-radius:12px;padding:14px;color:var(--text);font-size:18px;outline:none;margin-bottom:12px">
-            <div id="pin-msg" style="color:var(--danger);font-size:13px;min-height:18px;margin-bottom:8px"></div>
+            <input id="pin1" type="password" inputmode="numeric" maxlength="4" placeholder="Nuovo PIN (4 cifre)" style="width:100%;letter-spacing:8px;text-align:center;background:var(--surface-2);border:none;border-radius:12px;padding:14px;color:var(--text);font-size:calc(18px*var(--fscale,1));outline:none;margin-bottom:10px">
+            <input id="pin2" type="password" inputmode="numeric" maxlength="4" placeholder="Conferma PIN" style="width:100%;letter-spacing:8px;text-align:center;background:var(--surface-2);border:none;border-radius:12px;padding:14px;color:var(--text);font-size:calc(18px*var(--fscale,1));outline:none;margin-bottom:12px">
+            <div id="pin-msg" style="color:var(--danger);font-size:calc(13px*var(--fscale,1));min-height:18px;margin-bottom:8px"></div>
             <button class="btn" id="pin-save">${has?"Cambia PIN":"Salva PIN"}</button>
           </div>`;
         box.querySelector("#pin-save").onclick = () => {

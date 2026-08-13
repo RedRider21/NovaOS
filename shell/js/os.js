@@ -115,7 +115,8 @@ const OS = (() => {
     $('meta[name="theme-color"]').setAttribute("content", state.theme==="dark" ? "#0b0f17" : "#eef1f7");
   }
   function applyDisplay() {
-    document.documentElement.style.fontSize = (16 * state.textScale/100) + "px";
+    // dimensione testo: moltiplicatore globale usato da OGNI font-size via calc(...*--fscale)
+    document.documentElement.style.setProperty("--fscale", String(state.textScale/100));
     // luminosità effettiva: risparmio energetico limita il massimo; la luminosità
     // adattiva attenua la sera/notte (effetti reali sull'overlay di luminosità).
     let eff = state.saver ? Math.min(state.brightness, 55) : state.brightness;
@@ -566,7 +567,8 @@ const OS = (() => {
   // ============================================================
   function lockDevice() {
     pinBuffer = ""; pinMode = "unlock"; pinOnDone = null;
-    clearIntervals(); currentApp = null;
+    // NON chiudere l'app aperta: resta sotto il lockscreen (col suo stato) e al sblocco
+    // si torna esattamente dov'eri. Niente clearIntervals/currentApp=null qui.
     if (state.sysSounds && !screens.lock.classList.contains("active")) beep(320, .12, 0.16);
     show("lock");
     renderLockNotifs();
@@ -614,7 +616,10 @@ const OS = (() => {
     screens.lock.style.transform=""; screens.lock.style.opacity="";
     noteActivity();
     if (state.sysSounds) beep(760, .1, 0.18);
-    goHome();
+    // torna dove eri: se un'app era aperta la riprendi com'era (stesso stato, stessa
+    // schermata), altrimenti vai alla home.
+    if (currentApp && $("#app-frame").children.length) { show("app"); renderStatusbars(); }
+    else goHome();
   }
 
   // ============================================================
@@ -772,7 +777,7 @@ const OS = (() => {
       const li = await localInfo();
       const ai = appInfo();
       const curBuild = (ai && ai.code) || (li && li.build) || 0;
-      const curName  = (ai && ai.name && ai.name !== "?") ? ai.name : (li && li.version) || "0.1.11";
+      const curName  = (ai && ai.name && ai.name !== "?") ? ai.name : (li && li.version) || "0.1.12";
       let rel = null;
       try { const r = await fetch(RAW + "?t=" + Date.now(), { cache:"no-store" }); if (r.ok) rel = await r.json(); } catch {}
       const latestBuild = rel ? (rel.build || 0) : curBuild;

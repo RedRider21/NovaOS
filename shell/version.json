@@ -1,9 +1,9 @@
 {
-  "version": "0.1.11",
-  "build": 12,
+  "version": "0.1.12",
+  "build": 13,
   "minNative": 12,
   "date": "2026-08-13",
-  "notes": "Aggiornamento interfaccia OTA senza reinstallare l'APK: da ora gli update dell'interfaccia si applicano da dentro NovaOS.",
+  "notes": "Dimensione testo (Accessibilità) ora scala su tutta l'interfaccia. Il blocco schermo non chiude più l'app aperta: al sblocco torni dov'eri.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",
