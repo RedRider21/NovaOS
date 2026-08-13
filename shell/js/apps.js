@@ -532,7 +532,7 @@ const NovaApps = (() => {
           <div class="section-label">Cronologia</div>
           <div class="group">${history.length?history.slice(0,8).map(h=>`
             <div class="item" data-url="${h.url}"><div class="i-ico" style="background:hsl(${hue(h.url)} 60% 45%)">🌐</div>
-              <div class="i-body"><div class="i-title">${host(h.url)}</div><div class="i-sub">${h.url}</div></div></div>`).join("")
+              <div class="i-body"><div class="i-title trunc">${host(h.url)}</div><div class="i-sub trunc">${h.url}</div></div></div>`).join("")
             :'<div class="item"><div class="i-sub" style="padding:6px">Nessuna cronologia</div></div>'}</div>
           ${history.length?'<button class="btn ghost" id="clrh" style="margin:12px 16px;color:var(--danger)">Cancella cronologia</button>':''}
           <div style="height:80px"></div>`;
@@ -1998,14 +1998,14 @@ const NovaApps = (() => {
           <div class="section-label">Suggerite</div>
           <div class="group">${suggested.map((s,i)=>`
             <div class="item" data-sugg="${i}">${ico(s.icon,s.color)}
-              <div class="i-body"><div class="i-title">${s.name}</div><div class="i-sub">${s.url}</div></div>
-              <div class="i-val">+ Aggiungi</div></div>`).join("")}</div>
+              <div class="i-body"><div class="i-title trunc">${s.name}</div><div class="i-sub trunc">${s.url}</div></div>
+              <div class="i-val" style="flex:0 0 auto">+ Aggiungi</div></div>`).join("")}</div>
           <div class="section-label">Installate (${installed.length})</div>
           <div class="group" style="${installed.length?'':'padding:16px'}">
             ${installed.length ? installed.map(a=>`
               <div class="item">${ico(a.icon,a.color)}
-                <div class="i-body"><div class="i-title">${a.name}</div><div class="i-sub">${a.url}</div></div>
-                <button class="btn ghost" style="width:auto;padding:8px 12px" data-ed="${a.id}">Modifica</button>
+                <div class="i-body"><div class="i-title trunc">${a.name}</div><div class="i-sub trunc">${a.url}</div></div>
+                <button class="btn ghost" style="width:auto;padding:8px 12px;flex:0 0 auto" data-ed="${a.id}">Modifica</button>
                 <button class="btn ghost" style="width:auto;padding:8px 12px;color:var(--danger)" data-rm="${a.id}">Rimuovi</button></div>`).join("")
               : `<div style="color:var(--text-dim);font-size:calc(14px*var(--fscale,1))">Nessuna web app installata. Aggiungine una qui sopra: comparirà tra le icone della home.</div>`}
           </div>
@@ -2105,7 +2105,7 @@ const NovaApps = (() => {
       const isPriv = () => { const ns = readSensors(); return !!(ns && ns.privileged); };
       // versione REALE installata (da PackageInfo) con fallback alla build web
       const appVer = (() => { try { return NN.appVersion ? JSON.parse(NN.appVersion()) : null; } catch { return null; } })();
-      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.13";
+      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.14";
       const VERLONG = appVer && appVer.code ? `${VER} · build ${appVer.code}` : `${VER} · build web`;
       // aggiornamento in attesa (rilevato dal controllo autonomo): mostra un pallino
       const updPend = () => { try { return os.store.get("updAvailable","") || ""; } catch { return ""; } };
@@ -2460,9 +2460,9 @@ const NovaApps = (() => {
           sec.innerHTML = `
             <div class="section-label">Web app installate</div>
             <div class="group" style="${u.length?'':'padding:16px'}">
-              ${u.length ? u.map(a=>`<div class="item"><div class="i-ico" style="background:${a.color}">${a.icon}</div>
-                <div class="i-body"><div class="i-title">${a.name}</div><div class="i-sub">${a.url}</div></div>
-                <button class="btn ghost" style="width:auto;padding:8px 14px;color:var(--danger)" data-rm="${a.id}">Rimuovi</button></div>`).join("")
+              ${u.length ? u.map(a=>{const img=/^(https?:|data:)/.test(a.icon||"");return `<div class="item"><div class="i-ico" style="background:${a.color}${img?`;background-image:url('${a.icon}');background-size:cover`:''}">${img?'':a.icon}</div>
+                <div class="i-body"><div class="i-title trunc">${a.name}</div><div class="i-sub trunc">${a.url}</div></div>
+                <button class="btn ghost" style="width:auto;padding:8px 14px;color:var(--danger)" data-rm="${a.id}">Rimuovi</button></div>`;}).join("")
               : `<div style="color:var(--text-dim);font-size:calc(14px*var(--fscale,1))">Nessuna. Apri lo Store per aggiungere web app.</div>`}
             </div>
             <button class="btn" id="open-store" style="margin:16px">Apri lo Store</button>`;

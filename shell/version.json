@@ -1,9 +1,9 @@
 {
-  "version": "0.1.13",
-  "build": 14,
+  "version": "0.1.14",
+  "build": 15,
   "minNative": 14,
   "date": "2026-08-13",
-  "notes": "Persistenza impostazioni affidabile (il PIN e tutte le opzioni sopravvivono al riavvio). Pannello rapido con icone nitide. Libreria icone Bootstrap offline nello Store. Temi: forma icone, colore di risalto, import/export. Sblocco PIN dopo lo scorrimento. Tema chiaro: orario/batteria visibili sul blocco.",
+  "notes": "Correzione layout: gli URL lunghi delle app non escono più dal bordo (Impostazioni → App, Store, cronologia) — ora troncati con ellissi.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",

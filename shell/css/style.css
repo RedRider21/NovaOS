@@ -421,8 +421,10 @@ body[data-theme="light"] .pin-key { background: rgba(0,0,0,.06); }
 .item:active { background: var(--surface-2); }
 .item .i-ico { width: 32px; height: 32px; border-radius: 9px; display:flex; align-items:center; justify-content:center; font-size:calc(16px*var(--fscale,1)); flex:0 0 auto; color:#fff; }
 .item .i-body { flex: 1; min-width: 0; }
-.item .i-title { font-size:calc(15px*var(--fscale,1)); }
-.item .i-sub { font-size:calc(12.5px*var(--fscale,1)); color: var(--text-dim); margin-top: 1px; }
+.item .i-title { font-size:calc(15px*var(--fscale,1)); overflow-wrap: anywhere; }
+.item .i-sub { font-size:calc(12.5px*var(--fscale,1)); color: var(--text-dim); margin-top: 1px; overflow-wrap: anywhere; }
+/* troncamento su una riga con ellissi: per URL/link lunghi (es. App, Store) */
+.item .i-sub.trunc, .item .i-title.trunc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
 .item .i-val { color: var(--text-dim); font-size:calc(14px*var(--fscale,1)); }
 .item .chev { width: 8px; height: 8px; border-right: 2px solid var(--text-dim); border-top: 2px solid var(--text-dim); transform: rotate(45deg); flex: 0 0 auto; }
 
