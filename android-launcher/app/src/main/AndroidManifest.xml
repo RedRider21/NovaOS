@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="os.nova.launcher"
-    android:versionCode="20"
-    android:versionName="0.1.19">
+    android:versionCode="21"
+    android:versionName="0.1.20">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- audio nei video registrati dalla Fotocamera -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- salvataggio schermate in Galleria su Android 9 e precedenti -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />

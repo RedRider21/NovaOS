@@ -171,7 +171,7 @@ public class MainActivity extends Activity {
         // richiede a runtime i permessi che servono per le funzioni reali:
         // CALL_PHONE abilita la chiamata DIRETTA (ACTION_CALL) invece del dialer.
         java.util.List<String> need = new java.util.ArrayList<>();
-        for (String p : new String[]{ android.Manifest.permission.CALL_PHONE, android.Manifest.permission.CAMERA }) {
+        for (String p : new String[]{ android.Manifest.permission.CALL_PHONE, android.Manifest.permission.CAMERA, android.Manifest.permission.RECORD_AUDIO }) {
             if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) need.add(p);
         }
         // Android 12+: leggere/gestire il Bluetooth richiede il permesso runtime BLUETOOTH_CONNECT

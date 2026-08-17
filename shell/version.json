@@ -1,9 +1,9 @@
 {
-  "version": "0.1.19",
-  "build": 20,
-  "minNative": 20,
+  "version": "0.1.20",
+  "build": 21,
+  "minNative": 21,
   "date": "2026-08-17",
-  "notes": "Redesign flat 'Nova' di tutte le app (header ampi, icone flat, FAB). Fotocamera Foto/Video con zoom, messa a fuoco e flash. Galleria con video e album Schermate. Gli screenshot compaiono nella Galleria di NovaOS. Browser stile Chrome. Reinstalla l'APK per browser e screenshot.",
+  "notes": "Fotocamera: corretto avvio (regressione audio) - la foto funziona sempre; video con audio se disponibile. Orologio stile Google Clock (schede Sveglia/Orologio/Timer/Cronometro). Galleria stile Google Foto (Foto per data, Cerca, Raccolta). Dal dock parte direttamente il browser Chrome nativo.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",

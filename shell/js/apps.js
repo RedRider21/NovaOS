@@ -352,7 +352,9 @@ const NovaApps = (() => {
       const start = async (constraints) => {
         try {
           if (stream) stream.getTracks().forEach(t=>t.stop());
-          stream = await navigator.mediaDevices.getUserMedia(constraints || { video:{ facingMode: facing }, audio:true });
+          // anteprima SOLO video: chiedere l'audio qui farebbe fallire getUserMedia
+          // se manca il permesso microfono (regressione: cadeva anche la foto).
+          stream = await navigator.mediaDevices.getUserMedia(constraints || { video:{ facingMode: facing }, audio:false });
           video.srcObject = stream; video.style.display = ""; msg.style.display = "none";
           vTrack = stream.getVideoTracks()[0] || null;
           try { const caps = vTrack && vTrack.getCapabilities && vTrack.getCapabilities(); zoomCap = caps && caps.zoom ? caps.zoom : null; } catch { zoomCap = null; }
@@ -388,16 +390,24 @@ const NovaApps = (() => {
         save(cv.toDataURL("image/jpeg", 0.9));
       };
 
-      const startRec = () => {
+      let recAudio = null;
+      const startRec = async () => {
         if (!stream) { root.querySelector("#pick").click(); return; }
         try {
           poster = grabPoster();
           recChunks = [];
+          // prova a ottenere l'audio del microfono; se non c'è permesso, registra muto
+          let recStream = stream;
+          try {
+            recAudio = await navigator.mediaDevices.getUserMedia({ audio:true });
+            recStream = new MediaStream([ ...stream.getVideoTracks(), ...recAudio.getAudioTracks() ]);
+          } catch { recAudio = null; }
           let mime = "video/webm;codecs=vp8,opus";
           if (!(window.MediaRecorder && MediaRecorder.isTypeSupported(mime))) mime = "video/webm";
-          rec = new MediaRecorder(stream, MediaRecorder.isTypeSupported(mime)?{mimeType:mime}:undefined);
+          rec = new MediaRecorder(recStream, MediaRecorder.isTypeSupported(mime)?{mimeType:mime}:undefined);
           rec.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
           rec.onstop = () => {
+            if (recAudio) { recAudio.getTracks().forEach(t=>t.stop()); recAudio = null; }
             const blob = new Blob(recChunks, { type: recChunks[0]?recChunks[0].type:"video/webm" });
             const dur = Math.round((Date.now()-recStart)/1000);
             const r = new FileReader(); r.onload = () => save(r.result, { video:true, dur, poster }); r.readAsDataURL(blob);
@@ -437,8 +447,8 @@ const NovaApps = (() => {
       };
       root.querySelector("#flip").onclick = () => {
         if (rec) return;
-        if (cams.length > 1) { curCam = (curCam+1) % cams.length; start({ video:{ deviceId:{ exact: cams[curCam].deviceId } }, audio:true }); }
-        else { facing = facing==="environment" ? "user" : "environment"; start({ video:{ facingMode: facing }, audio:true }); }
+        if (cams.length > 1) { curCam = (curCam+1) % cams.length; start({ video:{ deviceId:{ exact: cams[curCam].deviceId } }, audio:false }); }
+        else { facing = facing==="environment" ? "user" : "environment"; start({ video:{ facingMode: facing }, audio:false }); }
       };
       root.querySelector("#thumb").onclick = () => os.openApp("gallery");
       root.querySelector("#pick").onchange = (e) => { const f=e.target.files[0]; if(!f) return;
@@ -680,6 +690,10 @@ const NovaApps = (() => {
       };
 
       drawHome();
+      // Sul device il browser "vero" è quello nativo stile Chrome (schede, incognito,
+      // download…). Aprendolo subito, dal dock parte direttamente il browser nuovo
+      // invece della sola home interna: un'unica esperienza allineata.
+      if (native) { try { window.NovaNative.openBrowser((history[0] && history[0].url) || "https://www.google.com"); } catch (e) {} }
     }});
 
   /* ---------- Galleria (foto, album, visualizzatore, modifica) ---------- */
@@ -701,37 +715,77 @@ const NovaApps = (() => {
         ? `<div class="ph" data-i="${i}" style="position:relative;aspect-ratio:1;border-radius:6px;background-image:url('${p.poster||p.data}');background-size:cover;background-position:center;cursor:pointer">${p.video?playBadge:''}</div>`
         : `<div class="ph" data-i="${i}" style="aspect-ratio:1;background:${p.bg};border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:calc(30px*var(--fscale,1));cursor:pointer">${p.emoji}</div>`;
 
-      const header = (real) => `<div class="hero"><div class="hero-l"><h1>Galleria</h1><div class="hero-sub">${real} elementi · ${demo.length} demo</div></div>
+      let scat = "Tutte";
+      const heroBar = (real) => `<div class="hero"><div class="hero-l"><h1>${tab==='album'?'Raccolta':tab==='search'?'Cerca':'Foto'}</h1><div class="hero-sub">${real} elementi · ${demo.length} demo</div></div>
           <div style="display:flex;gap:8px">
-            <button class="round-act small" id="cam" style="background:var(--surface);color:var(--text)">📷</button>
-            <label class="round-act small" style="background:var(--surface);color:var(--text);cursor:pointer">＋<input id="imp" type="file" accept="image/*" multiple hidden></label>
-          </div></div>
-        <div class="seg" style="margin:2px 16px 10px"><button data-tab="foto" class="${tab==='foto'?'on':''}">Foto</button><button data-tab="album" class="${tab==='album'?'on':''}">Album</button></div>`;
+            <button class="round-act small" id="cam" style="background:var(--surface);color:var(--text)">${ICO("camera-fill","width:18px;height:18px")}</button>
+            <label class="round-act small" style="background:var(--surface);color:var(--text);cursor:pointer">${ICO("plus-circle-fill","width:18px;height:18px")}<input id="imp" type="file" accept="image/*" multiple hidden></label>
+          </div></div>`;
+      const tabbar = () => `<nav class="tabbar" id="gal-nav">
+          <button data-tab="foto" class="${tab==='foto'?'on':''}"><span class="tb-pill">${ICO("images","width:20px;height:20px")}</span>Foto</button>
+          <button data-tab="search" class="${tab==='search'?'on':''}"><span class="tb-pill">${ICO("search","width:20px;height:20px")}</span>Cerca</button>
+          <button data-tab="album" class="${tab==='album'?'on':''}"><span class="tb-pill">${ICO("folder2-open","width:20px;height:20px")}</span>Raccolta</button>
+        </nav>`;
+      const wrap = (content) => root.innerHTML = `<div style="height:100%;display:flex;flex-direction:column">
+          <div style="flex:1;overflow-y:auto">${heroBar(itemsReal)}${content}<div style="height:16px"></div></div>${tabbar()}</div>`;
 
       const bindTop = () => {
-        root.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;draw();});
-        root.querySelector("#cam").onclick = () => os.openApp("camera");
-        root.querySelector("#imp").onchange = (e) => { const files=[...e.target.files]; let done=0;
+        root.querySelectorAll("#gal-nav [data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;draw();});
+        const cam = root.querySelector("#cam"); if (cam) cam.onclick = () => os.openApp("camera");
+        const imp = root.querySelector("#imp"); if (imp) imp.onchange = (e) => { const files=[...e.target.files]; let done=0;
           files.forEach(f=>{const r=new FileReader();r.onload=async()=>{await os.photos.add(r.result);if(++done===files.length)draw();};r.readAsDataURL(f);}); };
       };
 
-      const gridHtml = (arr) => `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:0 4px 90px">${arr.map((p)=>cell(p,items.indexOf(p))).join("")}</div>`;
+      const gridHtml = (arr, pad="0 4px 20px") => `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:${pad}">${arr.map((p)=>cell(p,items.indexOf(p))).join("")}</div>`;
 
+      // raggruppa gli elementi reali per giorno (Oggi / Ieri / data)
+      const dayLabel = ts => { const d=new Date(ts||Date.now()), t=new Date();
+        const strip=x=>new Date(x.getFullYear(),x.getMonth(),x.getDate()).getTime();
+        const diff=(strip(t)-strip(d))/86400000;
+        if(diff===0) return "Oggi"; if(diff===1) return "Ieri";
+        return d.toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long",...(d.getFullYear()!==t.getFullYear()?{year:"numeric"}:{})}); };
+
+      let itemsReal = 0;
       const draw = async () => {
         const real = (await os.photos.all()).map(p => ({ real:true, id:p.id, data:p.data, ts:p.ts, album:p.album, video:!!p.video, poster:p.poster, dur:p.dur, name:p.video?"Video":(p.album||"Foto") }));
         items = [...real, ...demo.filter(d => !hidden.includes(d.id))];
+        itemsReal = real.length;
+
         if (tab === "foto") {
-          root.innerHTML = header(real.length) + gridHtml(items);
+          // sezioni per data (reali) + raccolta dimostrativa
+          let html = "";
+          if (real.length) {
+            let curLbl = null;
+            real.forEach(p => { const l = dayLabel(p.ts); if (l!==curLbl) { if(curLbl!==null) html+="</div>"; html+=`<div class="date-head" style="text-transform:capitalize">${l}</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:0 4px 8px">`; curLbl=l; } html+=cell(p, items.indexOf(p)); });
+            if (curLbl!==null) html+="</div>";
+          } else {
+            html += `<div style="text-align:center;color:var(--text-dim);padding:24px">Nessuna tua foto. Scatta con la Fotocamera.</div>`;
+          }
+          const dm = demo.filter(d => !hidden.includes(d.id));
+          if (dm.length) html += `<div class="date-head">Raccolta dimostrativa</div>` + gridHtml(dm);
+          wrap(html);
+        } else if (tab === "search") {
+          const CATS = ["Tutte","Foto","Video","Schermate","Paesaggi","Città","Natura"];
+          const match = p => scat==="Tutte" ? true
+            : scat==="Foto" ? (p.real && !p.video)
+            : scat==="Video" ? p.video
+            : p.album===scat;
+          const arr = items.filter(match);
+          const chips = `<div style="display:flex;gap:8px;overflow-x:auto;padding:2px 16px 12px">${CATS.map(c=>`<button class="chip ${scat===c?'on':''}" data-sc="${c}">${c}</button>`).join("")}</div>`;
+          wrap(chips + (arr.length?gridHtml(arr):`<div style="text-align:center;color:var(--text-dim);padding:24px">Nessun elemento</div>`));
+          root.querySelectorAll("[data-sc]").forEach(b=>b.onclick=()=>{ scat=b.dataset.sc; draw(); });
         } else {
           const shots = real.filter(p=>p.album==="Schermate");
-          const cam = real.filter(p=>p.album!=="Schermate");
-          const albums = [["📷 Fotocamera", cam], ...(shots.length?[["🖼️ Schermate", shots]]:[]), ["🏞️ Paesaggi", demo.filter(d=>d.album==="Paesaggi")], ["🏙️ Città", demo.filter(d=>d.album==="Città")], ["🌿 Natura", demo.filter(d=>d.album==="Natura")]];
-          root.innerHTML = header(real.length) + `<div style="padding:0 12px 90px">${albums.map(([nome,arr],ai)=>`
-            <div class="alb" data-alb="${ai}" style="margin-bottom:14px;cursor:pointer">
-              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:3px;border-radius:14px;overflow:hidden;aspect-ratio:2">
-                ${(arr.length?arr:[{emoji:'📭',bg:'var(--surface)'}]).slice(0,4).map(p=>p.real?`<div style="background-image:url('${p.data}');background-size:cover"></div>`:`<div style="background:${p.bg};display:flex;align-items:center;justify-content:center;font-size:calc(26px*var(--fscale,1))">${p.emoji}</div>`).join("")}
-              </div><div style="padding:8px 4px"><b>${nome}</b> <span style="color:var(--text-dim)">${arr.length}</span></div></div>`).join("")}</div>`;
-          root.querySelectorAll("[data-alb]").forEach(el=>el.onclick=()=>{const arr=albums[+el.dataset.alb][1];openAlbum(albums[+el.dataset.alb][0],arr);});
+          const vids = real.filter(p=>p.video);
+          const cam = real.filter(p=>p.album!=="Schermate" && !p.video);
+          const albums = [["Fotocamera", cam, "camera-fill"], ...(vids.length?[["Video", vids, "camera-reels-fill"]]:[]), ...(shots.length?[["Schermate", shots, "phone-vibrate-fill"]]:[]), ["Paesaggi", demo.filter(d=>d.album==="Paesaggi"), "tree-fill"], ["Città", demo.filter(d=>d.album==="Città"), "building"], ["Natura", demo.filter(d=>d.album==="Natura"), "flower1"]];
+          const content = `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:2px 16px 12px">${albums.map(([nome,arr,ic],ai)=>`
+            <div class="alb" data-alb="${ai}" style="cursor:pointer">
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:3px;border-radius:16px;overflow:hidden;aspect-ratio:1">
+                ${(arr.length?arr:[0,1,2,3]).slice(0,4).map(p=>p&&p.real?`<div style="background-image:url('${p.poster||p.data}');background-size:cover;background-position:center"></div>`:p&&p.emoji?`<div style="background:${p.bg};display:flex;align-items:center;justify-content:center;font-size:calc(24px*var(--fscale,1))">${p.emoji}</div>`:`<div style="background:var(--surface)"></div>`).join("")}
+              </div><div style="padding:8px 2px 0"><div style="font-weight:600;display:flex;align-items:center;gap:6px">${ICO(ic,"width:15px;height:15px")}${nome}</div><div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1))">${arr.length}</div></div></div>`).join("")}</div>`;
+          wrap(content);
+          root.querySelectorAll("[data-alb]").forEach(el=>el.onclick=()=>{const a=albums[+el.dataset.alb];openAlbum(a[0],a[1]);});
         }
         bindTop();
         root.querySelectorAll(".ph").forEach(el => el.onclick = () => openViewer(+el.dataset.i));
@@ -926,45 +980,69 @@ const NovaApps = (() => {
         ["Suva","Pacific/Fiji"],
       ];
 
-      root.innerHTML = `<div class="hero"><div class="hero-l"><h1>Orologio</h1></div></div>
-        <div style="text-align:center;padding:12px">
-          <div id="big-clock" style="font-size:calc(60px*var(--fscale,1));font-weight:200;font-variant-numeric:tabular-nums"></div>
-          <div style="color:var(--text-dim);text-transform:capitalize" id="big-date"></div></div>
-
-        <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
-          <span>Sveglie</span><button id="add-al" class="mini-add">+</button></div>
-        <div id="al-panel"></div>
-        <div class="group" id="alarms"></div>
-
-        <div class="section-label">Cronometro</div>
-        <div class="group" style="padding:16px;display:flex;align-items:center;gap:14px">
-          <div id="chrono" style="flex:1;font-size:calc(28px*var(--fscale,1));font-variant-numeric:tabular-nums">00:00.0</div>
-          <button class="btn ghost" style="width:auto;padding:10px 16px" id="chrono-lap">Giro</button>
-          <button class="btn" style="width:auto;padding:10px 20px" id="chrono-btn">Avvia</button></div>
-        <div class="group" id="laps" style="display:none"></div>
-
-        <div class="section-label">Timer</div>
-        <div class="group" style="padding:16px">
-          <div id="tmr" style="text-align:center;font-size:calc(44px*var(--fscale,1));font-weight:200;font-variant-numeric:tabular-nums;margin-bottom:10px">00:00</div>
-          <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px" id="tmr-presets">
-            <button class="tpz" data-s="60">1 min</button><button class="tpz" data-s="300">5 min</button>
-            <button class="tpz" data-s="600">10 min</button><button class="tpz" data-s="1800">30 min</button></div>
-          <div style="display:flex;gap:10px">
-            <button class="btn ghost" style="flex:1" id="tmr-reset">Azzera</button>
-            <button class="btn" style="flex:1" id="tmr-btn">Avvia</button></div></div>
-
-        <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
-          <span>Fuso orario mondiale</span><button id="add-tz" class="mini-add">+</button></div>
-        <div id="tz-panel"></div>
-        <div class="group" id="world"></div>
-        <div style="height:80px"></div>
-        <style>.mini-add{width:30px;height:30px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:calc(20px*var(--fscale,1));line-height:1;cursor:pointer}
+      root.innerHTML = `
+        <div style="height:100%;display:flex;flex-direction:column">
+        <div style="flex:1;overflow-y:auto">
+          <!-- SVEGLIA -->
+          <section class="clk-sec on" id="sec-alarm">
+            <div class="hero"><div class="hero-l"><h1>Sveglia</h1></div><button id="add-al" class="mini-add">${ICO("plus-circle-fill","width:22px;height:22px")}</button></div>
+            <div id="al-panel"></div>
+            <div class="group" id="alarms"></div>
+          </section>
+          <!-- OROLOGIO -->
+          <section class="clk-sec" id="sec-clock">
+            <div class="hero"><div class="hero-l"><h1>Orologio</h1></div><button id="add-tz" class="mini-add">${ICO("plus-circle-fill","width:22px;height:22px")}</button></div>
+            <div style="text-align:center;padding:8px 12px 18px">
+              <div id="big-clock" style="font-size:calc(64px*var(--fscale,1));font-weight:200;font-variant-numeric:tabular-nums"></div>
+              <div style="color:var(--text-dim);text-transform:capitalize" id="big-date"></div></div>
+            <div class="section-label">Fuso orario mondiale</div>
+            <div id="tz-panel"></div>
+            <div class="group" id="world"></div>
+          </section>
+          <!-- TIMER -->
+          <section class="clk-sec" id="sec-timer">
+            <div class="hero"><div class="hero-l"><h1>Timer</h1></div></div>
+            <div style="padding:16px">
+              <div id="tmr" style="text-align:center;font-size:calc(68px*var(--fscale,1));font-weight:200;font-variant-numeric:tabular-nums;margin:20px 0">00:00</div>
+              <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:18px" id="tmr-presets">
+                <button class="tpz" data-s="60">1 min</button><button class="tpz" data-s="300">5 min</button>
+                <button class="tpz" data-s="600">10 min</button><button class="tpz" data-s="1800">30 min</button></div>
+              <div style="display:flex;gap:10px">
+                <button class="btn ghost" style="flex:1" id="tmr-reset">Azzera</button>
+                <button class="btn" style="flex:1" id="tmr-btn">Avvia</button></div></div>
+          </section>
+          <!-- CRONOMETRO -->
+          <section class="clk-sec" id="sec-chrono">
+            <div class="hero"><div class="hero-l"><h1>Cronometro</h1></div></div>
+            <div id="chrono" style="text-align:center;font-size:calc(64px*var(--fscale,1));font-weight:200;font-variant-numeric:tabular-nums;margin:24px 0">00:00.0</div>
+            <div style="display:flex;gap:10px;padding:0 16px 8px">
+              <button class="btn ghost" style="flex:1" id="chrono-lap">Giro</button>
+              <button class="btn" style="flex:1" id="chrono-btn">Avvia</button></div>
+            <div class="group" id="laps" style="display:none"></div>
+          </section>
+          <div style="height:20px"></div>
+        </div>
+        <nav class="tabbar" id="clk-nav">
+          <button data-sec="alarm" class="on"><span class="tb-pill">${ICO("alarm-fill","width:20px;height:20px")}</span>Sveglia</button>
+          <button data-sec="clock"><span class="tb-pill">${ICO("clock-fill","width:20px;height:20px")}</span>Orologio</button>
+          <button data-sec="timer"><span class="tb-pill">${ICO("hourglass-split","width:20px;height:20px")}</span>Timer</button>
+          <button data-sec="chrono"><span class="tb-pill">${ICO("stopwatch-fill","width:20px;height:20px")}</span>Cronometro</button>
+        </nav>
+        </div>
+        <style>.mini-add{width:44px;height:44px;border-radius:50%;border:none;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
           .inline-panel{background:var(--surface);border-radius:var(--radius-sm);margin:0 16px 10px;padding:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
           .inline-panel input,.inline-panel select{background:var(--surface-2);border:none;border-radius:10px;padding:11px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none}
           .inline-panel input[type=time]{flex:1}.inline-panel select{flex:1}
           .tpz{background:var(--surface-2);border:none;border-radius:14px;padding:9px 12px;color:var(--text);font-size:calc(13px*var(--fscale,1));cursor:pointer}</style>`;
 
       const bc=root.querySelector("#big-clock"), bd=root.querySelector("#big-date");
+
+      // ---- NAVIGAZIONE A SCHEDE (stile Google Orologio) ----
+      root.querySelectorAll("#clk-nav [data-sec]").forEach(b => b.onclick = () => {
+        const s = b.dataset.sec;
+        root.querySelectorAll(".clk-sec").forEach(sec => sec.classList.toggle("on", sec.id==="sec-"+s));
+        root.querySelectorAll("#clk-nav [data-sec]").forEach(x => x.classList.toggle("on", x===b));
+      });
 
       // ---- SVEGLIE ----
       const drawAlarms = () => {
