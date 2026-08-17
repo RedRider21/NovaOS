@@ -1705,36 +1705,66 @@ const NovaApps = (() => {
   /* ---------- File (gestione file, collegato ai contenuti reali del SO) ---------- */
   const files = app({ id:"files", name:"File", icon:"📁", color:"#f4b400",
     render(root, os) {
-      // File reali dell'utente: albero {id,name,parent,kind:'folder'|'text',data,ts}
+      // Albero file utente {id,name,parent,kind:'folder'|'text',data,ts}
       let nodes = os.store.get("userfiles", []);
       const save = () => os.store.set("userfiles", nodes);
-      let loc = "root", query = "";
+      let loc = "home", query = "";
+      let sortBy = os.store.get("files.sort","name");   // name | date | size
+      let viewMode = os.store.get("files.view","list");  // list | grid
+      let selMode = false; const sel = new Set();
+
       const esc = s => (s||"").replace(/</g,"&lt;");
       const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
       const kb = n => n<1024?Math.round(n)+" B":n<1048576?(n/1024).toFixed(0)+" KB":(n/1048576).toFixed(1)+" MB";
+      const rel = ts => { if(!ts) return ""; const s=(Date.now()-ts)/1000; if(s<60)return"ora"; if(s<3600)return Math.floor(s/60)+" min fa"; if(s<86400)return Math.floor(s/3600)+" h fa"; const d=new Date(ts); return d.toLocaleDateString("it-IT",{day:"numeric",month:"short"}); };
       const byId = id => nodes.find(n=>n.id===id);
       const kids = pid => nodes.filter(n=>n.parent===pid);
-      const isFolder = id => loc!=="root"&&loc!=="images"&&loc!=="notes";
-      const locName = () => loc==="root"?"I miei file":loc==="images"?"Immagini":loc==="notes"?"Note":(byId(loc)?byId(loc).name:"Cartella");
-      // discendenti di una cartella (per eliminazione ricorsiva e per bloccare lo spostamento dentro sé)
       const descendants = id => { let acc=[], stack=[id]; while(stack.length){ const p=stack.pop(); kids(p).forEach(c=>{acc.push(c.id); if(c.kind==="folder") stack.push(c.id);}); } return acc; };
+      const ext = name => { const m=/\.([a-z0-9]+)$/i.exec(name||""); return m?m[1].toLowerCase():""; };
+      const IMG=["jpg","jpeg","png","gif","webp","bmp","heic"], VID=["mp4","mov","mkv","webm","avi","3gp"], AUD=["mp3","wav","m4a","ogg","flac","aac"], ARC=["zip","rar","7z","tar","gz"];
+      const FT = { pdf:["PDF","#ff3b30"], doc:["DOC","#2b579a"], docx:["DOC","#2b579a"], rtf:["DOC","#2b579a"],
+        xls:["XLS","#217346"], xlsx:["XLS","#217346"], csv:["CSV","#217346"], ppt:["PPT","#d24726"], pptx:["PPT","#d24726"],
+        txt:["TXT","#5e5ce6"], md:["MD","#5e5ce6"], log:["LOG","#5e5ce6"], json:["{ }","#8e8e93"], html:["HTML","#e34c26"], js:["JS","#e6b800"] };
+      const catOf = n => { const e=ext(n.name); if(IMG.includes(e))return"photos"; if(VID.includes(e))return"video"; if(AUD.includes(e))return"audio"; if(ARC.includes(e))return"archive"; return "doc"; };
+      const sizeOf = n => n.kind==="folder"?0:(n.data?n.data.length:0);
+      const badge = n => {
+        if(n.kind==="folder") return `<div class="i-ico" style="background:#f4b400">📁</div>`;
+        const e=ext(n.name);
+        if(IMG.includes(e)) return `<div class="i-ico" style="background:#af52de">🖼️</div>`;
+        if(VID.includes(e)) return `<div class="i-ico" style="background:#e0245e">🎬</div>`;
+        if(AUD.includes(e)) return `<div class="i-ico" style="background:#ff9500">🎵</div>`;
+        if(ARC.includes(e)) return `<div class="i-ico" style="background:#8e8e93">🗜️</div>`;
+        const ft=FT[e]; if(ft) return `<div class="i-ico i-ext" style="background:${ft[1]}">${ft[0]}</div>`;
+        return `<div class="i-ico" style="background:#5e5ce6">📄</div>`;
+      };
+      const sortNodes = arr => { const c=[...arr]; c.sort((a,b)=>{
+          if(a.kind!==b.kind) return a.kind==="folder"?-1:1;
+          if(sortBy==="date") return (b.ts||0)-(a.ts||0);
+          if(sortBy==="size") return sizeOf(b)-sizeOf(a);
+          return a.name.localeCompare(b.name,"it");
+        }); return c; };
+      // tutti i file (non cartelle) che matchano una categoria, con percorso
+      const flat = pred => nodes.filter(n=>n.kind==="text"&&pred(n));
+      const pathOf = n => { let p=[], cur=byId(n.parent); let g=0; while(cur&&g++<20){ p.unshift(cur.name); cur=byId(cur.parent);} return p.length?p.join(" / "):"I miei file"; };
 
       const stats = async () => {
         const photos = await os.photos.all();
         const photoBytes = photos.reduce((s,p)=>s+(p.data?p.data.length*0.75:0),0);
         const notes = os.store.get("notesList2", []);
-        const userBytes = nodes.filter(n=>n.kind==="text").reduce((s,n)=>s+(n.data?n.data.length:0),0);
-        return { photos, photoBytes, notes, userBytes, total:photoBytes+userBytes };
+        const noteBytes = notes.reduce((s,n)=>s+(n.text?n.text.length:0),0);
+        const userBytes = nodes.filter(n=>n.kind==="text").reduce((s,n)=>s+sizeOf(n),0);
+        return { photos, photoBytes, notes, noteBytes, userBytes, total:photoBytes+userBytes+noteBytes };
       };
 
-      // ---------- azioni su un nodo (rinomina / sposta / elimina) ----------
+      // ---------- foglio azioni singolo nodo ----------
       const actionSheet = (node) => {
         const ov = document.createElement("div");
         ov.style.cssText="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.4);display:flex;align-items:flex-end";
         ov.innerHTML=`<div style="width:100%;background:var(--bg);border-radius:18px 18px 0 0;padding:8px 0 20px">
-          <div style="text-align:center;padding:10px;color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">${esc(node.name)}</div>
+          <div style="display:flex;align-items:center;gap:12px;padding:14px 18px 10px;border-bottom:1px solid var(--surface-2)">${badge(node)}<div style="min-width:0"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(node.name)}</div><div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1))">${node.kind==="folder"?kids(node.id).length+" elementi":kb(sizeOf(node))} · ${rel(node.ts)}</div></div></div>
           <div class="item tappable" data-a="rename"><div class="i-ico" style="background:#5e5ce6">✏️</div><div class="i-body"><div class="i-title">Rinomina</div></div></div>
           <div class="item tappable" data-a="move"><div class="i-ico" style="background:#0a84ff">📂</div><div class="i-body"><div class="i-title">Sposta</div></div></div>
+          <div class="item tappable" data-a="dup"><div class="i-ico" style="background:#34c759">⧉</div><div class="i-body"><div class="i-title">Duplica</div></div></div>
           <div class="item tappable" data-a="del"><div class="i-ico" style="background:var(--danger)">🗑️</div><div class="i-body"><div class="i-title" style="color:var(--danger)">Elimina</div></div></div>
           <div style="padding:8px 16px 0"><button class="btn ghost" data-a="cancel">Annulla</button></div></div>`;
         const close=()=>ov.remove();
@@ -1742,7 +1772,8 @@ const NovaApps = (() => {
         document.body.appendChild(ov);
         ov.querySelectorAll("[data-a]").forEach(el=>el.onclick=()=>{ const a=el.dataset.a; close();
           if(a==="rename") renamePanel(node);
-          else if(a==="move") movePicker(node);
+          else if(a==="move") movePicker([node.id]);
+          else if(a==="dup"){ const d={...node,id:uid(),name:node.name.replace(/(\.[^.]+)?$/,(m)=>" copia"+(m||"")),ts:Date.now()}; if(node.kind==="folder"){d.kind="folder";} nodes.push(d); save(); draw(); }
           else if(a==="del"){ if(confirm(`Eliminare "${node.name}"${node.kind==="folder"?" e tutto il contenuto":""}?`)){ const rm=new Set([node.id,...descendants(node.id)]); nodes=nodes.filter(n=>!rm.has(n.id)); save(); draw(); } }
         });
       };
@@ -1758,23 +1789,24 @@ const NovaApps = (() => {
         ov.querySelector("#rc").onclick=()=>ov.remove();
         ov.querySelector("#ro").onclick=()=>{ const v=inp.value.trim(); if(v){ node.name=v; node.ts=Date.now(); save(); } ov.remove(); draw(); };
       };
-      const movePicker = (node) => {
-        const forbidden=new Set([node.id,...descendants(node.id)]);
+      const movePicker = (ids) => {
+        const forbidden=new Set(); ids.forEach(id=>{ forbidden.add(id); descendants(id).forEach(d=>forbidden.add(d)); });
         const targets=[{id:"root",name:"I miei file"},...nodes.filter(n=>n.kind==="folder"&&!forbidden.has(n.id))];
         const ov=document.createElement("div");
         ov.style.cssText="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);display:flex;flex-direction:column;justify-content:flex-end";
         ov.innerHTML=`<div style="background:var(--bg);border-radius:18px 18px 0 0;max-height:70%;overflow:auto;padding:8px 0 20px">
-          <div style="text-align:center;padding:12px;font-weight:600">Sposta in…</div>
-          ${targets.map(t=>`<div class="item tappable" data-t="${t.id}" ${t.id===node.parent?'style="opacity:.5;pointer-events:none"':''}><div class="i-ico" style="background:#f4b400">📁</div><div class="i-body"><div class="i-title">${esc(t.name)}</div></div></div>`).join("")}
+          <div style="text-align:center;padding:12px;font-weight:600">Sposta ${ids.length>1?ids.length+" elementi":""} in…</div>
+          ${targets.map(t=>`<div class="item tappable" data-t="${t.id}"><div class="i-ico" style="background:#f4b400">📁</div><div class="i-body"><div class="i-title">${esc(t.name)}</div></div></div>`).join("")}
           <div style="padding:8px 16px 0"><button class="btn ghost" id="mc">Annulla</button></div></div>`;
         document.body.appendChild(ov);
         ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
         ov.querySelector("#mc").onclick=()=>ov.remove();
-        ov.querySelectorAll("[data-t]").forEach(el=>el.onclick=()=>{ node.parent=el.dataset.t; node.ts=Date.now(); save(); ov.remove(); draw(); });
+        ov.querySelectorAll("[data-t]").forEach(el=>el.onclick=()=>{ ids.forEach(id=>{ const n=byId(id); if(n){n.parent=el.dataset.t; n.ts=Date.now();} }); save(); ov.remove(); selMode=false; sel.clear(); draw(); });
       };
 
-      // ---------- creazione (nuova cartella / nuovo file di testo) ----------
+      // ---------- creazione ----------
       const createPanel = () => {
+        const parent = /^folder:/.test(loc)?loc.slice(7):"root";
         const ov=document.createElement("div");
         ov.style.cssText="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.4);display:flex;align-items:flex-end";
         ov.innerHTML=`<div style="width:100%;background:var(--bg);border-radius:18px 18px 0 0;padding:8px 0 20px">
@@ -1784,24 +1816,23 @@ const NovaApps = (() => {
         document.body.appendChild(ov);
         ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
         ov.querySelectorAll("[data-a]").forEach(el=>el.onclick=()=>{ const a=el.dataset.a; ov.remove();
-          if(a==="folder"){ const n={id:uid(),name:"Nuova cartella",parent:loc,kind:"folder",ts:Date.now()}; nodes.push(n); save(); draw(); renamePanel(n); }
-          else if(a==="file"){ const n={id:uid(),name:"Documento.txt",parent:loc,kind:"text",data:"",ts:Date.now()}; nodes.push(n); save(); openText(n); }
+          if(a==="folder"){ const n={id:uid(),name:"Nuova cartella",parent,kind:"folder",ts:Date.now()}; nodes.push(n); save(); draw(); renamePanel(n); }
+          else if(a==="file"){ const n={id:uid(),name:"Documento.txt",parent,kind:"text",data:"",ts:Date.now()}; nodes.push(n); save(); openText(n); }
         });
       };
 
-      // ---------- editor testo (file reali dell'utente, modificabili) ----------
+      // ---------- editor testo ----------
       const openText = (n) => {
-        root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1;font-size:calc(16px*var(--fscale,1))">${esc(n.name)}</div>
+        root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1;font-size:calc(16px*var(--fscale,1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(n.name)}</div>
             <button class="btn" id="save" style="width:auto;padding:8px 16px">Salva</button></div>
           <div style="padding:0 16px"><textarea id="ta" placeholder="Scrivi qui…" style="width:100%;min-height:380px;background:var(--surface);border:none;border-radius:14px;padding:16px;color:var(--text);font-size:calc(15px*var(--fscale,1));line-height:1.6;resize:none;outline:none">${esc(n.data||"")}</textarea>
             <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));padding:10px 4px" id="meta"></div></div>`;
         const ta=root.querySelector("#ta");
-        const meta=()=>root.querySelector("#meta").textContent=`${(ta.value||"").length} caratteri · ${kb((ta.value||"").length)}`;
-        meta(); ta.oninput=meta;
+        const m=()=>root.querySelector("#meta").textContent=`${(ta.value||"").length} caratteri · ${kb((ta.value||"").length)}`;
+        m(); ta.oninput=m;
         root.querySelector(".back-btn").onclick=()=>draw();
         root.querySelector("#save").onclick=()=>{ n.data=ta.value; n.ts=Date.now(); save(); os.notify({app:"files",title:"File",text:"File salvato."}); };
       };
-      // visualizzatore sola-lettura (note derivate)
       const openReadonly = (name,text,jump) => {
         root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1;font-size:calc(16px*var(--fscale,1))">${esc(name)}</div>
             ${jump?`<button class="btn ghost" id="jump" style="width:auto;padding:8px 14px">Apri in ${jump[0]}</button>`:''}</div>
@@ -1809,7 +1840,6 @@ const NovaApps = (() => {
         root.querySelector(".back-btn").onclick=()=>draw();
         const j=root.querySelector("#jump"); if(j) j.onclick=()=>os.openApp(jump[1]);
       };
-      // visualizzatore immagine (foto reale) con eliminazione e apri in Galleria
       const openImage = (ph,label) => {
         root.innerHTML=`<div style="height:100%;display:flex;flex-direction:column;background:#000">
           <div class="back-bar"><button class="back-btn" style="background:rgba(255,255,255,.15)"></button><div class="back-title" style="color:#fff;flex:1;font-size:calc(15px*var(--fscale,1))">${esc(label)}</div>
@@ -1821,87 +1851,207 @@ const NovaApps = (() => {
         root.querySelector("#dl").onclick=async()=>{ if(confirm("Eliminare questa foto?")){ await os.photos.remove(ph.id); draw(); } };
       };
 
-      const rowsUserFiles = (parent) => kids(parent).sort((a,b)=>(a.kind==="folder"?0:1)-(b.kind==="folder"?0:1)||a.name.localeCompare(b.name,"it"));
+      // ---------- barra strumenti (ordina / vista) ----------
+      const toolbar = () => `<div class="fm-tools">
+          <button class="fm-t" id="fm-sort">↕ ${sortBy==="name"?"Nome":sortBy==="date"?"Data":"Dimensione"}</button>
+          <div style="flex:1"></div>
+          <button class="fm-t" id="fm-sel">☑ Seleziona</button>
+          <button class="fm-t" id="fm-view">${viewMode==="grid"?"☰":"▦"}</button></div>`;
+      const bindTools = () => {
+        const s=root.querySelector("#fm-sort"); if(s) s.onclick=()=>sortSheet();
+        const v=root.querySelector("#fm-view"); if(v) v.onclick=()=>{ viewMode=viewMode==="grid"?"list":"grid"; os.store.set("files.view",viewMode); draw(); };
+        const se=root.querySelector("#fm-sel"); if(se) se.onclick=()=>{ selMode=true; sel.clear(); draw(); };
+      };
+      const sortSheet = () => {
+        const ov=document.createElement("div");
+        ov.style.cssText="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.4);display:flex;align-items:flex-end";
+        const opt=(k,l)=>`<div class="item tappable" data-s="${k}"><div class="i-body"><div class="i-title">${l}</div></div>${sortBy===k?'<div class="chev" style="transform:none">✓</div>':''}</div>`;
+        ov.innerHTML=`<div style="width:100%;background:var(--bg);border-radius:18px 18px 0 0;padding:8px 0 20px">
+          <div style="text-align:center;padding:10px;font-weight:600">Ordina per</div>
+          ${opt("name","Nome")}${opt("date","Data (più recenti)")}${opt("size","Dimensione")}
+          <div style="padding:8px 16px 0"><button class="btn ghost" id="sc">Chiudi</button></div></div>`;
+        document.body.appendChild(ov);
+        ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
+        ov.querySelector("#sc").onclick=()=>ov.remove();
+        ov.querySelectorAll("[data-s]").forEach(el=>el.onclick=()=>{ sortBy=el.dataset.s; os.store.set("files.sort",sortBy); ov.remove(); draw(); });
+      };
+
+      // barra azioni selezione multipla
+      const selBar = (ids) => `<div class="fm-selbar">
+          <button class="fm-t" id="sel-all">Tutti (${ids.length})</button>
+          <div style="flex:1"></div>
+          <button class="fm-t" id="sel-move" ${sel.size?'':'disabled'}>📂 Sposta</button>
+          <button class="fm-t" id="sel-del" ${sel.size?'':'disabled'} style="color:var(--danger)">🗑 Elimina</button></div>`;
+      const bindSelBar = (ids) => {
+        root.querySelector("#sel-all").onclick=()=>{ if(sel.size===ids.length) sel.clear(); else ids.forEach(i=>sel.add(i)); draw(); };
+        const mv=root.querySelector("#sel-move"); if(mv&&sel.size) mv.onclick=()=>movePicker([...sel]);
+        const dl=root.querySelector("#sel-del"); if(dl&&sel.size) dl.onclick=()=>{ if(confirm(`Eliminare ${sel.size} elementi?`)){ const rm=new Set(); sel.forEach(id=>{rm.add(id); descendants(id).forEach(d=>rm.add(d));}); nodes=nodes.filter(n=>!rm.has(n.id)); save(); selMode=false; sel.clear(); draw(); } };
+      };
+
+      // riga / cella di un nodo
+      const nodeRow = (n, sub) => selMode
+        ? `<div class="item tappable" data-sel="${n.id}"><div class="fm-check ${sel.has(n.id)?'on':''}">${sel.has(n.id)?'✓':''}</div>${badge(n)}<div class="i-body"><div class="i-title">${esc(n.name)}</div><div class="i-sub">${sub}</div></div></div>`
+        : `<div class="item tappable" data-node="${n.id}">${badge(n)}<div class="i-body"><div class="i-title">${esc(n.name)}</div><div class="i-sub">${sub}</div></div><button class="fmore" data-more="${n.id}">⋯</button></div>`;
+      const glyphOf = n => { if(n.kind==="folder")return"📁"; const e=ext(n.name);
+        if(IMG.includes(e))return"🖼️"; if(VID.includes(e))return"🎬"; if(AUD.includes(e))return"🎵"; if(ARC.includes(e))return"🗜️";
+        const ft=FT[e]; return ft?ft[0]:"📄"; };
+      const nodeCell = (n, sub) => `<div class="fm-cell tappable" data-${selMode?'sel':'node'}="${n.id}">
+          ${selMode?`<div class="fm-check ${sel.has(n.id)?'on':''}" style="position:absolute;top:8px;left:8px">${sel.has(n.id)?'✓':''}</div>`:''}
+          <div class="fm-cell-ico">${glyphOf(n)}</div>
+          <div class="fm-cell-nm">${esc(n.name)}</div><div class="fm-cell-sub">${sub}</div></div>`;
+      const subFor = n => n.kind==="folder"?(kids(n.id).length+" elementi"):(kb(sizeOf(n))+" · "+rel(n.ts));
+
+      const listBlock = (arr) => {
+        if(!arr.length) return `<div class="fm-empty">Vuoto</div>`;
+        if(viewMode==="grid") return `<div class="fm-grid">${arr.map(n=>nodeCell(n,subFor(n))).join("")}</div>`;
+        return `<div class="group">${arr.map(n=>nodeRow(n,subFor(n))).join("")}</div>`;
+      };
+
+      // categorie: dashboard
+      const catList = (key) => {
+        if(key==="doc")   return sortNodes(flat(n=>catOf(n)==="doc"||catOf(n)==="archive"));
+        if(key==="video") return sortNodes(flat(n=>catOf(n)==="video"));
+        if(key==="audio") return sortNodes(flat(n=>catOf(n)==="audio"));
+        if(key==="recent")return [...nodes.filter(n=>n.kind==="text")].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,40);
+        return [];
+      };
 
       const draw = async () => {
         const q = query.trim().toLowerCase();
-        if (loc === "root") {
-          // dati sincroni subito; le statistiche foto (IndexedDB) si riempiono dopo
+
+        // ------- DASHBOARD -------
+        if (loc === "home") {
           const notes = os.store.get("notesList2", []);
-          const userBytes = nodes.filter(n=>n.kind==="text").reduce((s,n)=>s+(n.data?n.data.length:0),0);
-          const smart = [["images","🖼️","Immagini",`Foto…`,"#af52de"],
-                         ["notes","📝","Note",`${notes.length} note`,"#ffcc00"]];
-          const uf = rowsUserFiles("root").filter(n=>!q||n.name.toLowerCase().includes(q));
+          const userBytes = nodes.filter(n=>n.kind==="text").reduce((s,n)=>s+sizeOf(n),0);
+          const nDoc=flat(n=>catOf(n)==="doc"||catOf(n)==="archive").length, nVid=flat(n=>catOf(n)==="video").length, nAud=flat(n=>catOf(n)==="audio").length;
+          const cats=[
+            ["cat:recent","🕘","Recenti","#0a84ff",nodes.filter(n=>n.kind==="text").length+" file"],
+            ["images","🖼️","Immagini","#af52de","…"],
+            ["cat:video","🎬","Video","#e0245e",nVid+" file"],
+            ["cat:audio","🎵","Audio","#ff9500",nAud+" file"],
+            ["cat:doc","📄","Documenti","#5e5ce6",nDoc+" file"],
+            ["folder:root","📁","Cartelle","#f4b400",kids("root").length+" elementi"],
+            ["notes","📝","Note","#ffd60a",notes.length+" note"],
+          ];
+          const recent=[...nodes.filter(n=>n.kind==="text")].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,4);
           root.innerHTML=`
             <div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
               <div><div class="app-title">File</div><div class="app-sub">Memoria interna</div></div>
               <button class="btn" id="new" style="width:auto;padding:10px 16px">＋ Nuovo</button></div>
-            <div style="padding:0 16px 8px;position:relative">
-              <input id="q" value="${esc(query)}" placeholder="Cerca file e cartelle" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px 11px 38px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
+            <div style="padding:0 16px 10px;position:relative">
+              <input id="q" value="${esc(query)}" placeholder="Cerca in tutti i file" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px 11px 38px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
               <span style="position:absolute;left:28px;top:11px;opacity:.5">🔍</span></div>
-            <div class="group" style="padding:14px 16px;margin:0 16px 6px">
-              <div style="display:flex;justify-content:space-between;font-size:calc(13px*var(--fscale,1));color:var(--text-dim);margin-bottom:8px"><span>Spazio usato dai tuoi contenuti</span><b style="color:var(--text)" id="st-total">…</b></div>
-              <div style="height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden;display:flex">
-                <div id="st-bar-p" style="width:0;background:#af52de"></div>
-                <div id="st-bar-u" style="width:${userBytes?100:0}%;background:#5e5ce6"></div></div>
-              <div style="display:flex;gap:14px;font-size:calc(11px*var(--fscale,1));color:var(--text-dim);margin-top:6px"><span id="st-p">🟣 Foto …</span><span>🔵 File ${kb(userBytes)}</span></div></div>
-            <div class="section-label">Cartelle rapide</div>
-            <div class="group">${smart.map(([id,ic,nm,sub,col])=>`<div class="item tappable" data-loc="${id}"><div class="i-ico" style="background:${col}">${ic}</div><div class="i-body"><div class="i-title">${nm}</div><div class="i-sub" ${id==='images'?'id="sm-img"':''}>${sub}</div></div><div class="chev"></div></div>`).join("")}</div>
-            <div class="section-label">I miei file</div>
-            <div class="group">${uf.length?uf.map(n=>fileRow(n)).join("")
-              :`<div class="item"><div class="i-sub" style="padding:6px">${q?'Nessun risultato':'Vuoto. Tocca ＋ Nuovo per creare una cartella o un file.'}</div></div>`}</div>
+            <div class="fm-storage group">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px"><span style="font-weight:600">Spazio di archiviazione</span><span style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1))" id="st-total">…</span></div>
+              <div class="fm-bar"><i style="width:0;background:#af52de" id="st-bar-p"></i><i style="width:${userBytes?60:0}%;background:#5e5ce6" id="st-bar-u"></i><i style="width:0;background:#ffd60a" id="st-bar-n"></i></div>
+              <div class="fm-legend"><span><b style="background:#af52de"></b><span id="st-p">Foto …</span></span><span><b style="background:#5e5ce6"></b>File ${kb(userBytes)}</span><span><b style="background:#ffd60a"></b><span id="st-n">Note …</span></span></div></div>
+            <div class="section-label">Categorie</div>
+            <div class="fm-cats">${cats.map(([id,ic,nm,col,sub])=>`<button class="fm-cat" data-loc="${id}"><span class="fm-cat-ic" style="background:${col}">${ic}</span><span class="fm-cat-b"><span class="fm-cat-n">${nm}</span><span class="fm-cat-s" ${id==='images'?'id="sm-img"':''}>${sub}</span></span></button>`).join("")}</div>
+            ${recent.length?`<div class="section-label">Recenti</div><div class="group">${recent.map(n=>nodeRow(n,subFor(n))).join("")}</div>`:''}
             <div style="height:80px"></div>`;
-          bindRoot(); bindFileRows();
-          // riempimento asincrono delle statistiche foto (non blocca il disegno)
+          root.querySelector("#new").onclick=createPanel;
+          const qi=root.querySelector("#q");
+          qi.oninput=e=>{ query=e.target.value; loc = query.trim()?"search":"home"; const p=e.target.selectionStart; draw().then(()=>{ const q2=root.querySelector("#q"); if(q2){q2.focus();q2.setSelectionRange(p,p);} }); };
+          root.querySelectorAll("[data-loc]").forEach(el=>el.onclick=()=>{ loc=el.dataset.loc; query=""; selMode=false; sel.clear(); draw(); });
+          bindNodeEvents();
           stats().then(st => {
             const set=(id,v)=>{const e=root.querySelector(id); if(e) e.textContent=v;};
-            set("#st-total", kb(st.total)); set("#st-p", "🟣 Foto "+kb(st.photoBytes)); set("#sm-img", `${st.photos.length} foto · ${kb(st.photoBytes)}`);
-            const bp=root.querySelector("#st-bar-p"), bu=root.querySelector("#st-bar-u");
-            if (bp&&bu&&st.total){ bp.style.width=Math.max(4,st.photoBytes/st.total*100)+"%"; bu.style.width=(st.userBytes/st.total*100)+"%"; }
+            set("#st-total", kb(st.total)+" usati"); set("#st-p", "Foto "+kb(st.photoBytes)); set("#st-n","Note "+kb(st.noteBytes)); set("#sm-img", `${st.photos.length} foto · ${kb(st.photoBytes)}`);
+            const bp=root.querySelector("#st-bar-p"), bu=root.querySelector("#st-bar-u"), bn=root.querySelector("#st-bar-n");
+            if (bp&&st.total){ bp.style.width=Math.max(3,st.photoBytes/st.total*100)+"%"; bu.style.width=(st.userBytes/st.total*100)+"%"; bn.style.width=(st.noteBytes/st.total*100)+"%"; }
           }).catch(()=>{});
-        } else if (loc === "images") {
+          return;
+        }
+
+        // ------- RICERCA GLOBALE -------
+        if (loc === "search") {
+          const res = nodes.filter(n=>n.name.toLowerCase().includes(q));
+          root.innerHTML=`
+            <div style="padding:12px 16px 8px;position:relative">
+              <input id="q" value="${esc(query)}" placeholder="Cerca in tutti i file" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px 11px 38px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
+              <span style="position:absolute;left:28px;top:23px;opacity:.5">🔍</span>
+              <button id="qx" style="position:absolute;right:26px;top:20px;background:none;border:none;color:var(--text-dim);cursor:pointer">✕</button></div>
+            <div class="section-label">${res.length} risultati</div>
+            <div class="group">${res.length?res.map(n=>nodeRow(n,pathOf(n))).join(""):`<div class="fm-empty">Nessun file trovato</div>`}</div>`;
+          const qi=root.querySelector("#q");
+          qi.focus(); qi.setSelectionRange(qi.value.length,qi.value.length);
+          qi.oninput=e=>{ query=e.target.value; loc = query.trim()?"search":"home"; const p=e.target.selectionStart; draw().then(()=>{ const q2=root.querySelector("#q"); if(q2){q2.focus();q2.setSelectionRange(p,p);} }); };
+          root.querySelector("#qx").onclick=()=>{ query=""; loc="home"; draw(); };
+          bindNodeEvents();
+          return;
+        }
+
+        // ------- IMMAGINI (foto reali) -------
+        if (loc === "images") {
           const photos = await os.photos.all();
           root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="font-size:calc(16px*var(--fscale,1))">Immagini</div></div>
             ${photos.length?`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:0 4px 90px">${photos.map((p,i)=>`<div class="ph" data-img="${i}" style="aspect-ratio:1;border-radius:6px;background:url('${p.data}') center/cover;cursor:pointer"></div>`).join("")}</div>`
-              :`<div style="text-align:center;color:var(--text-dim);padding:40px">Nessuna foto. Scatta con la Fotocamera.</div>`}`;
-          root.querySelector(".back-btn").onclick=()=>{loc="root";draw();};
+              :`<div class="fm-empty" style="padding:40px">Nessuna foto. Scatta con la Fotocamera.</div>`}`;
+          root.querySelector(".back-btn").onclick=()=>{loc="home";draw();};
           root.querySelectorAll("[data-img]").forEach(el=>el.onclick=()=>openImage(photos[+el.dataset.img],"IMG_"+String(+el.dataset.img+1).padStart(4,"0")+".jpg"));
-        } else if (loc === "notes") {
+          return;
+        }
+
+        // ------- NOTE -------
+        if (loc === "notes") {
           const notes = os.store.get("notesList2", []);
           root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="font-size:calc(16px*var(--fscale,1))">Note</div></div>
-            <div class="group">${notes.length?notes.map((n,i)=>{const t=(n.text.split("\n")[0].replace(/^#\s*/,"")||"Nota "+(i+1)).slice(0,30);return `<div class="item tappable" data-note="${i}"><div class="i-ico" style="background:#ffcc00">📝</div><div class="i-body"><div class="i-title">${esc(t)}.txt</div><div class="i-sub">${kb(n.text.length)}</div></div></div>`;}).join("")
-              :`<div class="item"><div class="i-sub" style="padding:6px">Nessuna nota. Creane una nell'app Note.</div></div>`}</div>`;
-          root.querySelector(".back-btn").onclick=()=>{loc="root";draw();};
+            <div class="group">${notes.length?notes.map((n,i)=>{const t=(n.text.split("\n")[0].replace(/^#\s*/,"")||"Nota "+(i+1)).slice(0,30);return `<div class="item tappable" data-note="${i}"><div class="i-ico i-ext" style="background:#ffd60a;color:#3a2f00">TXT</div><div class="i-body"><div class="i-title">${esc(t)}.txt</div><div class="i-sub">${kb(n.text.length)}</div></div></div>`;}).join("")
+              :`<div class="fm-empty">Nessuna nota. Creane una nell'app Note.</div>`}</div>`;
+          root.querySelector(".back-btn").onclick=()=>{loc="home";draw();};
           root.querySelectorAll("[data-note]").forEach(el=>el.onclick=()=>{const n=notes[+el.dataset.note];openReadonly((n.text.split("\n")[0].replace(/^#\s*/,"")||"Nota")+".txt",n.text,["Note","notes"]);});
-        } else { // dentro una cartella utente
-          const uf = rowsUserFiles(loc).filter(n=>!q||n.name.toLowerCase().includes(q));
-          const folder = byId(loc);
-          root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1;font-size:calc(16px*var(--fscale,1))">${esc(folder?folder.name:"Cartella")}</div>
-              <button class="btn" id="new" style="width:auto;padding:8px 14px">＋</button></div>
-            <div class="group">${uf.length?uf.map(n=>fileRow(n)).join("")
-              :`<div class="item"><div class="i-sub" style="padding:6px">Cartella vuota</div></div>`}</div><div style="height:80px"></div>`;
-          root.querySelector(".back-btn").onclick=()=>{ loc=folder?folder.parent:"root"; draw(); };
-          root.querySelector("#new").onclick=createPanel;
-          bindFileRows();
+          return;
+        }
+
+        // ------- CATEGORIE (recent / doc / video / audio) -------
+        if (/^cat:/.test(loc)) {
+          const key=loc.slice(4);
+          const title={recent:"Recenti",doc:"Documenti",video:"Video",audio:"Audio"}[key]||"File";
+          let arr=catList(key); if(q) arr=arr.filter(n=>n.name.toLowerCase().includes(q));
+          const ids=arr.map(n=>n.id);
+          root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1;font-size:calc(16px*var(--fscale,1))">${title}</div>${selMode?`<button class="btn ghost" id="sel-x" style="width:auto;padding:6px 12px">Fine</button>`:''}</div>
+            ${selMode?'':toolbar()}
+            ${listBlock(arr)}
+            <div style="height:80px"></div>
+            ${selMode?selBar(ids):''}`;
+          root.querySelector(".back-btn").onclick=()=>{ if(selMode){selMode=false;sel.clear();draw();} else {loc="home";draw();} };
+          if(selMode){ root.querySelector("#sel-x").onclick=()=>{selMode=false;sel.clear();draw();}; bindSelBar(ids); } else bindTools();
+          bindNodeEvents();
+          return;
+        }
+
+        // ------- BROWSE CARTELLE -------
+        if (/^folder:/.test(loc)) {
+          const fid=loc.slice(7);
+          const folder=fid==="root"?null:byId(fid);
+          let arr=sortNodes(kids(fid)); if(q) arr=arr.filter(n=>n.name.toLowerCase().includes(q));
+          const ids=arr.map(n=>n.id);
+          // breadcrumb
+          let crumbs=[["root","I miei file"]]; if(folder){ let chain=[], cur=folder, g=0; while(cur&&g++<20){ chain.unshift(cur); cur=byId(cur.parent);} chain.forEach(c=>crumbs.push([c.id,c.name])); }
+          root.innerHTML=`<div class="back-bar"><button class="back-btn"></button>
+              <div class="back-title" style="flex:1;font-size:calc(16px*var(--fscale,1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(folder?folder.name:"I miei file")}</div>
+              ${selMode?`<button class="btn ghost" id="sel-x" style="width:auto;padding:6px 12px">Fine</button>`:`<button class="btn" id="new" style="width:auto;padding:8px 14px">＋</button>`}</div>
+            <div class="fm-crumbs">${crumbs.map((c,i)=>`<span class="fm-crumb" data-cr="${c[0]}">${esc(c[1])}</span>${i<crumbs.length-1?'<span class="fm-cr-sep">›</span>':''}`).join("")}</div>
+            ${selMode?'':toolbar()}
+            ${listBlock(arr)}
+            <div style="height:80px"></div>
+            ${selMode?selBar(ids):''}`;
+          root.querySelector(".back-btn").onclick=()=>{ if(selMode){selMode=false;sel.clear();draw();return;} if(folder){ loc="folder:"+(folder.parent||"root"); } else { loc="home"; } draw(); };
+          const nb=root.querySelector("#new"); if(nb) nb.onclick=createPanel;
+          const sx=root.querySelector("#sel-x"); if(sx) sx.onclick=()=>{selMode=false;sel.clear();draw();};
+          root.querySelectorAll("[data-cr]").forEach(el=>el.onclick=()=>{ loc="folder:"+el.dataset.cr; selMode=false; sel.clear(); draw(); });
+          if(selMode) bindSelBar(ids); else bindTools();
+          bindNodeEvents();
+          return;
         }
       };
 
-      const fileRow = (n) => `<div class="item tappable" data-node="${n.id}">
-          <div class="i-ico" style="background:${n.kind==="folder"?'#f4b400':'#5e5ce6'}">${n.kind==="folder"?'📁':'📄'}</div>
-          <div class="i-body"><div class="i-title">${esc(n.name)}</div><div class="i-sub">${n.kind==="folder"?kids(n.id).length+" elementi":kb((n.data||"").length)}</div></div>
-          <button class="fmore" data-more="${n.id}" style="background:none;border:none;color:var(--text-dim);font-size:calc(20px*var(--fscale,1));cursor:pointer;padding:0 6px">⋯</button></div>`;
-
-      const bindRoot = () => {
-        root.querySelector("#new").onclick=createPanel;
-        const qi=root.querySelector("#q");
-        qi.oninput=e=>{ query=e.target.value; const p=e.target.selectionStart; draw().then(()=>{ const q2=root.querySelector("#q"); if(q2){q2.focus();q2.setSelectionRange(p,p);} }); };
-        root.querySelectorAll("[data-loc]").forEach(el=>el.onclick=()=>{ loc=el.dataset.loc; query=""; draw(); });
-      };
-      const bindFileRows = () => {
+      const bindNodeEvents = () => {
         root.querySelectorAll("[data-more]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); actionSheet(byId(b.dataset.more)); });
+        root.querySelectorAll("[data-sel]").forEach(el=>el.onclick=()=>{ const id=el.dataset.sel; if(sel.has(id))sel.delete(id); else sel.add(id); draw(); });
         root.querySelectorAll("[data-node]").forEach(el=>el.onclick=e=>{ if(e.target.dataset.more!==undefined) return;
           const n=byId(el.dataset.node); if(!n) return;
-          if(n.kind==="folder"){ loc=n.id; query=""; draw(); } else openText(n);
+          if(n.kind==="folder"){ loc="folder:"+n.id; query=""; draw(); } else openText(n);
         });
       };
 

@@ -549,3 +549,34 @@ body.a11y-contrast[data-theme="light"] { --text: #000000; --text-dim: #1a1a1a; -
 
 /* utility */
 .hidden { display: none !important; }
+
+/* ---------- File manager (stile "File" Android) ---------- */
+.i-ext { font-size:calc(11px*var(--fscale,1)); font-weight:800; color:#fff; letter-spacing:.3px; }
+.fmore { background:none; border:none; color:var(--text-dim); font-size:calc(20px*var(--fscale,1)); cursor:pointer; padding:0 6px; align-self:center; }
+.fm-storage { padding:14px 16px; margin:0 16px 6px; }
+.fm-bar { height:9px; border-radius:5px; background:var(--surface-2); overflow:hidden; display:flex; }
+.fm-bar i { display:block; height:100%; transition:width .5s; }
+.fm-legend { display:flex; flex-wrap:wrap; gap:14px; margin-top:9px; font-size:calc(11px*var(--fscale,1)); color:var(--text-dim); }
+.fm-legend span { display:inline-flex; align-items:center; gap:5px; }
+.fm-legend b { width:9px; height:9px; border-radius:3px; display:inline-block; }
+.fm-cats { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; padding:2px 16px 4px; }
+.fm-cat { display:flex; align-items:center; gap:10px; background:var(--surface); border:none; border-radius:14px; padding:12px; cursor:pointer; text-align:left; }
+.fm-cat-ic { width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:calc(18px*var(--fscale,1)); flex:0 0 auto; }
+.fm-cat-b { display:flex; flex-direction:column; min-width:0; }
+.fm-cat-n { color:var(--text); font-size:calc(14px*var(--fscale,1)); font-weight:600; }
+.fm-cat-s { color:var(--text-dim); font-size:calc(11px*var(--fscale,1)); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fm-tools { display:flex; align-items:center; gap:8px; padding:6px 16px 4px; }
+.fm-t { background:var(--surface); border:none; border-radius:20px; padding:7px 13px; color:var(--text); font-size:calc(12.5px*var(--fscale,1)); cursor:pointer; }
+.fm-t:disabled { opacity:.4; }
+.fm-crumbs { display:flex; align-items:center; flex-wrap:nowrap; overflow-x:auto; gap:4px; padding:4px 16px 6px; -webkit-overflow-scrolling:touch; }
+.fm-crumb { color:var(--accent); font-size:calc(12.5px*var(--fscale,1)); white-space:nowrap; cursor:pointer; }
+.fm-cr-sep { color:var(--text-dim); font-size:calc(12.5px*var(--fscale,1)); }
+.fm-empty { text-align:center; color:var(--text-dim); padding:26px 16px; font-size:calc(13px*var(--fscale,1)); }
+.fm-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; padding:4px 16px; }
+.fm-cell { position:relative; background:var(--surface); border-radius:14px; padding:14px 8px; display:flex; flex-direction:column; align-items:center; gap:5px; cursor:pointer; }
+.fm-cell-ico { font-size:calc(30px*var(--fscale,1)); }
+.fm-cell-nm { font-size:calc(12px*var(--fscale,1)); color:var(--text); text-align:center; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fm-cell-sub { font-size:calc(10px*var(--fscale,1)); color:var(--text-dim); }
+.fm-check { width:22px; height:22px; border-radius:50%; border:2px solid var(--text-dim); display:flex; align-items:center; justify-content:center; color:#fff; font-size:calc(13px*var(--fscale,1)); flex:0 0 auto; margin-right:2px; }
+.fm-check.on { background:var(--accent); border-color:var(--accent); }
+.fm-selbar { position:fixed; left:0; right:0; bottom:0; z-index:30; display:flex; align-items:center; gap:8px; padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px)); background:var(--bg); border-top:1px solid var(--surface-2); }

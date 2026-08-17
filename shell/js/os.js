@@ -192,11 +192,12 @@ const OS = (() => {
     const d = new Date();
     const time = d.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"});
     const wifi = state.wifi ? `<svg class="sb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>` : "";
+    const bt = state.bt ? `<svg class="sb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7.5 17 16.5l-5 4V3l5 4L7 16.5"/></svg>` : "";
     document.querySelectorAll("[data-statusbar]").forEach(sb => {
       sb.innerHTML = `
         <span class="sb-left">${time}</span>
         <span class="sb-right">
-          ${state.dnd ? "🌙" : ""} ${state.bt ? "🔵" : ""} ${wifi}
+          ${state.dnd ? "🌙" : ""} ${bt} ${wifi}
           <span class="sb-batt"><span class="sb-batt-shell"><span class="sb-batt-fill" style="width:${state.battery}%;background:${state.charging?'var(--ok)':(state.battery<20?'var(--danger)':'currentColor')}"></span></span>${state.charging?'⚡':''}${state.batteryPercent===false?'':state.battery+'%'}</span>
         </span>`;
     });

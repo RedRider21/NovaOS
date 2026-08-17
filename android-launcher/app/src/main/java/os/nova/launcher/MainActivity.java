@@ -646,40 +646,81 @@ public class MainActivity extends Activity {
             return false;
         }
 
-        // ---- Acquisizione schermata: disegna la WebView e salva in Galleria ----
+        // ---- Acquisizione schermata: cattura la superficie hardware e salva in Galleria ----
         @JavascriptInterface public void screenshot() {
             runOnUiThread(() -> {
                 try {
-                    android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(
-                            Math.max(1, web.getWidth()), Math.max(1, web.getHeight()),
-                            android.graphics.Bitmap.Config.ARGB_8888);
-                    web.draw(new android.graphics.Canvas(bmp));
-                    String fn = "NovaOS-" + System.currentTimeMillis() + ".png";
-                    java.io.OutputStream out; String where;
-                    if (Build.VERSION.SDK_INT >= 29) {
-                        android.content.ContentValues cv = new android.content.ContentValues();
-                        cv.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, fn);
-                        cv.put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png");
-                        cv.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
-                                android.os.Environment.DIRECTORY_PICTURES + "/NovaOS");
-                        android.net.Uri uri = getContentResolver().insert(
-                                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
-                        out = getContentResolver().openOutputStream(uri);
-                        where = "Galleria";
+                    int w = Math.max(1, web.getWidth()), h = Math.max(1, web.getHeight());
+                    // PixelCopy legge la superficie renderizzata dalla GPU: con le WebView
+                    // ad accelerazione hardware web.draw() produce spesso un bitmap nero/vuoto.
+                    if (Build.VERSION.SDK_INT >= 26 && getWindow() != null) {
+                        final android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(
+                                w, h, android.graphics.Bitmap.Config.ARGB_8888);
+                        int[] loc = new int[2];
+                        web.getLocationInWindow(loc);
+                        android.graphics.Rect src = new android.graphics.Rect(
+                                loc[0], loc[1], loc[0] + w, loc[1] + h);
+                        android.view.PixelCopy.request(getWindow(), src, bmp, (res) -> {
+                            if (res == android.view.PixelCopy.SUCCESS) saveShot(bmp);
+                            else saveShot(drawFallback(w, h));
+                        }, new android.os.Handler(android.os.Looper.getMainLooper()));
                     } else {
-                        java.io.File dir = new java.io.File(getExternalFilesDir(
-                                android.os.Environment.DIRECTORY_PICTURES), "NovaOS");
-                        dir.mkdirs();
-                        out = new java.io.FileOutputStream(new java.io.File(dir, fn));
-                        where = "Immagini di NovaOS";
+                        saveShot(drawFallback(w, h));
                     }
-                    bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
-                    out.close();
-                    Toast.makeText(MainActivity.this, "Schermata salvata (" + where + ")", Toast.LENGTH_SHORT).show();
                 } catch (Exception e) {
                     Toast.makeText(MainActivity.this, "Screenshot non riuscito", Toast.LENGTH_LONG).show();
                 }
             });
+        }
+        /** Ripiego software: disegna la WebView su un canvas (usato pre-API26 o se PixelCopy fallisce). */
+        private android.graphics.Bitmap drawFallback(int w, int h) {
+            android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(
+                    w, h, android.graphics.Bitmap.Config.ARGB_8888);
+            web.draw(new android.graphics.Canvas(bmp));
+            return bmp;
+        }
+        /** Salva il bitmap nella Galleria (MediaStore con IS_PENDING) o in cartella app pre-Q. */
+        private void saveShot(android.graphics.Bitmap bmp) {
+            try {
+                String fn = "NovaOS-" + System.currentTimeMillis() + ".png";
+                String where;
+                if (Build.VERSION.SDK_INT >= 29) {
+                    android.content.ContentValues cv = new android.content.ContentValues();
+                    cv.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, fn);
+                    cv.put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png");
+                    cv.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                            android.os.Environment.DIRECTORY_PICTURES + "/NovaOS");
+                    // IS_PENDING=1 durante la scrittura: le gallerie non indicizzano i file
+                    // ancora "in sospeso"; azzerandolo dopo il salvataggio l'immagine compare.
+                    cv.put(android.provider.MediaStore.Images.Media.IS_PENDING, 1);
+                    android.net.Uri uri = getContentResolver().insert(
+                            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
+                    if (uri == null) throw new java.io.IOException("insert nullo");
+                    java.io.OutputStream out = getContentResolver().openOutputStream(uri);
+                    bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+                    out.close();
+                    cv.clear();
+                    cv.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0);
+                    getContentResolver().update(uri, cv, null, null);
+                    where = "Galleria";
+                } else {
+                    java.io.File dir = new java.io.File(
+                            android.os.Environment.getExternalStoragePublicDirectory(
+                                    android.os.Environment.DIRECTORY_PICTURES), "NovaOS");
+                    dir.mkdirs();
+                    java.io.File f = new java.io.File(dir, fn);
+                    java.io.OutputStream out = new java.io.FileOutputStream(f);
+                    bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+                    out.close();
+                    // Notifica al MediaScanner così la Galleria mostra subito il file.
+                    android.media.MediaScannerConnection.scanFile(MainActivity.this,
+                            new String[]{ f.getAbsolutePath() }, new String[]{ "image/png" }, null);
+                    where = "Galleria";
+                }
+                Toast.makeText(MainActivity.this, "Schermata salvata (" + where + ")", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                Toast.makeText(MainActivity.this, "Screenshot non riuscito", Toast.LENGTH_LONG).show();
+            }
         }
 
         // ---- Aggiornamento OTA della sola interfaccia (shell) senza reinstallare l'APK ----
