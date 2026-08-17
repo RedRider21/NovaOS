@@ -1,9 +1,9 @@
 {
-  "version": "0.1.18",
-  "build": 19,
-  "minNative": 19,
+  "version": "0.1.19",
+  "build": 20,
+  "minNative": 20,
   "date": "2026-08-17",
-  "notes": "Screenshot: ora salvati in DCIM/Screenshots (visibili nella Galleria) + diagnostica. Richiede la REINSTALLAZIONE dell'APK.",
+  "notes": "Redesign flat 'Nova' di tutte le app (header ampi, icone flat, FAB). Fotocamera Foto/Video con zoom, messa a fuoco e flash. Galleria con video e album Schermate. Gli screenshot compaiono nella Galleria di NovaOS. Browser stile Chrome. Reinstalla l'APK per browser e screenshot.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",

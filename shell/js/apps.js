@@ -7,6 +7,14 @@
 const NovaApps = (() => {
   const app = d => d;
 
+  // Icona flat (SVG monocromatico da NovaIcons); eredita il colore del testo.
+  // Uso: ICO("telephone-fill") oppure ICO("gear-fill","width:22px;height:22px").
+  const ICO = (name, css) => {
+    const inner = (window.NovaIcons && NovaIcons.svg && NovaIcons.svg[name]) || "";
+    if (!inner) return "";
+    return `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="width:1em;height:1em;vertical-align:-.125em;${css||''}">${inner}</svg>`;
+  };
+
   /* ---------- Telefono (tastierino + recenti + chiamata reale) ---------- */
   const phone = app({ id:"phone", name:"Telefono", icon:"📞", color:"#35c759", dock:true,
     render(root, os) {
@@ -247,9 +255,11 @@ const NovaApps = (() => {
     render(root, os) {
       root.innerHTML = `
         <div style="height:100%;display:flex;flex-direction:column;background:#000">
-          <div style="display:flex;align-items:center;justify-content:center;gap:22px;padding:12px 0 6px;background:#000">
-            <button id="grid" class="cam-top" title="Griglia">⊞</button>
-            <button id="timer" class="cam-top" title="Autoscatto">⏱️<span id="timer-lbl" style="font-size:calc(11px*var(--fscale,1));margin-left:2px">off</span></button>
+          <div class="cam-bar">
+            <button id="flash" class="cam-top" title="Flash">${ICO("lightning-charge-fill","width:16px;height:16px")}<span id="flash-lbl">off</span></button>
+            <button id="grid" class="cam-top" title="Griglia">${ICO("grid-fill","width:16px;height:16px")}</button>
+            <button id="timer" class="cam-top" title="Autoscatto">${ICO("stopwatch-fill","width:16px;height:16px")}<span id="timer-lbl">off</span></button>
+            <span id="rec-clock" style="display:none;color:#fff;background:#e0233a;padding:4px 10px;border-radius:12px;font-size:calc(12px*var(--fscale,1));font-variant-numeric:tabular-nums">● 00:00</span>
           </div>
           <div style="flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center">
             <video id="cam" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover"></video>
@@ -257,54 +267,117 @@ const NovaApps = (() => {
               background-image:linear-gradient(rgba(255,255,255,.35) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.35) 1px,transparent 1px);
               background-size:33.33% 33.33%"></div>
             <div id="count" style="position:absolute;color:#fff;font-size:calc(96px*var(--fscale,1));font-weight:200;text-shadow:0 2px 20px rgba(0,0,0,.6);display:none"></div>
-            <div id="flash" style="position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none"></div>
+            <div id="flashfx" style="position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none"></div>
             <div id="cam-msg" style="position:absolute;color:#fff;text-align:center;padding:24px;font-size:calc(14px*var(--fscale,1));display:none"></div>
           </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 26px;background:#000">
-            <button id="thumb" style="width:52px;height:52px;border-radius:12px;border:2px solid rgba(255,255,255,.4);background:#222 center/cover no-repeat;cursor:pointer;font-size:calc(22px*var(--fscale,1));color:#fff">🖼️</button>
-            <button id="shot" style="width:72px;height:72px;border-radius:50%;border:5px solid #fff;background:rgba(255,255,255,.25);cursor:pointer"></button>
-            <button id="flip" style="width:52px;height:52px;border-radius:50%;color:#fff;font-size:calc(24px*var(--fscale,1));background:rgba(255,255,255,.12);border:none;cursor:pointer">🔄</button>
+          <div class="cam-modes"><button data-mode="photo" class="on">FOTO</button><button data-mode="video">VIDEO</button></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 30px 22px;background:#000">
+            <button id="thumb" style="width:52px;height:52px;border-radius:14px;border:2px solid rgba(255,255,255,.4);background:#222 center/cover no-repeat;cursor:pointer;font-size:calc(20px*var(--fscale,1));color:#fff">${ICO("images","width:22px;height:22px")}</button>
+            <button id="shot" class="shutter"></button>
+            <button id="flip" style="width:52px;height:52px;border-radius:50%;color:#fff;background:rgba(255,255,255,.12);border:none;cursor:pointer">${ICO("arrow-repeat","width:24px;height:24px")}</button>
           </div>
           <input id="pick" type="file" accept="image/*" hidden>
           <canvas id="cv" hidden></canvas>
-          <style>.cam-top{background:rgba(255,255,255,.12);border:none;color:#fff;font-size:calc(15px*var(--fscale,1));padding:7px 12px;border-radius:16px;cursor:pointer;display:flex;align-items:center}</style>
+          <style>
+            .cam-bar{display:flex;align-items:center;justify-content:center;gap:16px;padding:12px 0 6px;background:#000}
+            .cam-top{background:rgba(255,255,255,.12);border:none;color:#fff;font-size:calc(14px*var(--fscale,1));padding:7px 12px;border-radius:16px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+            .cam-top span{font-size:calc(10px*var(--fscale,1));opacity:.85}
+            .cam-modes{display:flex;justify-content:center;gap:8px;background:#000;padding:2px 0 8px}
+            .cam-modes button{background:none;border:none;color:rgba(255,255,255,.55);font-size:calc(13px*var(--fscale,1));font-weight:700;letter-spacing:1px;padding:6px 14px;border-radius:16px;cursor:pointer}
+            .cam-modes button.on{color:#ffd60a}
+            .shutter{width:74px;height:74px;border-radius:50%;border:5px solid #fff;background:rgba(255,255,255,.25);cursor:pointer;transition:background .15s}
+            .shutter.rec{border-color:#e0233a;background:#e0233a}
+            .shutter.recording{border-radius:22px;border-color:#e0233a;background:#e0233a}
+          </style>
         </div>`;
-      const video = root.querySelector("#cam"), msg = root.querySelector("#cam-msg"), flash = root.querySelector("#flash");
-      let stream = null, cams = [], curCam = 0, facing = "environment", timerSec = 0;
-      // griglia
+      const video = root.querySelector("#cam"), msg = root.querySelector("#cam-msg"), flash = root.querySelector("#flashfx");
+      let stream = null, cams = [], curCam = 0, facing = "environment", timerSec = 0, flashOn = false;
+      let mode = "photo", rec = null, recChunks = [], recStart = 0, recTimer = null, poster = null;
+      let zoom = 1, zMax = 4, vTrack = null, zoomCap = null;
+      const preview = video.parentElement;
+      const zBadge = document.createElement("div");
+      zBadge.style.cssText = "position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.5);color:#fff;padding:4px 12px;border-radius:14px;font-size:calc(13px*var(--fscale,1));opacity:0;transition:opacity .25s;pointer-events:none";
+      preview.appendChild(zBadge);
+      const applyZoom = () => {
+        zoom = Math.min(zMax, Math.max(1, zoom));
+        if (zoomCap && vTrack) {
+          const z = zoomCap.min + (zoom-1)/(zMax-1)*(zoomCap.max-zoomCap.min);
+          try { vTrack.applyConstraints({ advanced:[{ zoom:z }] }); } catch {}
+          video.style.transform = facing==="user" ? "scaleX(-1)" : "";
+        } else {
+          video.style.transform = (facing==="user"?"scaleX(-1) ":"") + `scale(${zoom})`;
+        }
+        zBadge.textContent = zoom.toFixed(1)+"x"; zBadge.style.opacity = "1";
+        clearTimeout(applyZoom._t); applyZoom._t = setTimeout(()=>{ zBadge.style.opacity = "0"; }, 900);
+      };
+      // pinch a due dita per zoomare; doppio tap per alternare 1x/2x
+      let pStart = 0, zStart = 1, lastTapZ = 0;
+      preview.addEventListener("touchstart", e => { if (e.touches.length===2) { pStart = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY); zStart = zoom; } }, {passive:true});
+      preview.addEventListener("touchmove", e => { if (e.touches.length===2 && pStart) { const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY); zoom = zStart * (d/pStart); applyZoom(); } }, {passive:true});
+      // messa a fuoco: tocco singolo mostra l'anello e prova ad applicare il fuoco nel punto
+      const focusAt = (cx, cy) => {
+        const r = preview.getBoundingClientRect();
+        const ring = document.createElement("div");
+        ring.style.cssText = `position:absolute;left:${cx-r.left-34}px;top:${cy-r.top-34}px;width:68px;height:68px;border:2px solid #ffd60a;border-radius:12px;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,.3)`;
+        preview.appendChild(ring);
+        ring.animate([{transform:"scale(1.4)",opacity:0},{transform:"scale(1)",opacity:1,offset:.3},{opacity:1,offset:.7},{opacity:0}], {duration:1100}).onfinish = () => ring.remove();
+        try { if (vTrack) { const x=(cx-r.left)/r.width, y=(cy-r.top)/r.height;
+          vTrack.applyConstraints({ advanced:[{ focusMode:"single-shot", pointsOfInterest:[{x,y}] }] }).catch(()=>{}); } } catch {}
+      };
+      preview.addEventListener("touchend", e => { if (e.touches.length===0) pStart = 0;
+        const now = Date.now(); const t = e.changedTouches[0];
+        if (e.changedTouches.length===1 && now-lastTapZ<300) { zoom = zoom>1?1:2; applyZoom(); lastTapZ=0; }
+        else { if (t && pStart===0 && zStart===zoom) focusAt(t.clientX, t.clientY); lastTapZ = now; } }, {passive:true});
+
       root.querySelector("#grid").onclick = () => { const g = root.querySelector("#grid-ov"); g.style.display = g.style.display==="none" ? "block" : "none"; };
-      // autoscatto: off -> 3s -> 10s -> off
       root.querySelector("#timer").onclick = () => { timerSec = timerSec===0?3:timerSec===3?10:0; root.querySelector("#timer-lbl").textContent = timerSec?timerSec+"s":"off"; };
+      const flashBtn = root.querySelector("#flash");
+      flashBtn.onclick = () => { flashOn = !flashOn; root.querySelector("#flash-lbl").textContent = flashOn?"on":"off"; flashBtn.style.color = flashOn?"#ffd60a":"#fff";
+        try { if (window.NovaNative && window.NovaNative.setTorch && facing==="environment") window.NovaNative.setTorch(flashOn); } catch {} };
+
+      const shotBtn = root.querySelector("#shot");
+      const setMode = (m) => { mode = m;
+        root.querySelectorAll("[data-mode]").forEach(b=>b.classList.toggle("on", b.dataset.mode===m));
+        shotBtn.classList.toggle("rec", m==="video");
+      };
+      root.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{ if(rec) return; setMode(b.dataset.mode); });
 
       const updateThumb = async () => {
         const all = await os.photos.all();
         const t = root.querySelector("#thumb");
-        if (all[0]) { t.style.backgroundImage = `url('${all[0].data}')`; t.textContent = ""; }
-        else { t.style.backgroundImage = ""; t.textContent = "🖼️"; }
+        if (all[0]) { t.style.backgroundImage = `url('${all[0].poster||all[0].data}')`; t.innerHTML = ""; }
+        else { t.style.backgroundImage = ""; t.innerHTML = ICO("images","width:22px;height:22px"); }
       };
 
       const start = async (constraints) => {
         try {
           if (stream) stream.getTracks().forEach(t=>t.stop());
-          stream = await navigator.mediaDevices.getUserMedia(constraints || { video:{ facingMode: facing }, audio:false });
+          stream = await navigator.mediaDevices.getUserMedia(constraints || { video:{ facingMode: facing }, audio:true });
           video.srcObject = stream; video.style.display = ""; msg.style.display = "none";
-          video.style.transform = facing==="user" ? "scaleX(-1)" : "";   // specchio per selfie
-          // enumera le camere solo dopo il permesso (così i label esistono)
+          vTrack = stream.getVideoTracks()[0] || null;
+          try { const caps = vTrack && vTrack.getCapabilities && vTrack.getCapabilities(); zoomCap = caps && caps.zoom ? caps.zoom : null; } catch { zoomCap = null; }
+          zoom = 1; applyZoom();
           if (!cams.length) { try { cams = (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==="videoinput"); } catch {} }
-          root.querySelector("#flip").style.display = (cams.length>1 || true) ? "" : "none";
         } catch (e) {
           video.style.display = "none"; msg.style.display = "block";
           msg.innerHTML = "Fotocamera non disponibile qui.<br>Tocca 📷 per usare la fotocamera di sistema.";
           root.querySelector("#pick").setAttribute("capture", "environment");
-          root.querySelector("#shot").onclick = () => root.querySelector("#pick").click();
+          shotBtn.onclick = () => root.querySelector("#pick").click();
         }
       };
 
-      const save = async (dataURL) => {
-        await os.photos.add(dataURL);           // ora salva davvero (fix IndexedDB)
+      const save = async (dataURL, extra) => {
+        await os.photos.add(dataURL, extra);
         await updateThumb();
-        os.notify({ app:"camera", title:"Foto salvata", text:"Trovi lo scatto nella Galleria." });
+        os.notify({ app:"camera", title: extra&&extra.video?"Video salvato":"Foto salvata", text:"Nella Galleria di NovaOS." });
       };
+
+      const grabPoster = () => { try {
+        const cv = root.querySelector("#cv");
+        cv.width = video.videoWidth || 720; cv.height = video.videoHeight || 960;
+        cv.getContext("2d").drawImage(video, 0, 0, cv.width, cv.height);
+        return cv.toDataURL("image/jpeg", 0.6);
+      } catch { return null; } };
 
       const capture = () => {
         const cv = root.querySelector("#cv");
@@ -314,39 +387,67 @@ const NovaApps = (() => {
         os.vibrate && os.vibrate(15);
         save(cv.toDataURL("image/jpeg", 0.9));
       };
+
+      const startRec = () => {
+        if (!stream) { root.querySelector("#pick").click(); return; }
+        try {
+          poster = grabPoster();
+          recChunks = [];
+          let mime = "video/webm;codecs=vp8,opus";
+          if (!(window.MediaRecorder && MediaRecorder.isTypeSupported(mime))) mime = "video/webm";
+          rec = new MediaRecorder(stream, MediaRecorder.isTypeSupported(mime)?{mimeType:mime}:undefined);
+          rec.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+          rec.onstop = () => {
+            const blob = new Blob(recChunks, { type: recChunks[0]?recChunks[0].type:"video/webm" });
+            const dur = Math.round((Date.now()-recStart)/1000);
+            const r = new FileReader(); r.onload = () => save(r.result, { video:true, dur, poster }); r.readAsDataURL(blob);
+          };
+          rec.start();
+          recStart = Date.now();
+          shotBtn.classList.add("recording");
+          const clock = root.querySelector("#rec-clock"); clock.style.display = "inline-block";
+          recTimer = setInterval(()=>{ const s=Math.floor((Date.now()-recStart)/1000); clock.textContent = "● "+String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); }, 500);
+          os.vibrate && os.vibrate(20);
+        } catch (e) { os.notify({ app:"camera", title:"Video", text:"Registrazione non supportata qui." }); }
+      };
+      const stopRec = () => {
+        if (!rec) return;
+        try { rec.stop(); } catch {}
+        rec = null; clearInterval(recTimer); recTimer = null;
+        shotBtn.classList.remove("recording");
+        root.querySelector("#rec-clock").style.display = "none";
+        os.vibrate && os.vibrate(20);
+      };
+
       let counting = false;
-      const shotBtn = root.querySelector("#shot");
-      const pressShot = () => shotBtn.animate(
-        [{transform:"scale(1)",background:"rgba(255,255,255,.25)"},
-         {transform:"scale(.86)",background:"rgba(255,255,255,.85)",offset:.4},
-         {transform:"scale(1)",background:"rgba(255,255,255,.25)"}],
-        {duration:260, easing:"ease-out"});
+      const pressShot = () => shotBtn.animate([{transform:"scale(1)"},{transform:"scale(.88)",offset:.4},{transform:"scale(1)"}], {duration:220, easing:"ease-out"});
       shotBtn.onclick = () => {
         pressShot();
+        if (mode === "video") { rec ? stopRec() : startRec(); return; }
         if (!stream) { root.querySelector("#pick").click(); return; }
         if (counting) return;
         if (!timerSec) { capture(); return; }
-        // conto alla rovescia autoscatto
         counting = true;
         const el = root.querySelector("#count"); el.style.display = "block";
-        let left = timerSec;
-        el.textContent = left;
-        const tick = setInterval(() => {
-          left--;
+        let left = timerSec; el.textContent = left;
+        const tick = setInterval(() => { left--;
           if (left <= 0) { clearInterval(tick); el.style.display = "none"; counting = false; capture(); }
           else { el.textContent = left; }
         }, 1000);
       };
       root.querySelector("#flip").onclick = () => {
-        if (cams.length > 1) { curCam = (curCam+1) % cams.length; start({ video:{ deviceId:{ exact: cams[curCam].deviceId } }, audio:false }); }
-        else { facing = facing==="environment" ? "user" : "environment"; start({ video:{ facingMode: facing }, audio:false }); }
+        if (rec) return;
+        if (cams.length > 1) { curCam = (curCam+1) % cams.length; start({ video:{ deviceId:{ exact: cams[curCam].deviceId } }, audio:true }); }
+        else { facing = facing==="environment" ? "user" : "environment"; start({ video:{ facingMode: facing }, audio:true }); }
       };
       root.querySelector("#thumb").onclick = () => os.openApp("gallery");
       root.querySelector("#pick").onchange = (e) => { const f=e.target.files[0]; if(!f) return;
         const r=new FileReader(); r.onload=()=>save(r.result); r.readAsDataURL(f); };
 
       start(); updateThumb();
-      root._cleanup = () => { if (stream) stream.getTracks().forEach(t=>t.stop()); };
+      root._cleanup = () => { try{ if(rec) rec.stop(); }catch{} clearInterval(recTimer);
+        try { if (flashOn && window.NovaNative && window.NovaNative.setTorch) window.NovaNative.setTorch(false); } catch {}
+        if (stream) stream.getTracks().forEach(t=>t.stop()); };
     }});
 
   /* ---------- Rubrica (contatti completi) ---------- */
@@ -506,10 +607,11 @@ const NovaApps = (() => {
         if (!bookmarks.some(b=>b.url===u)) { bookmarks.push({ name:host(u), url:u }); saveB(); os.notify({ app:"browser", title:"Browser", text:"Aggiunto ai preferiti." }); }
         drawHome();
       };
-      const bar = (val="") => `<div style="display:flex;gap:8px;padding:10px 14px">
-          <input id="url" value="${val}" placeholder="Cerca o inserisci indirizzo" style="flex:1;background:var(--surface);border:none;border-radius:20px;padding:12px 16px;color:var(--text);font-size:calc(14px*var(--fscale,1));outline:none">
-          <button class="btn ghost" id="star" style="width:auto;padding:0 14px">☆</button>
-          <button class="btn" id="go" style="width:auto;padding:0 16px">Vai</button></div>`;
+      const bar = (val="") => `<div style="display:flex;gap:8px;padding:6px 16px 12px;align-items:center">
+          <div class="searchbar" style="flex:1;margin:0"><span class="sb-i">${ICO("search")}</span>
+            <input id="url" value="${val}" placeholder="Cerca su Google o digita URL"></div>
+          <button class="round-act small" id="star" style="background:var(--surface);color:var(--text)">${ICO("star-fill","width:17px;height:17px")}</button>
+          <button class="round-act small" id="go" style="background:var(--accent)">${ICO("send-fill","width:16px;height:16px")}</button></div>`;
       const bind = () => {
         const inp = root.querySelector("#url");
         root.querySelector("#go").onclick = () => go(inp.value);
@@ -518,19 +620,19 @@ const NovaApps = (() => {
       };
 
       const drawHome = () => {
-        root.innerHTML = `<div class="app-header"><div class="app-title">Browser</div>${native?'':'<div class="app-sub">Anteprima in-app — i siti reali si aprono sul device</div>'}</div>
+        root.innerHTML = `<div class="hero"><div class="hero-l"><h1>Browser</h1>${native?'':'<div class="hero-sub">Anteprima in-app — i siti reali si aprono sul device</div>'}</div></div>
           ${bar()}
           <div class="section-label">Preferiti</div>
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:6px 16px">
             ${bookmarks.length?bookmarks.map((b,i)=>`<div class="bm" data-url="${b.url}" style="text-align:center;cursor:pointer;position:relative">
-              <div style="width:52px;height:52px;border-radius:15px;margin:0 auto;background:hsl(${hue(b.url)} 60% 45%);display:flex;align-items:center;justify-content:center;font-size:calc(22px*var(--fscale,1))">🌐</div>
+              <div style="width:52px;height:52px;border-radius:16px;margin:0 auto;background:hsl(${hue(b.url)} 60% 45%);display:flex;align-items:center;justify-content:center;color:#fff">${ICO("globe2","width:24px;height:24px")}</div>
               <div style="font-size:calc(11px*var(--fscale,1));margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.name}</div>
               <button data-rm="${i}" style="position:absolute;top:-4px;right:6px;width:18px;height:18px;border-radius:50%;background:var(--surface-2);border:none;color:var(--text-dim);font-size:calc(10px*var(--fscale,1));cursor:pointer">✕</button></div>`).join("")
-              :'<div style="grid-column:span 4;color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">Nessun preferito. Apri un sito e tocca ☆.</div>'}
+              :`<div style="grid-column:span 4;color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">Nessun preferito. Apri un sito e tocca la stella.</div>`}
           </div>
           <div class="section-label">Cronologia</div>
           <div class="group">${history.length?history.slice(0,8).map(h=>`
-            <div class="item" data-url="${h.url}"><div class="i-ico" style="background:hsl(${hue(h.url)} 60% 45%)">🌐</div>
+            <div class="item" data-url="${h.url}"><div class="i-ico" style="background:hsl(${hue(h.url)} 60% 45%)">${ICO("globe2","width:20px;height:20px")}</div>
               <div class="i-body"><div class="i-title trunc">${host(h.url)}</div><div class="i-sub trunc">${h.url}</div></div></div>`).join("")
             :'<div class="item"><div class="i-sub" style="padding:6px">Nessuna cronologia</div></div>'}</div>
           ${history.length?'<button class="btn ghost" id="clrh" style="margin:12px 16px;color:var(--danger)">Cancella cronologia</button>':''}
@@ -594,17 +696,17 @@ const NovaApps = (() => {
       const FILTERS = [["Originale","none"],["B/N","grayscale(1)"],["Seppia","sepia(.8)"],["Vivido","saturate(1.7) contrast(1.08)"],["Freddo","saturate(1.2) hue-rotate(-15deg) brightness(1.05)"],["Caldo","sepia(.35) saturate(1.4)"]];
 
       let items = [], tab = "foto";
+      const playBadge = `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none"><div style="width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:calc(15px*var(--fscale,1))">▶</div></div>`;
       const cell = (p,i) => p.real
-        ? `<div class="ph" data-i="${i}" style="aspect-ratio:1;border-radius:6px;background-image:url('${p.data}');background-size:cover;background-position:center;cursor:pointer"></div>`
+        ? `<div class="ph" data-i="${i}" style="position:relative;aspect-ratio:1;border-radius:6px;background-image:url('${p.poster||p.data}');background-size:cover;background-position:center;cursor:pointer">${p.video?playBadge:''}</div>`
         : `<div class="ph" data-i="${i}" style="aspect-ratio:1;background:${p.bg};border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:calc(30px*var(--fscale,1));cursor:pointer">${p.emoji}</div>`;
 
-      const header = (real) => `<div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
-          <div><div class="app-title">Galleria</div><div class="app-sub">${real} tue foto · ${demo.length} demo</div></div>
+      const header = (real) => `<div class="hero"><div class="hero-l"><h1>Galleria</h1><div class="hero-sub">${real} elementi · ${demo.length} demo</div></div>
           <div style="display:flex;gap:8px">
-            <button class="btn" id="cam" style="width:auto;padding:10px 14px">📷</button>
-            <label class="btn ghost" style="width:auto;padding:10px 14px;cursor:pointer">＋<input id="imp" type="file" accept="image/*" multiple hidden></label>
+            <button class="round-act small" id="cam" style="background:var(--surface);color:var(--text)">📷</button>
+            <label class="round-act small" style="background:var(--surface);color:var(--text);cursor:pointer">＋<input id="imp" type="file" accept="image/*" multiple hidden></label>
           </div></div>
-        <div class="seg" style="margin-bottom:8px"><button data-tab="foto" class="${tab==='foto'?'on':''}">Foto</button><button data-tab="album" class="${tab==='album'?'on':''}">Album</button></div>`;
+        <div class="seg" style="margin:2px 16px 10px"><button data-tab="foto" class="${tab==='foto'?'on':''}">Foto</button><button data-tab="album" class="${tab==='album'?'on':''}">Album</button></div>`;
 
       const bindTop = () => {
         root.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;draw();});
@@ -616,12 +718,14 @@ const NovaApps = (() => {
       const gridHtml = (arr) => `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:0 4px 90px">${arr.map((p)=>cell(p,items.indexOf(p))).join("")}</div>`;
 
       const draw = async () => {
-        const real = (await os.photos.all()).map(p => ({ real:true, id:p.id, data:p.data, ts:p.ts, name:"Foto" }));
+        const real = (await os.photos.all()).map(p => ({ real:true, id:p.id, data:p.data, ts:p.ts, album:p.album, video:!!p.video, poster:p.poster, dur:p.dur, name:p.video?"Video":(p.album||"Foto") }));
         items = [...real, ...demo.filter(d => !hidden.includes(d.id))];
         if (tab === "foto") {
           root.innerHTML = header(real.length) + gridHtml(items);
         } else {
-          const albums = [["📷 Fotocamera", real], ["🏞️ Paesaggi", demo.filter(d=>d.album==="Paesaggi")], ["🏙️ Città", demo.filter(d=>d.album==="Città")], ["🌿 Natura", demo.filter(d=>d.album==="Natura")]];
+          const shots = real.filter(p=>p.album==="Schermate");
+          const cam = real.filter(p=>p.album!=="Schermate");
+          const albums = [["📷 Fotocamera", cam], ...(shots.length?[["🖼️ Schermate", shots]]:[]), ["🏞️ Paesaggi", demo.filter(d=>d.album==="Paesaggi")], ["🏙️ Città", demo.filter(d=>d.album==="Città")], ["🌿 Natura", demo.filter(d=>d.album==="Natura")]];
           root.innerHTML = header(real.length) + `<div style="padding:0 12px 90px">${albums.map(([nome,arr],ai)=>`
             <div class="alb" data-alb="${ai}" style="margin-bottom:14px;cursor:pointer">
               <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:3px;border-radius:14px;overflow:hidden;aspect-ratio:2">
@@ -647,7 +751,9 @@ const NovaApps = (() => {
       const openViewer = (i) => {
         const p = items[i];
         const go = j => openViewer((j+items.length)%items.length);
-        const big = p.real
+        const big = p.video
+          ? `<video id="vimg" src="${p.data}" controls autoplay playsinline style="max-width:100%;max-height:100%;object-fit:contain;background:#000"></video>`
+          : p.real
           ? `<img id="vimg" src="${p.data}" style="max-width:100%;max-height:100%;object-fit:contain;transition:transform .18s;touch-action:none;will-change:transform">`
           : `<div id="vimg" style="width:80%;aspect-ratio:3/4;border-radius:16px;background:${p.bg};display:flex;align-items:center;justify-content:center;font-size:calc(96px*var(--fscale,1))">${p.emoji}</div>`;
         root.innerHTML = `
@@ -657,8 +763,8 @@ const NovaApps = (() => {
               <div style="flex:1"><div style="font-weight:600">${p.name}</div><div style="font-size:calc(12px*var(--fscale,1));opacity:.6">${i+1} di ${items.length}</div></div>
               <button id="vslide" title="Presentazione" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">▶️</button>
               <button id="vinfo" title="Info" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">ℹ️</button>
-              ${p.real?`<button id="vshare" title="Condividi" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">📤</button>
-              <button id="vedit" title="Modifica" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">✏️</button>`:''}
+              ${p.real?`<button id="vshare" title="Condividi" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">📤</button>`:''}
+              ${p.real&&!p.video?`<button id="vedit" title="Modifica" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">✏️</button>`:''}
               <button id="vdel" title="Elimina" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,80,90,.35);color:#fff;font-size:calc(16px*var(--fscale,1));cursor:pointer">🗑</button>
             </div>
             <div id="vstage" style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">
@@ -714,6 +820,7 @@ const NovaApps = (() => {
 
         // gesti: swipe per cambiare foto, doppio-tap per zoom, trascinamento in zoom
         const stage = root.querySelector("#vstage");
+        if (p.video) return;   // per i video lasciamo i controlli nativi (no swipe/zoom)
         let scale = 1, tx = 0, ty = 0, sx = 0, sy = 0, moved = 0, dragging = false, lastTap = 0;
         const setT = () => { img.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`; };
         stage.addEventListener("touchstart", e => {
@@ -819,7 +926,7 @@ const NovaApps = (() => {
         ["Suva","Pacific/Fiji"],
       ];
 
-      root.innerHTML = `<div class="app-header"><div class="app-title">Orologio</div></div>
+      root.innerHTML = `<div class="hero"><div class="hero-l"><h1>Orologio</h1></div></div>
         <div style="text-align:center;padding:12px">
           <div id="big-clock" style="font-size:calc(60px*var(--fscale,1));font-weight:200;font-variant-numeric:tabular-nums"></div>
           <div style="color:var(--text-dim);text-transform:capitalize" id="big-date"></div></div>
@@ -864,7 +971,7 @@ const NovaApps = (() => {
         const box = root.querySelector("#alarms");
         box.innerHTML = alarms.length ? alarms.map(a=>`
           <div class="item"><div class="i-body"><div class="i-title" style="font-size:calc(26px*var(--fscale,1));font-weight:300">${a.time}</div></div>
-            <button data-del="${a.id}" style="background:none;border:none;color:var(--text-dim);font-size:calc(16px*var(--fscale,1));cursor:pointer;margin-right:8px">🗑</button>
+            <button data-del="${a.id}" style="background:none;border:none;color:var(--text-dim);cursor:pointer;margin-right:8px">${ICO("trash-fill","width:16px;height:16px")}</button>
             <div class="switch ${a.on?'on':''}" data-al="${a.id}"></div></div>`).join("")
           : `<div class="item"><div class="i-sub" style="padding:6px">Nessuna sveglia impostata</div></div>`;
         box.querySelectorAll("[data-al]").forEach(el => el.onclick = () => { const a=alarms.find(x=>x.id==el.dataset.al); a.on=!a.on; saveA(); el.classList.toggle("on"); });
@@ -891,7 +998,7 @@ const NovaApps = (() => {
           const off = new Intl.DateTimeFormat("en-US",{timeZone:w.tz,timeZoneName:"shortOffset"}).formatToParts(now).find(p=>p.type==="timeZoneName");
           return `<div class="item"><div class="i-body"><div class="i-title">${w.city}</div><div class="i-sub">${off?off.value:''}</div></div>
             <div style="font-size:calc(24px*var(--fscale,1));font-weight:300;font-variant-numeric:tabular-nums;margin-right:10px">${t}</div>
-            <button data-tzdel="${w.id}" style="background:none;border:none;color:var(--text-dim);font-size:calc(16px*var(--fscale,1));cursor:pointer">🗑</button></div>`;
+            <button data-tzdel="${w.id}" style="background:none;border:none;color:var(--text-dim);cursor:pointer">${ICO("trash-fill","width:16px;height:16px")}</button></div>`;
         }).join("") : `<div class="item"><div class="i-sub" style="padding:6px">Nessun fuso aggiunto</div></div>`;
         worldBox.querySelectorAll("[data-tzdel]").forEach(b => b.onclick = () => { world=world.filter(x=>x.id!=b.dataset.tzdel); saveW(); drawWorld(); });
       };
@@ -976,17 +1083,17 @@ const NovaApps = (() => {
       const drawList = () => {
         const shown = list.filter(n => (filterCat==="Tutte"||n.cat===filterCat) && (!query || n.text.toLowerCase().includes(query.toLowerCase())))
                           .sort((a,b)=>(b.pin?1:0)-(a.pin?1:0) || b.updated-a.updated);
-        root.innerHTML = `<div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
-            <div><div class="app-title">Note</div><div class="app-sub">${list.length} note</div></div>
-            <button class="btn" id="new" style="width:auto;padding:10px 16px">+ Nuova</button></div>
-          <div style="padding:0 16px 8px"><input id="q" value="${query}" placeholder="Cerca" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none"></div>
-          <div class="seg" style="margin-bottom:8px;flex-wrap:wrap"><button data-cat="Tutte" class="${filterCat==='Tutte'?'on':''}">Tutte</button>${CATS.map(c=>`<button data-cat="${c}" class="${filterCat===c?'on':''}">${c}</button>`).join("")}</div>
+        root.innerHTML = `<div class="hero"><div class="hero-l"><h1>Note</h1><div class="hero-sub">${list.length} note</div></div></div>
+          <div class="searchbar"><span class="sb-i">${ICO("search")}</span><input id="q" value="${query}" placeholder="Cerca nelle note"></div>
+          <div class="seg" style="margin:2px 16px 8px;flex-wrap:wrap"><button data-cat="Tutte" class="${filterCat==='Tutte'?'on':''}">Tutte</button>${CATS.map(c=>`<button data-cat="${c}" class="${filterCat===c?'on':''}">${c}</button>`).join("")}</div>
           <div class="list">${shown.length?shown.map(n=>`
             <div class="card tappable" data-id="${n.id}" style="border-left:4px solid ${n.color}">
-              <div class="c-body"><div class="c-title">${n.pin?'📌 ':''}${esc(title(n.text))}</div>
+              <div class="c-body"><div class="c-title">${n.pin?ICO("pin-map-fill","width:.9em;height:.9em")+' ':''}${esc(title(n.text))}</div>
                 <div class="c-sub">${esc(preview(n.text))}</div>
                 <div style="font-size:calc(11px*var(--fscale,1));color:var(--text-dim);margin-top:3px">${n.cat} · ${when(n.updated)}</div></div></div>`).join("")
-            :`<div style="text-align:center;color:var(--text-dim);padding:30px">Nessuna nota</div>`}</div>`;
+            :`<div style="text-align:center;color:var(--text-dim);padding:30px">Nessuna nota</div>`}</div>
+          <div style="height:90px"></div>
+          <button class="fab" id="new">${ICO("pencil-fill","width:22px;height:22px")}<span class="fab-t">Nuova</span></button>`;
         root.querySelector("#new").onclick = () => { const n={id:Date.now(),text:"",color:COLORS[0],cat:"Personale",pin:false,updated:Date.now()}; list.unshift(n); save(); drawEditor(n.id); };
         root.querySelector("#q").oninput = e => { query=e.target.value; const p=e.target.selectionStart; drawList(); const q2=root.querySelector("#q"); q2.focus(); q2.setSelectionRange(p,p); };
         root.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{filterCat=b.dataset.cat;drawList();});
@@ -1071,10 +1178,9 @@ const NovaApps = (() => {
           ["7","n"],["8","n"],["9","n"],["×","op"],["4","n"],["5","n"],["6","n"],["−","op"],
           ["1","n"],["2","n"],["3","n"],["+","op"],["0","n"],["00","n"],[".","n"],["=","eq"]];
         root.innerHTML = `
-          <div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
-            <div class="app-title">Calcolatrice</div>
-            <div style="display:flex;gap:8px"><button class="btn ghost" id="hist" style="width:auto;padding:8px 12px">🕓</button>
-            <button class="btn ghost" id="scitog" style="width:auto;padding:8px 12px">${sci?"Base":"Sci"}</button></div></div>
+          <div class="hero"><div class="hero-l"><h1>Calcolatrice</h1></div>
+            <div style="display:flex;gap:8px;align-items:center"><button class="round-act small" id="hist" style="background:var(--surface);color:var(--text)">${ICO("clock-fill","width:18px;height:18px")}</button>
+            <button class="btn ghost" id="scitog" style="width:auto;padding:9px 14px">${sci?"Base":"Sci"}</button></div></div>
           <div id="hist-panel"></div>
           <div id="calc-out" style="text-align:right;font-size:calc(46px*var(--fscale,1));font-weight:300;padding:14px 24px 0;min-height:60px;word-break:break-all">${expr||"0"}</div>
           <div id="calc-prev" style="text-align:right;font-size:calc(20px*var(--fscale,1));color:var(--text-dim);padding:0 24px 8px;min-height:26px;font-variant-numeric:tabular-nums"></div>
@@ -1200,15 +1306,11 @@ const NovaApps = (() => {
           : (a.configured ? a.email : (nativeMail ? "Account non configurato" : folders.find(f=>f[0]===folder)[1]))
             + (folder==='inbox'&&unread?` · ${unread} non lette`:'');
         root.innerHTML = `
-          <div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
-            <div><div class="app-title">Mail</div><div class="app-sub">${sub}</div></div>
-            <div style="display:flex;gap:8px">
-              ${nativeMail&&a.configured?`<button class="btn ghost" id="sync" style="width:auto;padding:10px 13px" ${syncing?'disabled':''}>${syncing?'⏳':'🔄'}</button>`:''}
-              <button class="btn" id="compose" style="width:auto;padding:10px 14px">✍️ Scrivi</button>
-              <button class="btn ghost" id="msettings" style="width:auto;padding:10px 13px">⚙️</button></div></div>
-          <div style="padding:0 16px 8px;position:relative">
-            <input id="q" value="${esc(query)}" placeholder="Cerca nella posta" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px 11px 38px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
-            <span style="position:absolute;left:28px;top:11px;opacity:.5">🔍</span></div>
+          <div class="hero"><div class="hero-l"><h1>Mail</h1><div class="hero-sub">${sub}</div></div>
+            <div style="display:flex;gap:8px;align-items:center">
+              ${nativeMail&&a.configured?`<button class="round-act small" id="sync" style="background:var(--surface);color:var(--text)" ${syncing?'disabled':''}>${syncing?'⏳':ICO("arrow-repeat","width:17px;height:17px")}</button>`:''}
+              <button class="round-act small" id="msettings" style="background:var(--surface);color:var(--text)">${ICO("gear-fill","width:17px;height:17px")}</button></div></div>
+          <div class="searchbar"><span class="sb-i">${ICO("search")}</span><input id="q" value="${esc(query)}" placeholder="Cerca nella posta"></div>
           <div class="seg" style="margin-bottom:8px">${folders.map(f=>`<button data-f="${f[0]}" class="${folder===f[0]?'on':''}" style="font-size:calc(12px*var(--fscale,1))">${f[2]}${f[0]==='drafts'&&box.drafts.length?` ${box.drafts.length}`:''}</button>`).join("")}</div>
           <div class="list" style="padding-top:4px">${msgs.length?msgs.map(m=>`
             <div class="card tappable" data-id="${m.id}" style="${m.read?'':'border-left:3px solid var(--accent)'}">
@@ -1219,7 +1321,9 @@ const NovaApps = (() => {
               <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
                 <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1))">${m.time}</div>
                 <button data-star="${m.id}" style="background:none;border:none;font-size:calc(15px*var(--fscale,1));cursor:pointer">${m.star?'⭐':'☆'}</button></div></div>`).join("")
-            :`<div style="text-align:center;color:var(--text-dim);padding:30px">${q?'Nessun risultato':'Nessun messaggio'}</div>`}</div>`;
+            :`<div style="text-align:center;color:var(--text-dim);padding:30px">${q?'Nessun risultato':'Nessun messaggio'}</div>`}</div>
+          <div style="height:90px"></div>
+          <button class="fab" id="compose">${ICO("pencil-fill","width:22px;height:22px")}<span class="fab-t">Scrivi</span></button>`;
         root.querySelector("#compose").onclick = () => drawCompose();
         root.querySelector("#msettings").onclick = drawSettings;
         const sy = root.querySelector("#sync"); if (sy) sy.onclick = syncNow;
@@ -1492,9 +1596,8 @@ const NovaApps = (() => {
         const dayEvents=events.filter(e=>e.date===sel).sort((a,b)=>a.time.localeCompare(b.time));
         const isToday = sel===todayStr();
         root.innerHTML=`
-          <div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
-            <div class="app-title">${months[mo]} ${y}</div>
-            <div style="display:flex;gap:6px">
+          <div class="hero"><div class="hero-l"><h1 style="font-size:calc(26px*var(--fscale,1))">${months[mo]} ${y}</h1></div>
+            <div style="display:flex;gap:6px;align-items:center">
               <button class="mini-add" id="today" style="background:var(--surface);color:var(--text);width:auto;padding:0 12px;font-size:calc(13px*var(--fscale,1))">Oggi</button>
               <button class="mini-add" id="prev" style="background:var(--surface);color:var(--text)">‹</button><button class="mini-add" id="next" style="background:var(--surface);color:var(--text)">›</button></div></div>
           <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:0 12px;color:var(--text-dim);font-size:calc(12px*var(--fscale,1));text-align:center;margin-bottom:4px">${dows.map(d=>`<div>${d}</div>`).join("")}</div>
@@ -1502,7 +1605,7 @@ const NovaApps = (() => {
           <div class="section-label" style="display:flex;justify-content:space-between;align-items:center"><span>${isToday?"Oggi":sel.split("-").reverse().join("/")}</span><button class="mini-add" id="add">+</button></div>
           <div id="ev-panel"></div>
           <div class="group">${dayEvents.length?dayEvents.map(e=>`
-            <div class="item tappable" data-edit="${e.id}"><div class="i-ico" style="background:${e.color||'#ea4335'}">📌</div>
+            <div class="item tappable" data-edit="${e.id}"><div class="i-ico" style="background:${e.color||'#ea4335'}">${ICO("calendar-event-fill","width:18px;height:18px")}</div>
               <div class="i-body"><div class="i-title">${e.title}</div><div class="i-sub">${e.time}${e.note?" · "+e.note:""}</div></div>
               <button data-del="${e.id}" style="background:none;border:none;color:var(--text-dim);cursor:pointer">🗑</button></div>`).join("")
             :`<div class="item"><div class="i-sub" style="padding:6px">Nessun evento</div></div>`}</div>
@@ -1590,13 +1693,13 @@ const NovaApps = (() => {
       };
 
       const draw = async () => {
-        if (!cities.length) { root.innerHTML = `<div class="app-header"><div class="app-title">Meteo</div></div>
+        if (!cities.length) { root.innerHTML = `<div class="hero"><div class="hero-l"><h1>Meteo</h1></div></div>
           <div style="text-align:center;color:var(--text-dim);padding:30px">Nessuna città. <button class="btn" id="addc" style="margin-top:12px">Aggiungi città</button></div><div id="c-panel"></div>`;
           bindAdd(); return; }
         const c = cities[Math.min(sel, cities.length-1)];
         root.innerHTML = `
-          <div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
-            <div class="app-title">Meteo</div><button class="mini-add" id="addc" style="width:32px;height:32px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:calc(18px*var(--fscale,1));cursor:pointer">+</button></div>
+          <div class="hero"><div class="hero-l"><h1>Meteo</h1></div>
+            <button class="round-act small" id="addc" style="background:var(--accent)">${ICO("plus-circle-fill","width:20px;height:20px")}</button></div>
           <div id="c-panel"></div>
           <div id="wx-main" style="text-align:center;padding:24px"><div style="color:var(--text-dim)">Caricamento previsioni…</div>
             <div class="boot-spinner" style="margin:16px auto"></div></div>
@@ -1934,12 +2037,9 @@ const NovaApps = (() => {
           ];
           const recent=[...nodes.filter(n=>n.kind==="text")].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,4);
           root.innerHTML=`
-            <div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
-              <div><div class="app-title">File</div><div class="app-sub">Memoria interna</div></div>
-              <button class="btn" id="new" style="width:auto;padding:10px 16px">＋ Nuovo</button></div>
-            <div style="padding:0 16px 10px;position:relative">
-              <input id="q" value="${esc(query)}" placeholder="Cerca in tutti i file" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px 11px 38px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
-              <span style="position:absolute;left:28px;top:11px;opacity:.5">🔍</span></div>
+            <div class="hero"><div class="hero-l"><h1>File</h1><div class="hero-sub">Memoria interna</div></div>
+              <button class="round-act small" id="new" style="background:var(--accent)">${ICO("plus-circle-fill","width:20px;height:20px")}</button></div>
+            <div class="searchbar"><span class="sb-i">${ICO("search")}</span><input id="q" value="${esc(query)}" placeholder="Cerca in tutti i file"></div>
             <div class="fm-storage group">
               <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px"><span style="font-weight:600">Spazio di archiviazione</span><span style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1))" id="st-total">…</span></div>
               <div class="fm-bar"><i style="width:0;background:#af52de" id="st-bar-p"></i><i style="width:${userBytes?60:0}%;background:#5e5ce6" id="st-bar-u"></i><i style="width:0;background:#ffd60a" id="st-bar-n"></i></div>
@@ -2125,7 +2225,7 @@ const NovaApps = (() => {
         const editing = editId ? installed.find(a => a.id === editId) : null;
         if (!editing) editId = null;
         root.innerHTML = `
-          <div class="app-header"><div class="app-title">Store</div><div class="app-sub">Aggiungi qualsiasi web app tramite URL</div></div>
+          <div class="hero"><div class="hero-l"><h1>Store</h1><div class="hero-sub">Aggiungi qualsiasi web app tramite URL</div></div></div>
           <div class="section-label">${editing?`Modifica «${editing.name}»`:"Installa una web app"}</div>
           <div class="group" style="padding:14px 16px${editing?';outline:2px solid var(--accent);outline-offset:-2px;border-radius:14px':''}">
             <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
@@ -2269,8 +2369,8 @@ const NovaApps = (() => {
       const home = () => {
         syncSensors();   // riflette lo stato reale dei sensori nei sottotitoli
         root.innerHTML = `
-          <div class="app-header"><div class="app-title">Impostazioni</div><div class="app-sub">NovaOS ${VERLONG}</div></div>
-          <div style="padding:0 16px 8px"><input id="q" placeholder="Cerca nelle impostazioni" style="width:100%;background:var(--surface);border:none;border-radius:20px;padding:12px 16px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none"></div>
+          <div class="hero"><div class="hero-l"><h1>Impostazioni</h1><div class="hero-sub">NovaOS ${VERLONG}</div></div></div>
+          <div class="searchbar"><span class="sb-i">${ICO("search")}</span><input id="q" placeholder="Cerca nelle impostazioni"></div>
 
           <div class="section-label">Rete e connettività</div>
           <div class="group">

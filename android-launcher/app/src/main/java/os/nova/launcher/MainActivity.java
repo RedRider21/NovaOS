@@ -662,17 +662,37 @@ public class MainActivity extends Activity {
                                 loc[0], loc[1], loc[0] + w, loc[1] + h);
                         android.view.PixelCopy.request(getWindow(), src, bmp, (res) -> {
                             android.util.Log.i("NovaShot", "PixelCopy result=" + res);
-                            if (res == android.view.PixelCopy.SUCCESS) saveShot(bmp);
-                            else saveShot(drawFallback(w, h));
+                            onCaptured(res == android.view.PixelCopy.SUCCESS ? bmp : drawFallback(w, h));
                         }, new android.os.Handler(android.os.Looper.getMainLooper()));
                     } else {
-                        saveShot(drawFallback(w, h));
+                        onCaptured(drawFallback(w, h));
                     }
                 } catch (Exception e) {
                     android.util.Log.e("NovaShot", "capture", e);
                     Toast.makeText(MainActivity.this, "Screenshot non riuscito: " + e.getClass().getSimpleName(), Toast.LENGTH_LONG).show();
                 }
             });
+        }
+        /** Dopo la cattura: prima invia lo screenshot alla Galleria di NovaOS (IndexedDB,
+         *  sempre affidabile), poi tenta il salvataggio in DCIM/Screenshots (best-effort). */
+        private void onCaptured(android.graphics.Bitmap bmp) {
+            sendShotToShell(bmp);
+            saveShot(bmp);
+        }
+        /** Invia il PNG (ridimensionato) alla shell: window.__novaShot lo aggiunge alla Galleria. */
+        private void sendShotToShell(android.graphics.Bitmap bmp) {
+            try {
+                int max = 1280, w = bmp.getWidth(), h = bmp.getHeight();
+                float sc = Math.min(1f, (float) max / Math.max(w, h));
+                android.graphics.Bitmap out = sc < 1f
+                        ? android.graphics.Bitmap.createScaledBitmap(bmp, Math.round(w*sc), Math.round(h*sc), true)
+                        : bmp;
+                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, bos);
+                String b64 = android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.NO_WRAP);
+                final String js = "window.__novaShot && window.__novaShot('data:image/jpeg;base64," + b64 + "')";
+                web.post(() -> { try { web.evaluateJavascript(js, null); } catch (Exception e) {} });
+            } catch (Exception e) { android.util.Log.e("NovaShot", "toShell", e); }
         }
         /** Ripiego software: disegna la WebView su un canvas (usato pre-API26 o se PixelCopy fallisce). */
         private android.graphics.Bitmap drawFallback(int w, int h) {

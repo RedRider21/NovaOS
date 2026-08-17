@@ -1197,6 +1197,13 @@ const OS = (() => {
     // conferme delle app) e le notifiche persistono finché non le scarti.
     setInterval(() => { renderClocks(); renderStatusbars(); }, 1000);
     initAutolock();
+    // Ricezione screenshot dal nativo: lo aggiunge alla Galleria di NovaOS (album Schermate)
+    window.__novaShot = (dataURI) => {
+      if (!dataURI) return;
+      photos.add(dataURI, { album:"Schermate", shot:true })
+        .then(() => notify({ app:"gallery", title:"Schermata acquisita", text:"Aperta nella Galleria di NovaOS." }))
+        .catch(() => {});
+    };
     Updater.autoCheck();   // controlla in autonomia se c'è un aggiornamento (e notifica)
     setTimeout(() => lockDevice(), 2600);
   }
@@ -1238,10 +1245,10 @@ const OS = (() => {
     // NB: la transazione va creata e usata SINCRONICAMENTE (nessun await in mezzo),
     // altrimenti IndexedDB la chiude e le operazioni falliscono.
     return {
-      async add(dataURL) {
+      async add(dataURL, extra) {
         const db = await open();
         return new Promise((res, rej) => {
-          const item = { id: Date.now()+"_"+Math.random().toString(36).slice(2,7), data: dataURL, ts: Date.now() };
+          const item = Object.assign({ id: Date.now()+"_"+Math.random().toString(36).slice(2,7), data: dataURL, ts: Date.now() }, extra||{});
           const t = db.transaction("ph", "readwrite");
           t.objectStore("ph").add(item);
           t.oncomplete = () => res(item);
