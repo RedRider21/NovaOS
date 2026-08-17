@@ -661,6 +661,7 @@ public class MainActivity extends Activity {
                         android.graphics.Rect src = new android.graphics.Rect(
                                 loc[0], loc[1], loc[0] + w, loc[1] + h);
                         android.view.PixelCopy.request(getWindow(), src, bmp, (res) -> {
+                            android.util.Log.i("NovaShot", "PixelCopy result=" + res);
                             if (res == android.view.PixelCopy.SUCCESS) saveShot(bmp);
                             else saveShot(drawFallback(w, h));
                         }, new android.os.Handler(android.os.Looper.getMainLooper()));
@@ -668,7 +669,8 @@ public class MainActivity extends Activity {
                         saveShot(drawFallback(w, h));
                     }
                 } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "Screenshot non riuscito", Toast.LENGTH_LONG).show();
+                    android.util.Log.e("NovaShot", "capture", e);
+                    Toast.makeText(MainActivity.this, "Screenshot non riuscito: " + e.getClass().getSimpleName(), Toast.LENGTH_LONG).show();
                 }
             });
         }
@@ -679,47 +681,50 @@ public class MainActivity extends Activity {
             web.draw(new android.graphics.Canvas(bmp));
             return bmp;
         }
-        /** Salva il bitmap nella Galleria (MediaStore con IS_PENDING) o in cartella app pre-Q. */
+        /** Salva il bitmap in DCIM/Screenshots (dove la Galleria mostra sempre le catture). */
         private void saveShot(android.graphics.Bitmap bmp) {
             try {
-                String fn = "NovaOS-" + System.currentTimeMillis() + ".png";
+                String fn = "Screenshot_NovaOS_" + System.currentTimeMillis() + ".png";
                 String where;
                 if (Build.VERSION.SDK_INT >= 29) {
                     android.content.ContentValues cv = new android.content.ContentValues();
                     cv.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, fn);
                     cv.put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png");
+                    // DCIM/Screenshots è la cartella standard delle schermate: la Galleria
+                    // (anche Samsung) la mostra sempre, a differenza di Pictures/NovaOS.
                     cv.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
-                            android.os.Environment.DIRECTORY_PICTURES + "/NovaOS");
-                    // IS_PENDING=1 durante la scrittura: le gallerie non indicizzano i file
-                    // ancora "in sospeso"; azzerandolo dopo il salvataggio l'immagine compare.
+                            android.os.Environment.DIRECTORY_DCIM + "/Screenshots");
                     cv.put(android.provider.MediaStore.Images.Media.IS_PENDING, 1);
                     android.net.Uri uri = getContentResolver().insert(
                             android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
-                    if (uri == null) throw new java.io.IOException("insert nullo");
+                    if (uri == null) throw new java.io.IOException("MediaStore insert nullo");
                     java.io.OutputStream out = getContentResolver().openOutputStream(uri);
+                    if (out == null) throw new java.io.IOException("OutputStream nullo");
                     bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
-                    out.close();
+                    out.flush(); out.close();
                     cv.clear();
                     cv.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0);
                     getContentResolver().update(uri, cv, null, null);
-                    where = "Galleria";
+                    where = "DCIM/Screenshots";
+                    android.util.Log.i("NovaShot", "salvata " + uri);
                 } else {
                     java.io.File dir = new java.io.File(
                             android.os.Environment.getExternalStoragePublicDirectory(
-                                    android.os.Environment.DIRECTORY_PICTURES), "NovaOS");
+                                    android.os.Environment.DIRECTORY_DCIM), "Screenshots");
                     dir.mkdirs();
                     java.io.File f = new java.io.File(dir, fn);
                     java.io.OutputStream out = new java.io.FileOutputStream(f);
                     bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
-                    out.close();
-                    // Notifica al MediaScanner così la Galleria mostra subito il file.
+                    out.flush(); out.close();
                     android.media.MediaScannerConnection.scanFile(MainActivity.this,
                             new String[]{ f.getAbsolutePath() }, new String[]{ "image/png" }, null);
-                    where = "Galleria";
+                    where = "DCIM/Screenshots";
+                    android.util.Log.i("NovaShot", "salvata " + f.getAbsolutePath());
                 }
-                Toast.makeText(MainActivity.this, "Schermata salvata (" + where + ")", Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, "Schermata salvata in " + where, Toast.LENGTH_SHORT).show();
             } catch (Exception e) {
-                Toast.makeText(MainActivity.this, "Screenshot non riuscito", Toast.LENGTH_LONG).show();
+                android.util.Log.e("NovaShot", "save", e);
+                Toast.makeText(MainActivity.this, "Salvataggio non riuscito: " + e.getMessage(), Toast.LENGTH_LONG).show();
             }
         }
 

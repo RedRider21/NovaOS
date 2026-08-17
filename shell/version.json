@@ -1,9 +1,9 @@
 {
-  "version": "0.1.17",
-  "build": 18,
-  "minNative": 17,
+  "version": "0.1.18",
+  "build": 19,
+  "minNative": 19,
   "date": "2026-08-17",
-  "notes": "App Telefono, Messaggi e Rubrica ridisegnate (stile flat Nova: header ampio, FAB, avatar a gradiente). Nota: lo screenshot in Galleria richiede la REINSTALLAZIONE dell'APK (correzione nativa).",
+  "notes": "Screenshot: ora salvati in DCIM/Screenshots (visibili nella Galleria) + diagnostica. Richiede la REINSTALLAZIONE dell'APK.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",
