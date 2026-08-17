@@ -580,3 +580,19 @@ body.a11y-contrast[data-theme="light"] { --text: #000000; --text-dim: #1a1a1a; -
 .fm-check { width:22px; height:22px; border-radius:50%; border:2px solid var(--text-dim); display:flex; align-items:center; justify-content:center; color:#fff; font-size:calc(13px*var(--fscale,1)); flex:0 0 auto; margin-right:2px; }
 .fm-check.on { background:var(--accent); border-color:var(--accent); }
 .fm-selbar { position:fixed; left:0; right:0; bottom:0; z-index:30; display:flex; align-items:center; gap:8px; padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px)); background:var(--bg); border-top:1px solid var(--surface-2); }
+
+/* ---------- Nova flat design layer (identità visiva condivisa) ---------- */
+.hero { padding:24px 20px 8px; display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
+.hero-l { min-width:0; }
+.hero h1 { font-size:calc(30px*var(--fscale,1)); font-weight:800; letter-spacing:-.6px; line-height:1.05; }
+.hero .hero-sub { color:var(--text-dim); font-size:calc(13px*var(--fscale,1)); margin-top:3px; }
+.fab { position:fixed; right:18px; bottom:calc(22px + env(safe-area-inset-bottom,0px)); min-width:58px; height:58px; padding:0 18px; border-radius:19px; border:none; background:var(--accent); color:#fff; font-size:calc(24px*var(--fscale,1)); font-weight:600; box-shadow:0 8px 22px color-mix(in srgb, var(--accent) 42%, transparent); z-index:26; cursor:pointer; display:inline-flex; align-items:center; gap:8px; justify-content:center; }
+.fab:active { transform:scale(.95); }
+.fab .fab-t { font-size:calc(15px*var(--fscale,1)); font-weight:600; }
+.av { display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; background-size:cover; background-position:center; }
+.searchbar { display:flex; align-items:center; gap:8px; margin:2px 16px 10px; background:var(--surface); border-radius:26px; padding:11px 16px; }
+.searchbar input { flex:1; background:none; border:none; color:var(--text); font-size:calc(15px*var(--fscale,1)); outline:none; }
+.searchbar .sb-i { opacity:.55; font-size:calc(15px*var(--fscale,1)); }
+.round-act { width:56px; height:56px; border-radius:50%; border:none; color:#fff; font-size:calc(22px*var(--fscale,1)); cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.round-act.small { width:46px; height:46px; font-size:calc(19px*var(--fscale,1)); }
+.act-col { display:flex; flex-direction:column; align-items:center; gap:6px; color:var(--text-dim); font-size:calc(11px*var(--fscale,1)); }

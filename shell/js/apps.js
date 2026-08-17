@@ -16,6 +16,9 @@ const NovaApps = (() => {
       const norm = s => (s||"").replace(/[\s\-()]/g,"");
       const contactFor = num => { const n = norm(num); return os.store.get("contacts", []).find(x=>norm(x.phone)===n) || null; };
       const nameOf = num => { const c = contactFor(num); return c ? c.name : null; };
+      const H = s => [...(s||"?")].reduce((a,c)=>a+c.charCodeAt(0),0);
+      const grad = n => { const h=H(n)%360; return `linear-gradient(135deg,hsl(${h} 62% 52%),hsl(${(h+40)%360} 62% 44%))`; };
+      const initials = n => (n||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
       let tab = "keypad";
 
       const placeCall = (num) => {
@@ -32,7 +35,6 @@ const NovaApps = (() => {
         if (m<1) return "ora"; if (m<60) return m+" min fa"; const h=Math.floor(m/60);
         if (h<24) return h+" h fa"; return new Date(ts).toLocaleDateString("it-IT",{day:"numeric",month:"short"}); };
 
-      // aspetto per direzione della chiamata (uscita / entrata / persa)
       const DIR = {
         out:    { ico:"↗", label:"Uscita",  col:"#35c759", txt:"var(--text)" },
         in:     { ico:"↙", label:"Entrata", col:"#0a84ff", txt:"var(--text)" },
@@ -41,9 +43,9 @@ const NovaApps = (() => {
 
       const shell = (body) => {
         root.innerHTML = `
-          <div class="app-header"><div class="app-title">Telefono</div>
-            <div class="app-sub">${native ? "Modem nativo collegato" : "Delega al dialer di sistema (tel:)"}</div></div>
-          <div class="seg" style="margin-bottom:10px">
+          <div class="hero"><div class="hero-l"><h1>Telefono</h1>
+            <div class="hero-sub">${native ? "Modem nativo collegato" : "Dialer di sistema (tel:)"}</div></div></div>
+          <div class="seg" style="margin:6px 16px 12px">
             <button data-t="keypad" class="${tab==='keypad'?'on':''}">Tastierino</button>
             <button data-t="recents" class="${tab==='recents'?'on':''}">Recenti</button></div>
           <div id="ph-body">${body}</div>`;
@@ -54,16 +56,17 @@ const NovaApps = (() => {
         const keys = [["1",""],["2","ABC"],["3","DEF"],["4","GHI"],["5","JKL"],["6","MNO"],
                       ["7","PQRS"],["8","TUV"],["9","WXYZ"],["*",""],["0","+"],["#",""]];
         shell(`
-          <div style="text-align:center;height:56px">
-            <div id="dial-num" style="font-size:calc(32px*var(--fscale,1));letter-spacing:2px;line-height:34px;min-height:34px"></div>
+          <div style="text-align:center;height:60px">
+            <div id="dial-num" style="font-size:calc(34px*var(--fscale,1));letter-spacing:2px;line-height:38px;min-height:38px;font-weight:500"></div>
             <div id="dial-name" style="font-size:calc(14px*var(--fscale,1));color:var(--accent);min-height:18px"></div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:10px 40px">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:12px 44px">
             ${keys.map(([k,sub])=>`<button class="dial-k" data-k="${k}" style="aspect-ratio:1;border-radius:50%;border:none;background:var(--surface);color:var(--text);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1">
-              <span style="font-size:calc(26px*var(--fscale,1))">${k}</span><span style="font-size:calc(9px*var(--fscale,1));letter-spacing:2px;color:var(--text-dim);height:10px">${sub}</span></button>`).join("")}
+              <span style="font-size:calc(27px*var(--fscale,1));font-weight:500">${k}</span><span style="font-size:calc(9px*var(--fscale,1));letter-spacing:2px;color:var(--text-dim);height:10px">${sub}</span></button>`).join("")}
           </div>
-          <div style="display:flex;justify-content:center;align-items:center;gap:24px;padding-top:4px">
-            <button id="call" style="width:70px;height:70px;border-radius:50%;border:none;background:#35c759;font-size:calc(26px*var(--fscale,1));cursor:pointer">📞</button>
+          <div style="display:flex;justify-content:center;align-items:center;gap:26px;padding-top:6px">
+            <span style="width:52px"></span>
+            <button id="call" style="width:72px;height:72px;border-radius:50%;border:none;background:linear-gradient(135deg,#3ad06a,#25b257);color:#fff;font-size:calc(28px*var(--fscale,1));cursor:pointer;box-shadow:0 8px 22px rgba(53,199,89,.4)">📞</button>
             <button id="del" style="width:52px;height:52px;border-radius:50%;border:none;background:var(--surface);color:var(--text);font-size:calc(20px*var(--fscale,1));cursor:pointer;display:none">⌫</button>
           </div>`);
         const out = root.querySelector("#dial-num");
@@ -79,7 +82,7 @@ const NovaApps = (() => {
         root.querySelectorAll(".dial-k").forEach(b => {
           const k = b.dataset.k;
           b.onclick = () => type(k);
-          if (k === "0") {                     // pressione prolungata su 0 => +
+          if (k === "0") {
             let t; const start = () => { t = setTimeout(()=>{ out.textContent = out.textContent.slice(0,-1)+"+"; os.vibrate(30); sync(); }, 450); };
             const cancel = () => clearTimeout(t);
             b.addEventListener("touchstart", start, {passive:true}); b.addEventListener("mousedown", start);
@@ -94,14 +97,14 @@ const NovaApps = (() => {
       };
 
       const recents = () => {
-        shell(log.length ? `<div class="list" style="padding-top:4px">${log.map((c,i)=>{const D=DIR[c.dir]||DIR.out; const known=!!c.name;return `
-          <div class="card tappable" data-i="${i}"><div class="c-ico" style="background:${D.col}">📞</div>
-            <div class="c-body"><div class="c-title" style="color:${D.txt}">${c.name||c.num}</div>
-              <div class="c-sub">${D.ico} ${D.label}${known?" · "+c.num:""} · ${ago(c.time)}</div></div>
-            ${known?"":`<button data-add="${c.num}" title="Aggiungi a contatti" style="background:none;border:none;font-size:calc(19px*var(--fscale,1));cursor:pointer;color:var(--accent)">➕</button>`}
-            <button data-call="${c.num}" style="background:none;border:none;font-size:calc(20px*var(--fscale,1));cursor:pointer">📞</button></div>`;}).join("")}
-          <button class="btn ghost" id="clear" style="margin:12px 0">Cancella cronologia</button></div>`
-          : `<div style="text-align:center;color:var(--text-dim);padding:40px">Nessuna chiamata recente</div>`);
+        shell(log.length ? `<div class="list" style="padding-top:2px">${log.map((c,i)=>{const D=DIR[c.dir]||DIR.out; const known=!!c.name; const nm=c.name||c.num;return `
+          <div class="card tappable" data-i="${i}"><div class="c-ico av" style="background:${grad(nm)}">${initials(nm)}</div>
+            <div class="c-body"><div class="c-title" style="color:${D.txt}">${nm}</div>
+              <div class="c-sub"><span style="color:${D.col}">${D.ico}</span> ${D.label}${known?" · "+c.num:""} · ${ago(c.time)}</div></div>
+            ${known?"":`<button data-add="${c.num}" title="Aggiungi a contatti" style="background:none;border:none;font-size:calc(19px*var(--fscale,1));cursor:pointer;color:var(--accent)">＋</button>`}
+            <button data-call="${c.num}" class="round-act small" style="background:linear-gradient(135deg,#3ad06a,#25b257)">📞</button></div>`;}).join("")}
+          <button class="btn ghost" id="clear" style="margin:12px 16px;color:var(--danger)">Cancella cronologia</button><div style="height:80px"></div></div>`
+          : `<div style="text-align:center;color:var(--text-dim);padding:48px">Nessuna chiamata recente</div>`);
         root.querySelectorAll("[data-call]").forEach(b => b.onclick = (e) => { e.stopPropagation(); placeCall(b.dataset.call); });
         root.querySelectorAll("[data-add]").forEach(b => b.onclick = (e) => {
           e.stopPropagation();
@@ -131,16 +134,16 @@ const NovaApps = (() => {
       const save = () => os.store.set("threads", threads);
       const last = t => t[t.length-1];
       const now = () => new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"});
-      const color = n => `hsl(${[...n].reduce((s,c)=>s+c.charCodeAt(0),0)%360} 55% 50%)`;
+      const H = s => [...(s||"?")].reduce((a,c)=>a+c.charCodeAt(0),0);
+      const grad = n => { const h=H(n)%360; return `linear-gradient(135deg,hsl(${h} 62% 52%),hsl(${(h+40)%360} 62% 44%))`; };
       const initials = n => n.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
-      // ricava il numero per l'SMS: se il nome è già un numero lo usa, altrimenti dalla Rubrica
       const resolveNumber = name => {
         if (/^[+\d][\d\s]{4,}$/.test(name)) return name.replace(/\s/g,"");
         const c = os.store.get("contacts", []).find(x => x.name === name);
         return c ? c.phone.replace(/\s/g,"") : null;
       };
+      const esc = s => (s==null?"":String(s)).replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
 
-      // risposta automatica contestuale (demo)
       const autoReply = (txt) => {
         const t = txt.toLowerCase();
         if (t.includes("?")) return ["Sì, per me va bene 👍","Certo!","Ci penso e ti dico 😉","Dipende, a che ora?"][Math.floor(Math.random()*4)];
@@ -150,29 +153,28 @@ const NovaApps = (() => {
       };
 
       const drawList = () => {
-        root.innerHTML = `<div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
-            <div class="app-title">Messaggi</div><button class="btn" id="new" style="width:auto;padding:10px 16px">✍️ Nuovo</button></div>
-          <div style="padding:0 16px 10px"><input id="q" placeholder="Cerca nelle conversazioni" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none"></div>
-          <div class="list" id="mlist"></div>`;
+        root.innerHTML = `<div class="hero"><div class="hero-l"><h1>Messaggi</h1></div></div>
+          <div class="searchbar"><span class="sb-i">🔍</span><input id="q" placeholder="Cerca nelle conversazioni"></div>
+          <div class="list" id="mlist"></div><div style="height:90px"></div>
+          <button class="fab" id="new">✍️<span class="fab-t">Nuovo</span></button>`;
         const drawRows = (filter="") => {
           const f = filter.trim().toLowerCase();
           const names = Object.keys(threads).sort((a,b)=>{
             const la=last(threads[a]), lb=last(threads[b]);
-            return (lb?lb[3]||0:0)-(la?la[3]||0:0);   // per timestamp se disponibile
+            return (lb?lb[3]||0:0)-(la?la[3]||0:0);
           }).filter(n => !f || n.toLowerCase().includes(f) || (last(threads[n])&&last(threads[n])[1].toLowerCase().includes(f)));
           const box = root.querySelector("#mlist");
           box.innerHTML = names.length?names.map(n=>{const l=last(threads[n]);return `
-            <div class="card tappable" data-n="${n}"><div class="c-ico" style="background:${color(n)}">${initials(n)}</div>
+            <div class="card tappable" data-n="${n}"><div class="c-ico av" style="background:${grad(n)}">${initials(n)}</div>
             <div class="c-body"><div class="c-title">${n}</div><div class="c-sub">${l?(l[0]==='out'?'Tu: ':'')+esc(l[1]):'—'}</div></div>
             <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1))">${l?l[2]:''}</div></div>`;}).join("")
-            :`<div style="text-align:center;color:var(--text-dim);padding:40px">${f?'Nessun risultato':'Nessuna conversazione'}</div>`;
+            :`<div style="text-align:center;color:var(--text-dim);padding:44px">${f?'Nessun risultato':'Nessuna conversazione'}</div>`;
           box.querySelectorAll("[data-n]").forEach(el => el.onclick = () => drawThread(el.dataset.n));
         };
         drawRows();
         root.querySelector("#q").oninput = e => drawRows(e.target.value);
         root.querySelector("#new").onclick = drawNew;
       };
-      const esc = s => (s==null?"":String(s)).replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
 
       const drawNew = () => {
         const contacts = os.store.get("contacts", []);
@@ -186,7 +188,7 @@ const NovaApps = (() => {
           const f = filter.trim().toLowerCase();
           const rows = contacts.filter(c => !f || c.name.toLowerCase().includes(f) || (c.phone||"").replace(/\s/g,"").includes(f.replace(/\s/g,"")));
           root.querySelector("#clist").innerHTML = rows.length ? rows.map(c=>`
-            <div class="item" data-c="${c.name}"><div class="i-ico" style="background:${color(c.name)}">${initials(c.name)}</div>
+            <div class="item" data-c="${c.name}"><div class="i-ico av" style="background:${grad(c.name)}">${initials(c.name)}</div>
               <div class="i-body"><div class="i-title">${c.name}</div><div class="i-sub">${c.phone}</div></div></div>`).join("")
             : `<div class="item"><div class="i-sub" style="padding:6px">Nessun contatto</div></div>`;
           root.querySelectorAll("[data-c]").forEach(el => el.onclick = () => open(el.dataset.c));
@@ -200,18 +202,18 @@ const NovaApps = (() => {
         const msgs = threads[name];
         const bubbles = () => msgs.map(([dir,txt,t])=>`
           <div style="display:flex;flex-direction:column;align-items:${dir==='out'?'flex-end':'flex-start'};padding:2px 12px">
-            <div style="max-width:76%;padding:9px 14px;border-radius:16px;font-size:calc(15px*var(--fscale,1));background:${dir==='out'?'var(--accent)':'var(--surface)'};color:${dir==='out'?'#fff':'var(--text)'};white-space:pre-wrap;word-break:break-word">${esc(txt)}</div>
-            <div style="font-size:calc(10px*var(--fscale,1));color:var(--text-dim);margin:1px 6px">${t||''}</div>
+            <div style="max-width:76%;padding:10px 15px;font-size:calc(15px*var(--fscale,1));background:${dir==='out'?'var(--accent)':'var(--surface)'};color:${dir==='out'?'#fff':'var(--text)'};white-space:pre-wrap;word-break:break-word;border-radius:${dir==='out'?'20px 20px 5px 20px':'20px 20px 20px 5px'}">${esc(txt)}</div>
+            <div style="font-size:calc(10px*var(--fscale,1));color:var(--text-dim);margin:2px 8px">${t||''}</div>
           </div>`).join("");
         root.innerHTML = `
           <div class="back-bar"><button class="back-btn"></button>
-            <div class="i-ico" style="background:${color(name)};width:34px;height:34px;border-radius:50%">${initials(name)}</div>
+            <div class="i-ico av" style="background:${grad(name)};width:36px;height:36px;border-radius:50%">${initials(name)}</div>
             <div class="back-title" style="flex:1;font-size:calc(18px*var(--fscale,1))">${name}</div>
             <button id="delc" style="background:none;border:none;font-size:calc(17px*var(--fscale,1));cursor:pointer">🗑️</button></div>
           <div id="thread" style="flex:1;padding:8px 0 12px;display:flex;flex-direction:column;gap:2px;overflow-y:auto">${bubbles()}</div>
           <div style="display:flex;gap:8px;padding:10px 12px;position:sticky;bottom:0;background:var(--bg)">
-            <input id="msg" placeholder="Messaggio" style="flex:1;background:var(--surface);border:none;border-radius:20px;padding:12px 16px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
-            <button class="btn" id="send" style="width:auto;padding:0 18px;border-radius:20px">Invia</button>
+            <input id="msg" placeholder="Messaggio" style="flex:1;background:var(--surface);border:none;border-radius:22px;padding:12px 18px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none">
+            <button id="send" class="round-act small" style="background:var(--accent)">➤</button>
           </div>`;
         root.querySelector(".back-btn").onclick = drawList;
         root.querySelector("#delc").onclick = () => { if(confirm("Eliminare la conversazione con "+name+"?")){ delete threads[name]; save(); drawList(); } };
@@ -223,7 +225,6 @@ const NovaApps = (() => {
           msgs.push(["out",v,now(),Date.now()]); save(); input.value="";
           th.innerHTML = bubbles(); th.scrollTop = th.scrollHeight;
           if (nativeSms) {
-            // invio SMS reale sul dispositivo (nessuna risposta simulata)
             const num = resolveNumber(name);
             if (num) { try { window.NovaNative.sendSms(num, v); os.notify({app:"messages",title:name,text:"SMS inviato"}); } catch(e){ os.notify({app:"messages",title:name,text:"Invio SMS non riuscito"}); } }
             else os.notify({ app:"messages", title:name, text:"Nessun numero valido per l'invio" });
@@ -359,24 +360,23 @@ const NovaApps = (() => {
       let list = os.store.get("contacts", seed);
       const save = () => os.store.set("contacts", list);
       const sorted = () => [...list].sort((a,b)=>a.name.localeCompare(b.name,"it"));
-      const color = n => `hsl(${[...n].reduce((s,c)=>s+c.charCodeAt(0),0)%360} 55% 50%)`;
-      const avatarBg = c => c.photo ? `background:#232c3d center/cover no-repeat url('${c.photo}')` : `background:${color(c.name||"?")}`;
+      const H = s => [...(s||"?")].reduce((a,c)=>a+c.charCodeAt(0),0);
+      const grad = n => { const h=H(n)%360; return `linear-gradient(135deg,hsl(${h} 62% 52%),hsl(${(h+40)%360} 62% 44%))`; };
+      const avatarBg = c => c.photo ? `background:#232c3d center/cover no-repeat url('${c.photo}')` : `background:${grad(c.name||"?")}`;
       const avatarTxt = c => c.photo ? "" : (c.name[0]||"?").toUpperCase();
-      // ridimensiona la foto (max lato) per non riempire lo storage
       const resizeImg = (src, max) => new Promise(res => { const img=new Image();
         img.onload=()=>{ const s=Math.min(1,max/Math.max(img.width,img.height)); const cv=document.createElement("canvas");
           cv.width=img.width*s; cv.height=img.height*s; cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);
           res(cv.toDataURL("image/jpeg",0.8)); }; img.src=src; });
 
-      const row = c => `<div class="item" data-id="${c.id}"><div class="i-ico" style="${avatarBg(c)}">${avatarTxt(c)}</div>
+      const row = c => `<div class="item" data-id="${c.id}"><div class="i-ico av" style="${avatarBg(c)}">${avatarTxt(c)}</div>
           <div class="i-body"><div class="i-title">${c.name}${c.fav?' <span style="color:#ffcf3f">★</span>':''}</div><div class="i-sub">${c.phone}</div></div><div class="chev"></div></div>`;
 
       const drawList = () => {
-        root.innerHTML = `<div class="app-header" style="display:flex;justify-content:space-between;align-items:center">
-            <div><div class="app-title">Rubrica</div><div class="app-sub">${list.length} contatti</div></div>
-            <button class="btn" id="add" style="width:auto;padding:10px 16px">+ Nuovo</button></div>
-          <div style="padding:0 16px 10px"><input id="q" placeholder="Cerca per nome o numero" style="width:100%;background:var(--surface);border:none;border-radius:12px;padding:11px 14px;color:var(--text);font-size:calc(15px*var(--fscale,1));outline:none"></div>
-          <div id="clist"></div><div style="height:80px"></div>`;
+        root.innerHTML = `<div class="hero"><div class="hero-l"><h1>Rubrica</h1><div class="hero-sub">${list.length} contatti</div></div></div>
+          <div class="searchbar"><span class="sb-i">🔍</span><input id="q" placeholder="Cerca per nome o numero"></div>
+          <div id="clist"></div><div style="height:90px"></div>
+          <button class="fab" id="add">＋<span class="fab-t">Nuovo</span></button>`;
         const drawRows = (filter="") => {
           const box = root.querySelector("#clist");
           const f = filter.trim().toLowerCase();
@@ -387,7 +387,6 @@ const NovaApps = (() => {
             const favs = all.filter(c => c.fav);
             if (favs.length) html += `<div class="section-label">Preferiti</div><div class="group">${favs.map(row).join("")}</div>`;
           }
-          // sezioni alfabetiche
           let cur = null;
           all.forEach(c => {
             const L = (c.name[0]||"#").toUpperCase();
@@ -405,23 +404,23 @@ const NovaApps = (() => {
 
       const drawDetail = (id) => {
         const c = list.find(x=>x.id===id);
+        const actCol = (btnId,bg,ico,lbl) => `<div class="act-col"><button class="round-act" id="${btnId}" style="background:${bg}">${ico}</button>${lbl}</div>`;
         root.innerHTML = `<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1">Contatto</div>
             <button id="fav" title="Preferito" style="background:none;border:none;color:${c.fav?'#ffcf3f':'var(--text-dim)'};font-size:calc(20px*var(--fscale,1));cursor:pointer;margin-right:6px">${c.fav?'★':'☆'}</button>
             <button id="edit" style="background:none;border:none;color:var(--accent);font-size:calc(15px*var(--fscale,1));cursor:pointer">Modifica</button></div>
-          <div style="text-align:center;padding:10px 16px 20px">
-            <div style="width:88px;height:88px;border-radius:50%;margin:0 auto 12px;${avatarBg(c)};display:flex;align-items:center;justify-content:center;font-size:calc(38px*var(--fscale,1));color:#fff">${avatarTxt(c)}</div>
-            <div style="font-size:calc(24px*var(--fscale,1));font-weight:700">${c.name}</div></div>
-          <div style="display:flex;justify-content:center;gap:16px;padding-bottom:16px">
-            <button class="cbtn" id="call" style="background:#35c759">📞</button>
-            <button class="cbtn" id="sms" style="background:#0a84ff">💬</button>
-            ${c.email?`<button class="cbtn" id="mail" style="background:#ff9f0a">✉️</button>`:''}
+          <div style="text-align:center;padding:12px 16px 22px">
+            <div class="av" style="width:104px;height:104px;border-radius:50%;margin:0 auto 14px;${avatarBg(c)};font-size:calc(44px*var(--fscale,1))">${avatarTxt(c)}</div>
+            <div style="font-size:calc(25px*var(--fscale,1));font-weight:700">${c.name}</div></div>
+          <div style="display:flex;justify-content:center;gap:26px;padding-bottom:20px">
+            ${actCol("call","linear-gradient(135deg,#3ad06a,#25b257)","📞","Chiama")}
+            ${actCol("sms","linear-gradient(135deg,#3aa0ff,#0a84ff)","💬","Messaggio")}
+            ${c.email?actCol("mail","linear-gradient(135deg,#ffb340,#ff9f0a)","✉️","Email"):''}
           </div>
           <div class="group">
             <div class="item"><div class="i-body"><div class="i-sub">Telefono</div><div class="i-title">${c.phone}</div></div></div>
             ${c.email?`<div class="item"><div class="i-body"><div class="i-sub">Email</div><div class="i-title">${c.email}</div></div></div>`:''}
           </div>
-          <button class="btn ghost" id="del" style="margin:16px;color:var(--danger)">Elimina contatto</button>
-          <style>.cbtn{width:56px;height:56px;border-radius:50%;border:none;color:#fff;font-size:calc(22px*var(--fscale,1));cursor:pointer}</style>`;
+          <button class="btn ghost" id="del" style="margin:18px 16px;color:var(--danger)">Elimina contatto</button>`;
         root.querySelector(".back-btn").onclick = drawList;
         root.querySelector("#fav").onclick = () => { c.fav = !c.fav; save(); drawDetail(id); };
         root.querySelector("#edit").onclick = () => drawEdit(id);
@@ -444,9 +443,9 @@ const NovaApps = (() => {
         let photo = c.photo || null;
         const draw = () => {
           root.innerHTML = `<div class="back-bar"><button class="back-btn"></button><div class="back-title">${id?"Modifica":"Nuovo contatto"}</div></div>
-            <div style="text-align:center;margin:6px 0 16px">
+            <div style="text-align:center;margin:8px 0 18px">
               <label style="cursor:pointer;display:inline-block">
-                <div id="av-prev" style="width:88px;height:88px;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:calc(34px*var(--fscale,1));color:#fff;${photo?`background:#232c3d center/cover no-repeat url('${photo}')`:`background:${color(c.name||'?')}`}">${photo?'':'📷'}</div>
+                <div id="av-prev" class="av" style="width:104px;height:104px;border-radius:50%;margin:0 auto;font-size:calc(38px*var(--fscale,1));${photo?`background:#232c3d center/cover no-repeat url('${photo}')`:`background:${grad(c.name||'?')}`}">${photo?'':'📷'}</div>
                 <div style="color:var(--accent);font-size:calc(13px*var(--fscale,1));margin-top:8px">${photo?'Cambia foto':'Aggiungi foto'}</div>
                 <input id="f-photo" type="file" accept="image/*" hidden></label>
               ${photo?`<div><button id="rm-photo" style="background:none;border:none;color:var(--danger);font-size:calc(12px*var(--fscale,1));cursor:pointer;margin-top:2px">Rimuovi foto</button></div>`:''}
