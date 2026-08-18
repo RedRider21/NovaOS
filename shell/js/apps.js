@@ -345,8 +345,11 @@ const NovaApps = (() => {
       const micGranted = () => { try { return window.NovaNative && window.NovaNative.micGranted ? !!window.NovaNative.micGranted() : true; } catch { return true; } };
       // aggiorna l'avviso microfono: nascosto se c'è audio; "Attiva" (Impostazioni)
       // se il permesso è negato; "Riprova" se il permesso c'è ma manca la traccia audio.
+      // se c'è il fallback audio nativo del runtime, l'audio del video è comunque
+      // registrabile (traccia separata sincronizzata in riproduzione): nessun avviso.
+      const nativeAudioAvail = !!(window.NovaNative && window.NovaNative.audioRecStart);
       const updateMicChip = () => {
-        if (!wantAudio || hasAudioTrack) { micChip.style.display = "none"; return; }
+        if (!wantAudio || hasAudioTrack || nativeAudioAvail) { micChip.style.display = "none"; return; }
         const granted = micGranted();
         micTxt.textContent = granted ? "🔇 Audio non disponibile" : "🔇 Microfono disattivato";
         micBtn.textContent = granted ? "Riprova" : "Attiva";
@@ -361,13 +364,14 @@ const NovaApps = (() => {
       const setMode = (m) => { mode = m;
         root.querySelectorAll("[data-mode]").forEach(b=>b.classList.toggle("on", b.dataset.mode===m));
         shotBtn.classList.toggle("rec", m==="video");
-        // Video: chiedi il permesso microfono e riacquisisci lo stream con audio.
-        // Foto: torna a solo video (rilascia il microfono).
-        const want = (m==="video");
+        // Audio del video: se c'è il runtime nativo (WebView) lo registriamo a parte,
+        // quindi l'anteprima resta video-only (nessuna contesa sul microfono). Senza
+        // nativo (GeckoView/desktop) chiediamo l'audio dentro lo stream web.
+        if (m==="video") { try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {} }
+        const want = (m==="video") && !nativeAudioAvail;
         if (want !== wantAudio) {
           wantAudio = want;
-          if (want) { try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {} }
-          else { micChip.style.display = "none"; }
+          if (!want) micChip.style.display = "none";
           start();
         }
       };
@@ -432,15 +436,19 @@ const NovaApps = (() => {
         save(cv.toDataURL("image/jpeg", 0.9));
       };
 
+      let nativeAudioRec = false, pendingAudioTrack = null;
       const startRec = async () => {
         if (!stream) { root.querySelector("#pick").click(); return; }
         try {
-          // se il microfono non è ancora nello stream, prova a riacquisirlo ora
-          if (!hasAudioTrack && wantAudio) { try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {} await start(); }
-          // niente notifica: se manca l'audio lo segnala il chip discreto in alto
           poster = grabPoster();
           recChunks = [];
-          // preferisci un container con audio Opus, così la traccia audio viene salvata
+          pendingAudioTrack = null; nativeAudioRec = false;
+          // Audio: se lo stream WEB ha già la traccia audio (es. su GeckoView) va nel
+          // video stesso. Altrimenti, se la WebView non cattura il microfono, registra
+          // l'audio col runtime nativo in parallelo -> traccia separata sincronizzata.
+          if (!hasAudioTrack && nativeAudioAvail) {
+            try { nativeAudioRec = !!window.NovaNative.audioRecStart(); } catch { nativeAudioRec = false; }
+          }
           const cand = ["video/webm;codecs=vp8,opus","video/webm;codecs=vp9,opus","video/webm;codecs=h264,opus","video/mp4;codecs=h264,aac","video/webm"];
           let mime = cand.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
           const opts = mime ? { mimeType:mime } : undefined;
@@ -450,7 +458,8 @@ const NovaApps = (() => {
           rec.onstop = () => {
             const blob = new Blob(recChunks, { type: recChunks[0]?recChunks[0].type:"video/webm" });
             const dur = Math.round((Date.now()-recStart)/1000);
-            const r = new FileReader(); r.onload = () => save(r.result, { video:true, dur, poster }); r.readAsDataURL(blob);
+            const audioTrack = pendingAudioTrack; pendingAudioTrack = null;
+            const r = new FileReader(); r.onload = () => save(r.result, { video:true, dur, poster, audioTrack }); r.readAsDataURL(blob);
           };
           rec.start();
           recStart = Date.now();
@@ -458,10 +467,12 @@ const NovaApps = (() => {
           const clock = root.querySelector("#rec-clock"); clock.style.display = "inline-block";
           recTimer = setInterval(()=>{ const s=Math.floor((Date.now()-recStart)/1000); clock.textContent = "● "+String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); }, 500);
           os.vibrate && os.vibrate(20);
-        } catch (e) { os.notify({ app:"camera", title:"Video", text:"Registrazione non supportata qui." }); }
+        } catch (e) { if (nativeAudioRec) { try { window.NovaNative.audioRecStop(); } catch {} nativeAudioRec = false; } os.notify({ app:"camera", title:"Video", text:"Registrazione non supportata qui." }); }
       };
       const stopRec = () => {
         if (!rec) return;
+        // ferma prima l'audio nativo e conservane la traccia per onstop
+        if (nativeAudioRec) { try { pendingAudioTrack = window.NovaNative.audioRecStop() || null; } catch { pendingAudioTrack = null; } nativeAudioRec = false; }
         try { rec.stop(); } catch {}
         rec = null; clearInterval(recTimer); recTimer = null;
         shotBtn.classList.remove("recording");
@@ -827,7 +838,7 @@ const NovaApps = (() => {
 
       let itemsReal = 0;
       const draw = async () => {
-        const real = (await os.photos.all()).map(p => ({ real:true, id:p.id, data:p.data, ts:p.ts, album:p.album, video:!!p.video, poster:p.poster, dur:p.dur, name:p.video?"Video":(p.album||"Foto") }));
+        const real = (await os.photos.all()).map(p => ({ real:true, id:p.id, data:p.data, ts:p.ts, album:p.album, video:!!p.video, poster:p.poster, dur:p.dur, audioTrack:p.audioTrack, name:p.video?"Video":(p.album||"Foto") }));
         items = [...real, ...demo.filter(d => !hidden.includes(d.id))];
         itemsReal = real.length;
 
@@ -886,7 +897,7 @@ const NovaApps = (() => {
         const p = items[i];
         const go = j => openViewer((j+items.length)%items.length);
         const big = p.video
-          ? `<video id="vimg" src="${p.data}" controls autoplay playsinline style="max-width:100%;max-height:100%;object-fit:contain;background:#000"></video>`
+          ? `<video id="vimg" src="${p.data}" controls autoplay playsinline ${p.audioTrack?'muted':''} style="max-width:100%;max-height:100%;object-fit:contain;background:#000"></video>${p.audioTrack?`<audio id="vaud" src="${p.audioTrack}" preload="auto"></audio>`:''}`
           : p.real
           ? `<img id="vimg" src="${p.data}" style="max-width:100%;max-height:100%;object-fit:contain;transition:transform .18s;touch-action:none;will-change:transform">`
           : `<div id="vimg" style="width:80%;aspect-ratio:3/4;border-radius:16px;background:${p.bg};display:flex;align-items:center;justify-content:center;font-size:calc(96px*var(--fscale,1))">${p.emoji}</div>`;
@@ -951,6 +962,21 @@ const NovaApps = (() => {
           draw();
         };
         const ed = root.querySelector("#vedit"); if (ed) ed.onclick = () => { stopSlide(); openEditor(p); };
+
+        // video con traccia audio separata (registrata dal runtime): sincronizza
+        // l'audio nascosto col video muto durante play/pausa/seek.
+        if (p.video && p.audioTrack) {
+          const vid = img, aud = root.querySelector("#vaud");
+          if (aud) {
+            const sync = () => { if (Math.abs(aud.currentTime - vid.currentTime) > 0.25) aud.currentTime = vid.currentTime; };
+            vid.addEventListener("play", () => { aud.currentTime = vid.currentTime; aud.play().catch(()=>{}); });
+            vid.addEventListener("pause", () => aud.pause());
+            vid.addEventListener("seeking", () => { try { aud.currentTime = vid.currentTime; } catch {} });
+            vid.addEventListener("timeupdate", sync);
+            vid.addEventListener("ratechange", () => { aud.playbackRate = vid.playbackRate; });
+            vid.addEventListener("ended", () => aud.pause());
+          }
+        }
 
         // gesti: swipe per cambiare foto, doppio-tap per zoom, trascinamento in zoom
         const stage = root.querySelector("#vstage");
