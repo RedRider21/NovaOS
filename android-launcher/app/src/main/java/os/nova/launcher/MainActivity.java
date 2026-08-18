@@ -362,6 +362,15 @@ public class MainActivity extends Activity {
             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
                 runOnUiThread(() -> requestPermissions(new String[]{ android.Manifest.permission.RECORD_AUDIO }, 4));
         }
+        // apre la scheda dell'app nelle Impostazioni di sistema (per riattivare a mano
+        // il microfono quando il permesso è stato negato "per sempre").
+        @JavascriptInterface public void openAppSettings() {
+            try {
+                Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+            } catch (Exception e) {}
+        }
 
         // apre un URL nel browser nativo a schermo intero (niente limiti iframe)
         @JavascriptInterface public void openBrowser(String url) {

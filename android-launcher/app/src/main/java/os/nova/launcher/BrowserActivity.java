@@ -6,6 +6,8 @@ import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -34,9 +36,12 @@ import android.webkit.URLUtil;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.GridLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -61,7 +66,10 @@ public class BrowserActivity extends Activity {
         String title = "Nuova scheda";
         boolean incognito = false;
         boolean desktop = false;
+        Bitmap thumb;   // anteprima per il selettore schede
     }
+
+    private FrameLayout tabOverlay;   // selettore schede a griglia (null = chiuso)
 
     private final List<Tab> tabs = new ArrayList<>();
     private int current = -1;
@@ -70,6 +78,10 @@ public class BrowserActivity extends Activity {
     private EditText omnibox;        // barra indirizzo/ricerca editabile
     private TextView secIco;         // lucchetto/globo sicurezza
     private Button tabBtn;           // contatore schede -> selettore
+    private Button star;             // stella preferiti (piena blu = salvato)
+    private LinearLayout bar;        // barra superiore (tema chiaro/incognito)
+    private LinearLayout cap;        // capsula omnibox
+    private TextView incBadge;       // etichetta "Incognito" a sinistra della barra
     private ProgressBar progress;    // avanzamento caricamento
     private LinearLayout findBar;    // barra "trova nella pagina"
     private EditText findInput;
@@ -80,6 +92,8 @@ public class BrowserActivity extends Activity {
     private static final String SEARCH = "https://www.google.com/search?q=";
 
     private static final int BG = 0xFF0b0f17, BAR = 0xFF151a24, TXT = 0xFFe8ecf4, DIM = 0xFF9aa4b8, ACC = 0xFF0a84ff;
+    // tema incognito (come Chrome: barra scura viola, capsula più scura)
+    private static final int INC_BG = 0xFF17141f, INC_BAR = 0xFF2a2438, INC_CAP = 0xFF3a3350;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -88,19 +102,26 @@ public class BrowserActivity extends Activity {
         rootv.setOrientation(LinearLayout.VERTICAL);
         rootv.setBackgroundColor(BG);
 
-        // ---- barra superiore: [scheda] [ omnibox ] [⋮] ----
-        LinearLayout bar = new LinearLayout(this);
+        // ---- barra superiore: [Incognito] [scheda] [ omnibox ] [☆] [⋮] ----
+        bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setBackgroundColor(BAR);
         bar.setPadding(dp(8), dp(10), dp(8), dp(10));
+
+        // etichetta "Incognito" (visibile solo nelle schede in incognito)
+        incBadge = new TextView(this);
+        incBadge.setText("🕶");
+        incBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        incBadge.setPadding(dp(4), 0, dp(2), 0);
+        incBadge.setVisibility(View.GONE);
 
         tabBtn = iconBtn("1");
         tabBtn.setBackground(squareBadge());
         tabBtn.setOnClickListener(v -> showTabSwitcher());
 
         // capsula omnibox
-        LinearLayout cap = new LinearLayout(this);
+        cap = new LinearLayout(this);
         cap.setOrientation(LinearLayout.HORIZONTAL);
         cap.setGravity(Gravity.CENTER_VERTICAL);
         GradientDrawable capBg = new GradientDrawable();
@@ -140,11 +161,17 @@ public class BrowserActivity extends Activity {
         cap.addView(omnibox);
         cap.addView(reload);
 
+        // stella preferiti: piena e blu = pagina salvata, contorno grigio = non salvata
+        star = iconBtn("☆");
+        star.setOnClickListener(v -> { WebView w = curWeb(); if (w != null && w.getUrl() != null) { toggleBookmark(w.getTitle(), w.getUrl()); syncBar(w.getUrl()); } });
+
         Button menu = iconBtn("⋮");
         menu.setOnClickListener(this::showMenu);
 
+        bar.addView(incBadge);
         bar.addView(tabBtn);
         bar.addView(cap);
+        bar.addView(star);
         bar.addView(menu);
 
         // barra di avanzamento
@@ -186,20 +213,22 @@ public class BrowserActivity extends Activity {
         selectTab(tabs.size() - 1);
         applyUa(t);
         if (url != null) t.web.loadUrl(url);
-        rootv().setBackgroundColor(incognito ? 0xFF1a1030 : BG);
+        rootv().setBackgroundColor(incognito ? INC_BG : BG);
     }
 
     private LinearLayout rootv() { return (LinearLayout) ((ViewGroup) findViewById(android.R.id.content)).getChildAt(0); }
 
     private void selectTab(int i) {
         if (i < 0 || i >= tabs.size()) return;
+        // cattura l'anteprima della scheda che sto lasciando (è ancora a schermo)
+        if (current >= 0 && current < tabs.size() && current != i) captureThumb(tabs.get(current));
         current = i;
         holder.removeAllViews();
         WebView w = tabs.get(i).web;
         if (w.getParent() != null) ((ViewGroup) w.getParent()).removeView(w);
         holder.addView(w, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         tabBtn.setText(String.valueOf(tabs.size()));
-        rootv().setBackgroundColor(tabs.get(i).incognito ? 0xFF1a1030 : BG);
+        rootv().setBackgroundColor(tabs.get(i).incognito ? INC_BG : BG);
         syncBar(w.getUrl());
     }
 
@@ -211,50 +240,144 @@ public class BrowserActivity extends Activity {
         selectTab(Math.max(0, i - 1));
     }
 
+    // ---- selettore schede stile Chrome: griglia di anteprime con X per chiudere ----
     private void showTabSwitcher() {
-        // Come Chrome: le schede normali e quelle in incognito sono in gruppi
-        // separati con intestazione, poi le azioni. Ogni voce è una riga a tutta
-        // larghezza; a ogni riga corrisponde un codice azione in `act`.
-        // Codici: >=0 seleziona la scheda con quell'indice; -1 intestazione (no-op);
-        // -2 nuova scheda; -3 nuova incognito; -4 chiudi scheda corrente.
-        java.util.List<String> items = new java.util.ArrayList<>();
-        java.util.List<Integer> act = new java.util.ArrayList<>();
-        int nNorm = 0, nInc = 0;
-        for (Tab t : tabs) { if (t.incognito) nInc++; else nNorm++; }
+        if (tabOverlay != null) return;
+        captureThumb(curTab());   // anteprima aggiornata della scheda corrente
 
-        items.add("—  Schede  (" + nNorm + ")  —"); act.add(-1);
-        if (nNorm == 0) { items.add("    nessuna scheda normale"); act.add(-1); }
-        for (int i = 0; i < tabs.size(); i++) {
-            Tab t = tabs.get(i); if (t.incognito) continue;
-            String ti = t.web.getTitle();
-            items.add((i == current ? "●  " : "○  ") + (ti != null && !ti.isEmpty() ? ti : "Nuova scheda"));
-            act.add(i);
-        }
-        items.add("—  In incognito 🕵  (" + nInc + ")  —"); act.add(-1);
-        if (nInc == 0) { items.add("    nessuna scheda in incognito"); act.add(-1); }
-        for (int i = 0; i < tabs.size(); i++) {
-            Tab t = tabs.get(i); if (!t.incognito) continue;
-            String ti = t.web.getTitle();
-            items.add((i == current ? "●  " : "○  ") + (ti != null && !ti.isEmpty() ? ti : "Nuova scheda"));
-            act.add(i);
-        }
-        items.add("＋  Nuova scheda");            act.add(-2);
-        items.add("＋  Nuova scheda in incognito"); act.add(-3);
-        items.add("✕  Chiudi scheda corrente");   act.add(-4);
+        FrameLayout overlay = new FrameLayout(this);
+        overlay.setBackgroundColor(0xF2070A10);   // scrim quasi opaco
+        overlay.setClickable(true);
 
-        final java.util.List<Integer> fa = act;
-        new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
-            .setTitle("Schede (" + tabs.size() + ")")
-            .setItems(items.toArray(new String[0]), (d, w) -> {
-                int a = fa.get(w);
-                if (a >= 0) selectTab(a);
-                else if (a == -2) newTab("https://www.google.com", false, false);
-                else if (a == -3) newTab("https://www.google.com", true, false);
-                else if (a == -4) closeTab(current);
-                else showTabSwitcher(); // intestazione: riapri l'elenco
-            })
-            .setNegativeButton("Annulla", null)
-            .show();
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+
+        // barra superiore: titolo + nuova scheda + nuova incognito + chiudi
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.setPadding(dp(14), dp(16), dp(14), dp(8));
+        TextView title = new TextView(this);
+        title.setText("Schede (" + tabs.size() + ")");
+        title.setTextColor(TXT); title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        title.setLayoutParams(new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        Button addBtn = iconBtn("＋"); addBtn.setOnClickListener(v -> { closeTabSwitcher(); newTab("https://www.google.com", false, false); });
+        Button incBtn = iconBtn("🕶"); incBtn.setOnClickListener(v -> { closeTabSwitcher(); newTab("https://www.google.com", true, false); });
+        Button close = iconBtn("✕");  close.setOnClickListener(v -> closeTabSwitcher());
+        top.addView(title); top.addView(addBtn); top.addView(incBtn); top.addView(close);
+
+        ScrollView sc = new ScrollView(this);
+        sc.setLayoutParams(new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(dp(8), 0, dp(8), dp(24));
+
+        int nNorm = 0, nInc = 0; for (Tab t : tabs) { if (t.incognito) nInc++; else nNorm++; }
+        if (nNorm > 0) { body.addView(sectionHeader("Schede  (" + nNorm + ")", false)); body.addView(tabGrid(false)); }
+        if (nInc > 0)  { body.addView(sectionHeader("In incognito 🕶  (" + nInc + ")", true)); body.addView(tabGrid(true)); }
+
+        sc.addView(body);
+        col.addView(top); col.addView(sc);
+        overlay.addView(col, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+        tabOverlay = overlay;
+        ((ViewGroup) findViewById(android.R.id.content)).addView(overlay,
+            new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+    }
+
+    private void closeTabSwitcher() {
+        if (tabOverlay != null && tabOverlay.getParent() != null) ((ViewGroup) tabOverlay.getParent()).removeView(tabOverlay);
+        tabOverlay = null;
+    }
+    private void refreshTabSwitcher() { if (tabOverlay != null) { closeTabSwitcher(); showTabSwitcher(); } }
+
+    private TextView sectionHeader(String text, boolean inc) {
+        TextView h = new TextView(this);
+        h.setText(text);
+        h.setTextColor(inc ? 0xFFb9a7ff : DIM);
+        h.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        h.setPadding(dp(8), dp(16), dp(8), dp(6));
+        return h;
+    }
+
+    private GridLayout tabGrid(boolean incognito) {
+        GridLayout g = new GridLayout(this);
+        g.setColumnCount(2);
+        int cardW = (getResources().getDisplayMetrics().widthPixels - dp(16) - dp(24)) / 2;
+        int cardH = (int) (cardW * 1.15f);
+        for (int i = 0; i < tabs.size(); i++) {
+            if (tabs.get(i).incognito != incognito) continue;
+            g.addView(tabCard(i, cardW, cardH));
+        }
+        return g;
+    }
+
+    private View tabCard(int index, int cardW, int cardH) {
+        final Tab t = tabs.get(index);
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
+        lp.width = cardW; lp.height = cardH; lp.setMargins(dp(6), dp(6), dp(6), dp(6));
+        card.setLayoutParams(lp);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(t.incognito ? INC_CAP : 0xFF1c2331);
+        cardBg.setCornerRadius(dp(14));
+        if (index == current) cardBg.setStroke(dp(2), ACC);
+        card.setBackground(cardBg);
+        card.setPadding(dp(8), dp(8), dp(8), dp(8));
+
+        // intestazione: titolo + X per chiudere la singola scheda
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView tt = new TextView(this);
+        String ti = t.web != null ? t.web.getTitle() : null;
+        tt.setText(ti != null && !ti.isEmpty() ? ti : "Nuova scheda");
+        tt.setTextColor(TXT); tt.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tt.setSingleLine(true); tt.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        tt.setLayoutParams(new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        TextView x = new TextView(this);
+        x.setText("✕"); x.setTextColor(DIM); x.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        x.setPadding(dp(8), dp(2), dp(2), dp(2));
+        x.setOnClickListener(v -> {
+            int idx = tabs.indexOf(t);
+            if (idx < 0) return;
+            boolean lastOne = tabs.size() == 1;
+            closeTab(idx);
+            if (!lastOne) refreshTabSwitcher();
+        });
+        head.addView(tt); head.addView(x);
+
+        // anteprima della pagina (bitmap catturata) o placeholder colorato
+        ImageView img = new ImageView(this);
+        img.setLayoutParams(new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
+        img.setScaleType(ImageView.ScaleType.FIT_START);
+        GradientDrawable ph = new GradientDrawable();
+        ph.setColor(t.incognito ? 0xFF241d38 : 0xFF0f141d); ph.setCornerRadius(dp(10));
+        img.setBackground(ph);
+        img.setClipToOutline(true);
+        if (t.thumb != null) img.setImageBitmap(t.thumb);
+
+        View gap = new View(this); gap.setLayoutParams(new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(6)));
+        card.addView(head); card.addView(gap); card.addView(img);
+        card.setOnClickListener(v -> { int idx = tabs.indexOf(t); if (idx >= 0) { selectTab(idx); closeTabSwitcher(); } });
+        return card;
+    }
+
+    /** Cattura una miniatura della pagina visibile della scheda per il selettore. */
+    private void captureThumb(Tab t) {
+        if (t == null || t.web == null) return;
+        try {
+            int w = t.web.getWidth(), h = t.web.getHeight();
+            if (w <= 0 || h <= 0) return;
+            float scale = 0.35f;
+            Bitmap bmp = Bitmap.createBitmap(Math.max(1, (int) (w * scale)), Math.max(1, (int) (h * scale)), Bitmap.Config.RGB_565);
+            Canvas c = new Canvas(bmp);
+            c.drawColor(Color.WHITE);
+            c.scale(scale, scale);
+            t.web.draw(c);
+            t.thumb = bmp;
+        } catch (Exception e) {}
     }
 
     // ------------------------------------------------------------------ menu
@@ -268,6 +391,7 @@ public class BrowserActivity extends Activity {
         p.getMenu().add(0, 6, 0, "Cronologia");
         p.getMenu().add(0, 7, 0, "Trova nella pagina");
         p.getMenu().add(0, 8, 0, curTab() != null && curTab().desktop ? "Sito mobile" : "Sito desktop");
+        p.getMenu().add(0, 11, 0, "Schermo intero");
         p.getMenu().add(0, 9, 0, "Condividi…");
         p.getMenu().add(0, 10, 0, "Apri in Chrome");
         p.setOnMenuItemClickListener(mi -> {
@@ -283,6 +407,7 @@ public class BrowserActivity extends Activity {
                 case 8: if (curTab() != null) { curTab().desktop = !curTab().desktop; applyUa(curTab()); if (w != null) w.reload(); } return true;
                 case 9: shareUrl(w != null ? w.getUrl() : null); return true;
                 case 10: openInSystemBrowser(w != null ? w.getUrl() : null); return true;
+                case 11: setFullscreen(true); return true;
             }
             return false;
         });
@@ -308,8 +433,24 @@ public class BrowserActivity extends Activity {
     private void syncBar(String url) {
         if (url == null) url = "";
         if (!omnibox.hasFocus()) omnibox.setText(url);
+        boolean inc = curTab() != null && curTab().incognito;
         secIco.setText(url.startsWith("https://") ? "🔒" : "⚠");
         secIco.setTextColor(url.startsWith("https://") ? DIM : 0xFFff9f0a);
+        // stella preferiti
+        boolean bm = isBookmarked(url);
+        star.setText(bm ? "★" : "☆");
+        star.setTextColor(bm ? ACC : DIM);
+        applyChromeTheme(inc);
+    }
+
+    /** Colora la barra come Chrome: tema normale o tema incognito (scuro viola). */
+    private void applyChromeTheme(boolean inc) {
+        bar.setBackgroundColor(inc ? INC_BAR : BAR);
+        GradientDrawable capBg = new GradientDrawable();
+        capBg.setColor(inc ? INC_CAP : 0xFF232937); capBg.setCornerRadius(dp(22));
+        cap.setBackground(capBg);
+        incBadge.setVisibility(inc ? View.VISIBLE : View.GONE);
+        omnibox.setHint(inc ? "Cerca o digita (incognito)" : "Cerca o digita un indirizzo");
     }
 
     // ------------------------------------------------------------------ WebView
@@ -603,10 +744,52 @@ public class BrowserActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        if (tabOverlay != null) { closeTabSwitcher(); return; }
+        if (fullscreen) { setFullscreen(false); return; }
         if (findBar.getVisibility() == View.VISIBLE) { showFindBar(false); return; }
         WebView w = curWeb();
         if (w != null && w.canGoBack()) w.goBack();
         else if (tabs.size() > 1) closeTab(current);
         else super.onBackPressed();
+    }
+
+    // ------------------------------------------------------------------ schermo intero
+    private boolean fullscreen = false;
+    private Button fsRestore;   // pulsante fluttuante per tornare alla vista normale
+
+    private void setFullscreen(boolean on) {
+        fullscreen = on;
+        bar.setVisibility(on ? View.GONE : View.VISIBLE);
+        progress.setVisibility(View.GONE);
+        View decor = getWindow().getDecorView();
+        if (on) {
+            decor.setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+            addRestoreButton();
+        } else {
+            decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+            if (fsRestore != null && fsRestore.getParent() != null) ((ViewGroup) fsRestore.getParent()).removeView(fsRestore);
+            fsRestore = null;
+        }
+    }
+
+    /** Piccolo pulsante semitrasparente in basso a destra per uscire dallo schermo intero. */
+    private void addRestoreButton() {
+        if (fsRestore != null) return;
+        fsRestore = new Button(this);
+        fsRestore.setText("⤢");
+        fsRestore.setTextColor(TXT);
+        fsRestore.setAllCaps(false);
+        fsRestore.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xCC000000); bg.setCornerRadius(dp(24));
+        fsRestore.setBackground(bg);
+        fsRestore.setOnClickListener(v -> setFullscreen(false));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(48), dp(48));
+        lp.gravity = Gravity.BOTTOM | Gravity.END;
+        lp.rightMargin = dp(14); lp.bottomMargin = dp(20);
+        ((ViewGroup) findViewById(android.R.id.content)).addView(fsRestore, lp);
     }
 }

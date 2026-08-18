@@ -1,9 +1,9 @@
 {
-  "version": "0.1.22",
-  "build": 23,
-  "minNative": 23,
+  "version": "0.1.23",
+  "build": 24,
+  "minNative": 24,
   "date": "2026-08-18",
-  "notes": "v0.1.22: dock apre il browser nativo (clone Chrome) come le web app; gestione preferiti completa (apri/rinomina/elimina) e schede incognito separate; selezione foto Rubrica/Galleria; audio nei video con richiesta microfono; spazio menu Galleria sopra i tasti; tastierino PIN reattivo.",
+  "notes": "v0.1.23: browser clone Chrome — selettore schede a griglia con anteprime e X, stella preferiti (blu=salvato), incognito distinto, schermo intero; audio video con avviso microfono; foto Rubrica/Galleria.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",

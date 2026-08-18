@@ -269,6 +269,9 @@ const NovaApps = (() => {
             <div id="count" style="position:absolute;color:#fff;font-size:calc(96px*var(--fscale,1));font-weight:200;text-shadow:0 2px 20px rgba(0,0,0,.6);display:none"></div>
             <div id="flashfx" style="position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none"></div>
             <div id="cam-msg" style="position:absolute;color:#fff;text-align:center;padding:24px;font-size:calc(14px*var(--fscale,1));display:none"></div>
+            <div id="mic-chip" style="position:absolute;top:12px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:10px;background:rgba(0,0,0,.75);color:#fff;padding:8px 10px 8px 14px;border-radius:20px;font-size:calc(12px*var(--fscale,1));z-index:6;white-space:nowrap">
+              <span>🔇 Microfono disattivato</span>
+              <button id="mic-enable" style="background:#0a84ff;border:none;color:#fff;padding:6px 14px;border-radius:15px;font-size:calc(12px*var(--fscale,1));cursor:pointer">Attiva</button></div>
           </div>
           <div class="cam-modes"><button data-mode="photo" class="on">FOTO</button><button data-mode="video">VIDEO</button></div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 30px 22px;background:#000">
@@ -336,6 +339,11 @@ const NovaApps = (() => {
         try { if (window.NovaNative && window.NovaNative.setTorch && facing==="environment") window.NovaNative.setTorch(flashOn); } catch {} };
 
       const shotBtn = root.querySelector("#shot");
+      const micChip = root.querySelector("#mic-chip");
+      root.querySelector("#mic-enable").onclick = () => {
+        try { if (window.NovaNative && window.NovaNative.openAppSettings) { window.NovaNative.openAppSettings(); return; } } catch {}
+        try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {}
+      };
       const setMode = (m) => { mode = m;
         root.querySelectorAll("[data-mode]").forEach(b=>b.classList.toggle("on", b.dataset.mode===m));
         shotBtn.classList.toggle("rec", m==="video");
@@ -345,6 +353,7 @@ const NovaApps = (() => {
         if (want !== wantAudio) {
           wantAudio = want;
           if (want) { try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {} }
+          else { micChip.style.display = "none"; }
           start();
         }
       };
@@ -373,6 +382,7 @@ const NovaApps = (() => {
           if (!s) s = await navigator.mediaDevices.getUserMedia({ video: curVideo, audio: false });
           stream = s;
           hasAudioTrack = stream.getAudioTracks().length > 0;
+          if (hasAudioTrack && micChip) micChip.style.display = "none";
           video.srcObject = stream; video.style.display = ""; msg.style.display = "none";
           vTrack = stream.getVideoTracks()[0] || null;
           try { const caps = vTrack && vTrack.getCapabilities && vTrack.getCapabilities(); zoomCap = caps && caps.zoom ? caps.zoom : null; } catch { zoomCap = null; }
@@ -413,7 +423,7 @@ const NovaApps = (() => {
         try {
           // se il microfono non è ancora nello stream, prova a riacquisirlo ora
           if (!hasAudioTrack && wantAudio) { try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {} await start(); }
-          if (!hasAudioTrack) os.notify({ app:"camera", title:"Video", text:"Microfono non disponibile: registro senza audio." });
+          // niente notifica: se manca l'audio lo segnala il chip discreto in alto
           poster = grabPoster();
           recChunks = [];
           let mime = "video/webm;codecs=vp8,opus";
@@ -467,9 +477,13 @@ const NovaApps = (() => {
       root.querySelector("#pick").onchange = (e) => { const f=e.target.files[0]; if(!f) return;
         const r=new FileReader(); r.onload=()=>save(r.result); r.readAsDataURL(f); };
 
-      // il permesso microfono arriva in modo asincrono: quando concesso, se siamo
-      // in modalità Video senza audio, riacquisisci lo stream così il video avrà l'audio.
-      window.__novaMic = (ok) => { if (ok && wantAudio && !hasAudioTrack && !rec) start(); };
+      // il permesso microfono arriva in modo asincrono. Concesso: nascondi l'avviso
+      // e riacquisisci lo stream con audio. Negato: mostra il chip "Attiva" (che apre
+      // le Impostazioni dell'app) così l'utente può riattivare il microfono.
+      window.__novaMic = (ok) => {
+        if (ok) { micChip.style.display = "none"; if (wantAudio && !hasAudioTrack && !rec) start(); }
+        else if (wantAudio) { micChip.style.display = "flex"; }
+      };
 
       start(); updateThumb();
       root._cleanup = () => { try{ if(rec) rec.stop(); }catch{} clearInterval(recTimer);
