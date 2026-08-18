@@ -1,9 +1,9 @@
 {
-  "version": "0.1.24",
-  "build": 25,
-  "minNative": 25,
+  "version": "0.1.25",
+  "build": 26,
+  "minNative": 26,
   "date": "2026-08-18",
-  "notes": "v0.1.24: nuova app Registratore audio; audio video con diagnostica microfono e riacquisizione dalle Impostazioni; browser Chrome con schede a griglia, stella, incognito, schermo intero.",
+  "notes": "v0.1.25: microfono — la richiesta di sistema ora scatta quando registri (video/registratore); avviso chiaro con stato permesso e scorciatoia Impostazioni; aggiornamento automatico al ritorno.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",

@@ -3087,9 +3087,14 @@ const NovaApps = (() => {
         r.onupgradeneeded = () => r.result.createObjectStore("rec", { keyPath:"id" });
         r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
       });
-      const allRecs = async () => { try { const db = await DB(); return await new Promise(res => {
-        const rq = db.transaction("rec").objectStore("rec").getAll();
-        rq.onsuccess = () => res((rq.result||[]).sort((a,b)=>b.ts-a.ts)); rq.onerror = () => res([]); }); } catch { return []; } };
+      const allRecs = () => new Promise(resolve => {
+        let done = false; const finish = v => { if (!done) { done = true; resolve(v); } };
+        setTimeout(() => finish([]), 2500);   // non bloccare mai la UI
+        (async () => { try { const db = await DB();
+          const rq = db.transaction("rec").objectStore("rec").getAll();
+          rq.onsuccess = () => finish((rq.result||[]).sort((a,b)=>b.ts-a.ts)); rq.onerror = () => finish([]);
+        } catch { finish([]); } })();
+      });
       const putRec = async (item) => { const db = await DB(); return new Promise((res,rej) => {
         const t = db.transaction("rec","readwrite"); t.objectStore("rec").put(item); t.oncomplete = res; t.onerror = () => rej(t.error); }); };
       const delRec = async (id) => { const db = await DB(); return new Promise((res) => {
@@ -3126,9 +3131,9 @@ const NovaApps = (() => {
             <div id="rec-time" style="font-size:calc(40px*var(--fscale,1));font-weight:200;font-variant-numeric:tabular-nums;letter-spacing:1px">00:00</div>
             <div id="rec-state" style="color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">Pronto a registrare</div>
             <button id="rec-btn" style="width:76px;height:76px;border-radius:50%;border:5px solid color-mix(in srgb,#ff375f 45%,transparent);background:#ff375f;cursor:pointer;transition:border-radius .2s,transform .1s"></button>
-            <div id="mic-warn" style="display:none;align-items:center;gap:10px;background:var(--surface);color:var(--text);padding:8px 10px 8px 14px;border-radius:16px;font-size:calc(12px*var(--fscale,1))">
-              <span>🔇 Microfono disattivato</span>
-              <button id="mic-go" class="btn" style="width:auto;padding:6px 14px;font-size:calc(12px*var(--fscale,1))">Attiva</button></div>
+            <div id="mic-warn" style="display:none;flex-direction:column;align-items:center;gap:6px;background:var(--surface);color:var(--text);padding:10px 14px;border-radius:16px;font-size:calc(12px*var(--fscale,1));max-width:280px;text-align:center">
+              <span id="mic-warn-txt">🔇 Microfono disattivato</span>
+              <button id="mic-go" class="btn" style="width:auto;padding:6px 16px;font-size:calc(12px*var(--fscale,1))">Attiva microfono</button></div>
           </div>
           <div id="rec-list">${listHtml}</div>
           <audio id="rec-audio" hidden></audio>`;
@@ -3136,12 +3141,27 @@ const NovaApps = (() => {
       };
 
       const setState = (txt) => { const e = root.querySelector("#rec-state"); if (e) e.textContent = txt; };
+      const micDiag = () => { try { return window.NovaNative && window.NovaNative.micDiag ? window.NovaNative.micDiag() : "granted"; } catch { return "granted"; } };
+      const showMicWarn = () => {
+        const w = root.querySelector("#mic-warn"), txt = root.querySelector("#mic-warn-txt"), go = root.querySelector("#mic-go");
+        if (!w) return;
+        const d = micDiag();
+        if (d === "granted") { w.style.display = "none"; return; }
+        txt.innerHTML = d === "blocked"
+          ? "🔇 Microfono negato.<br>Impostazioni › Autorizzazioni › Microfono › Consenti."
+          : "🔇 Serve il permesso del microfono per registrare.";
+        go.textContent = d === "blocked" ? "Apri Impostazioni" : "Consenti microfono";
+        w.dataset.act = d;
+        w.style.display = "flex";
+      };
+      const hideMicWarn = () => { const w = root.querySelector("#mic-warn"); if (w) w.style.display = "none"; };
 
       const start = async () => {
         try {
           try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {}
           stream = await navigator.mediaDevices.getUserMedia({ audio:true });
-        } catch (e) { root.querySelector("#mic-warn").style.display = "flex"; return; }
+          hideMicWarn();
+        } catch (e) { showMicWarn(); return; }
         const cand = ["audio/webm;codecs=opus","audio/mp4;codecs=mp4a.40.2","audio/mp4","audio/webm","audio/ogg;codecs=opus"];
         const mime = cand.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
         chunks = [];
@@ -3177,8 +3197,11 @@ const NovaApps = (() => {
         const btn = root.querySelector("#rec-btn");
         if (btn) btn.onclick = () => { recording ? stop() : start(); };
         const go = root.querySelector("#mic-go");
-        if (go) go.onclick = () => { try { if (window.NovaNative && window.NovaNative.openAppSettings) { window.NovaNative.openAppSettings(); return; } } catch {}
-          try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {} };
+        if (go) go.onclick = () => {
+          const w = root.querySelector("#mic-warn");
+          if (w && w.dataset.act === "blocked") { try { window.NovaNative && window.NovaNative.openAppSettings && window.NovaNative.openAppSettings(); } catch {} return; }
+          try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {}
+        };
         const audio = root.querySelector("#rec-audio");
         root.querySelectorAll("[data-play]").forEach(b => b.onclick = async () => {
           const id = +b.dataset.play;
@@ -3200,8 +3223,13 @@ const NovaApps = (() => {
         });
       };
 
+      // permesso microfono concesso (dialog) o ritorno dalle Impostazioni:
+      // aggiorna l'avviso (e nascondilo se ora è tutto a posto).
+      window.__novaMic = (ok) => { if (ok) hideMicWarn(); else showMicWarn(); };
+      window.__novaMicResume = () => { if (micDiag() === "granted") hideMicWarn(); };
+
       draw();
-      root._cleanup = () => { try { stop(); } catch {} stopPlayback(); };
+      root._cleanup = () => { try { stop(); } catch {} stopPlayback(); window.__novaMic = null; window.__novaMicResume = null; };
     }});
 
   const list = [phone, contacts, messages, mail, browser, camera, gallery, recorder, clock, calendar, weather, notes, calc, files, store, settings];

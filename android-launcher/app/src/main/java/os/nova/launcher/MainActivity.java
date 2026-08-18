@@ -200,7 +200,20 @@ public class MainActivity extends Activity {
         // concede alla shell i permessi web richiesti (es. fotocamera per getUserMedia)
         web.setWebChromeClient(new WebChromeClient() {
             @Override public void onPermissionRequest(PermissionRequest request) {
-                runOnUiThread(() -> request.grant(request.getResources()));
+                runOnUiThread(() -> {
+                    String[] res = request.getResources();
+                    boolean wantsAudio = false;
+                    for (String r : res) if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) wantsAudio = true;
+                    // se il sito chiede il microfono ma manca il permesso Android, chiedilo
+                    // ora (dialog di sistema) e nega questa richiesta: la app riproverà
+                    // appena il permesso è concesso (window.__novaMic).
+                    if (wantsAudio && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(new String[]{ android.Manifest.permission.RECORD_AUDIO }, 4);
+                        try { request.deny(); } catch (Exception e) {}
+                        return;
+                    }
+                    request.grant(res);
+                });
             }
             // apre il selettore file di sistema per i campi <input type="file"> della shell
             @Override public boolean onShowFileChooser(WebView view,
@@ -368,6 +381,14 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface public boolean micGranted() {
             return checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        }
+        // stato del permesso microfono: "granted" | "askable" (negato, ridomandabile)
+        // | "blocked" (mai chiesto o negato per sempre -> serve Impostazioni)
+        @JavascriptInterface public String micDiag() {
+            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return "granted";
+            boolean rationale = false;
+            try { rationale = shouldShowRequestPermissionRationale(android.Manifest.permission.RECORD_AUDIO); } catch (Exception e) {}
+            return rationale ? "askable" : "blocked";
         }
         @JavascriptInterface public void requestMic() {
             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
