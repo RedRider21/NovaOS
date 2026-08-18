@@ -1,9 +1,9 @@
 {
-  "version": "0.1.25",
-  "build": 26,
-  "minNative": 26,
+  "version": "0.1.26",
+  "build": 27,
+  "minNative": 27,
   "date": "2026-08-18",
-  "notes": "v0.1.25: microfono — la richiesta di sistema ora scatta quando registri (video/registratore); avviso chiaro con stato permesso e scorciatoia Impostazioni; aggiornamento automatico al ritorno.",
+  "notes": "v0.1.26: Registratore — prova prima la via web (getUserMedia), poi ripiega sul microfono del runtime se la WebView non lo cattura; audio ora registrabile sul device.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",

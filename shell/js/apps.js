@@ -3146,7 +3146,10 @@ const NovaApps = (() => {
         const w = root.querySelector("#mic-warn"), txt = root.querySelector("#mic-warn-txt"), go = root.querySelector("#mic-go");
         if (!w) return;
         const d = micDiag();
-        if (d === "granted") { w.style.display = "none"; return; }
+        if (d === "granted") {
+          if (!captureFail) { w.style.display = "none"; return; }
+          txt.textContent = "🔇 Microfono occupato o non accessibile ora."; go.textContent = "Riprova"; w.dataset.act = "retry"; w.style.display = "flex"; return;
+        }
         txt.innerHTML = d === "blocked"
           ? "🔇 Microfono negato.<br>Impostazioni › Autorizzazioni › Microfono › Consenti."
           : "🔇 Serve il permesso del microfono per registrare.";
@@ -3156,41 +3159,68 @@ const NovaApps = (() => {
       };
       const hideMicWarn = () => { const w = root.querySelector("#mic-warn"); if (w) w.style.display = "none"; };
 
+      // su device usa il registratore audio NATIVO (la WebView spesso non cattura
+      // il microfono via getUserMedia); in emulatore/browser ripiega su MediaRecorder web.
+      const nativeAudio = !!(window.NovaNative && window.NovaNative.audioRecStart);
+      const beginUI = () => {
+        recording = true; t0 = Date.now();
+        const btn = root.querySelector("#rec-btn"); if (btn) { btn.style.borderRadius = "20px"; btn.style.transform = "scale(.9)"; }
+        setState("Registrazione…"); os.vibrate && os.vibrate(20);
+        timer = setInterval(() => { const s = (Date.now()-t0)/1000; const e = root.querySelector("#rec-time"); if (e) e.textContent = fmt(s); }, 200);
+      };
+      const endUI = () => {
+        recording = false; clearInterval(timer); timer = null;
+        const btn = root.querySelector("#rec-btn"); if (btn) { btn.style.borderRadius = "50%"; btn.style.transform = ""; }
+        setState("Pronto a registrare"); os.vibrate && os.vibrate(20);
+      };
+      const saveRec = async (dataUrl, dur) => {
+        const now = new Date();
+        await putRec({ id: Date.now(), name: "Registrazione "+now.toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit"})+" "+now.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"}), ts: Date.now(), dur, data: dataUrl });
+        await draw();
+      };
+
+      let usedNative = false;
       const start = async () => {
+        hideMicWarn();
+        // 1) via WEB standard (getUserMedia + MediaRecorder) — è così che funzionerà
+        //    sulla ROM Gecko/Firefox OS finale, dove il runtime espone il microfono.
         try {
           try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {}
           stream = await navigator.mediaDevices.getUserMedia({ audio:true });
-          hideMicWarn();
-        } catch (e) { showMicWarn(); return; }
-        const cand = ["audio/webm;codecs=opus","audio/mp4;codecs=mp4a.40.2","audio/mp4","audio/webm","audio/ogg;codecs=opus"];
-        const mime = cand.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
-        chunks = [];
-        rec = new MediaRecorder(stream, mime ? { mimeType:mime, audioBitsPerSecond:128000 } : undefined);
-        rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-        rec.onstop = async () => {
-          const blob = new Blob(chunks, { type: chunks[0] ? chunks[0].type : "audio/webm" });
-          const dur = Math.round((Date.now()-t0)/1000);
-          const r = new FileReader();
-          r.onload = async () => {
-            const now = new Date();
-            await putRec({ id: Date.now(), name: "Registrazione "+now.toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit"})+" "+now.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"}), ts: Date.now(), dur, data: r.result });
-            await draw();
+          const cand = ["audio/webm;codecs=opus","audio/mp4;codecs=mp4a.40.2","audio/mp4","audio/webm","audio/ogg;codecs=opus"];
+          const mime = cand.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+          chunks = [];
+          rec = new MediaRecorder(stream, mime ? { mimeType:mime, audioBitsPerSecond:128000 } : undefined);
+          rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+          rec.onstop = async () => {
+            const blob = new Blob(chunks, { type: chunks[0] ? chunks[0].type : "audio/webm" });
+            const r = new FileReader(); r.onload = () => saveRec(r.result, Math.round((Date.now()-t0)/1000)); r.readAsDataURL(blob);
           };
-          r.readAsDataURL(blob);
-        };
-        rec.start();
-        recording = true; t0 = Date.now();
-        const btn = root.querySelector("#rec-btn"); btn.style.borderRadius = "20px"; btn.style.transform = "scale(.9)";
-        setState("Registrazione…");
-        os.vibrate && os.vibrate(20);
-        timer = setInterval(() => { const s = (Date.now()-t0)/1000; const e = root.querySelector("#rec-time"); if (e) e.textContent = fmt(s); }, 200);
+          rec.start(); usedNative = false; beginUI(); return;
+        } catch (e) {
+          if (stream) { stream.getTracks().forEach(t=>t.stop()); stream = null; }
+          rec = null;
+        }
+        // 2) ripiego sul layer del runtime (questa WebView non cattura il microfono):
+        //    è lo stesso ruolo che avrebbe Gecko in Firefox OS, qui fornito da NovaNative.
+        if (nativeAudio) {
+          let ok = false; try { ok = window.NovaNative.audioRecStart(); } catch {}
+          if (ok) { usedNative = true; beginUI(); return; }
+        }
+        showMicWarn(true);
       };
-      const stop = () => {
+      const stop = async () => {
         if (!recording) return;
-        recording = false; clearInterval(timer); timer = null;
+        const dur = Math.round((Date.now()-t0)/1000);
+        endUI();
+        if (usedNative) {
+          let dataUrl = "";
+          try { dataUrl = window.NovaNative.audioRecStop() || ""; } catch {}
+          if (dataUrl) await saveRec(dataUrl, dur); else setState("Registrazione non riuscita");
+          return;
+        }
         try { rec && rec.stop(); } catch {}
         if (stream) { stream.getTracks().forEach(t=>t.stop()); stream = null; }
-        os.vibrate && os.vibrate(20);
       };
 
       const bind = () => {
@@ -3199,7 +3229,9 @@ const NovaApps = (() => {
         const go = root.querySelector("#mic-go");
         if (go) go.onclick = () => {
           const w = root.querySelector("#mic-warn");
-          if (w && w.dataset.act === "blocked") { try { window.NovaNative && window.NovaNative.openAppSettings && window.NovaNative.openAppSettings(); } catch {} return; }
+          const act = w && w.dataset.act;
+          if (act === "retry") { hideMicWarn(); start(); return; }
+          if (act === "blocked") { try { window.NovaNative && window.NovaNative.openAppSettings && window.NovaNative.openAppSettings(); } catch {} return; }
           try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {}
         };
         const audio = root.querySelector("#rec-audio");

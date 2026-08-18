@@ -58,8 +58,18 @@ public class MainActivity extends Activity {
     private android.webkit.ValueCallback<android.net.Uri[]> filePathCallback;
     private static final int REQ_FILE = 7;
 
+    // registrazione audio NATIVA (la WebView di molti device non cattura il microfono
+    // via getUserMedia): l'app Registratore usa questi metodi quando disponibili.
+    private android.media.MediaRecorder audioRec;
+    private String audioRecPath;
+
     /** Esegue JS nella WebView dal thread UI (usato dai callback di rete della Mail). */
     void evalJs(String js) { runOnUiThread(() -> { if (web != null) web.evaluateJavascript(js, null); }); }
+
+    /** Ferma e rilascia il MediaRecorder audio nativo se attivo. */
+    private void stopNativeAudio() {
+        if (audioRec != null) { try { audioRec.stop(); } catch (Exception e) {} try { audioRec.release(); } catch (Exception e) {} audioRec = null; }
+    }
 
     /** Al ritorno in primo piano (es. dopo le Impostazioni app) riacquisisce il microfono
      *  nella Fotocamera se ora è concesso. */
@@ -394,6 +404,48 @@ public class MainActivity extends Activity {
             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
                 runOnUiThread(() -> requestPermissions(new String[]{ android.Manifest.permission.RECORD_AUDIO }, 4));
         }
+        // --- registrazione audio nativa (bypassa la WebView) ---
+        // avvia: ritorna true se sta registrando, false se manca il permesso (che
+        // viene richiesto) o in caso di errore.
+        @JavascriptInterface public boolean audioRecStart() {
+            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                runOnUiThread(() -> requestPermissions(new String[]{ android.Manifest.permission.RECORD_AUDIO }, 4));
+                return false;
+            }
+            try {
+                stopNativeAudio();
+                java.io.File dir = new java.io.File(getCacheDir(), "rec"); dir.mkdirs();
+                audioRecPath = new java.io.File(dir, "rec_" + System.currentTimeMillis() + ".m4a").getAbsolutePath();
+                android.media.MediaRecorder r = new android.media.MediaRecorder();
+                r.setAudioSource(android.media.MediaRecorder.AudioSource.MIC);
+                r.setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4);
+                r.setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC);
+                r.setAudioEncodingBitRate(128000);
+                r.setAudioSamplingRate(44100);
+                r.setOutputFile(audioRecPath);
+                r.prepare();
+                r.start();
+                audioRec = r;
+                return true;
+            } catch (Exception e) { stopNativeAudio(); return false; }
+        }
+        // ferma e ritorna la registrazione come data URL (data:audio/mp4;base64,...) o "" in errore
+        @JavascriptInterface public String audioRecStop() {
+            try {
+                if (audioRec != null) { try { audioRec.stop(); } catch (Exception e) {} audioRec.release(); audioRec = null; }
+                if (audioRecPath == null) return "";
+                java.io.File f = new java.io.File(audioRecPath);
+                if (!f.exists()) { audioRecPath = null; return ""; }
+                byte[] data = new byte[(int) f.length()];
+                java.io.FileInputStream in = new java.io.FileInputStream(f);
+                int off = 0, n; while (off < data.length && (n = in.read(data, off, data.length - off)) > 0) off += n;
+                in.close();
+                String b64 = android.util.Base64.encodeToString(data, android.util.Base64.NO_WRAP);
+                f.delete(); audioRecPath = null;
+                return "data:audio/mp4;base64," + b64;
+            } catch (Exception e) { return ""; }
+        }
+
         // apre la scheda dell'app nelle Impostazioni di sistema (per riattivare a mano
         // il microfono quando il permesso è stato negato "per sempre").
         @JavascriptInterface public void openAppSettings() {
