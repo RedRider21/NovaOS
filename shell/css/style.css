@@ -183,6 +183,57 @@ body {
 .page-dots .dot.on { opacity: 1; background: var(--accent); transform: scale(1.15); }
 .page-dots .dot.drop-target { opacity: 1; background: var(--ok, #34c759); transform: scale(1.8); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok, #34c759) 30%, transparent); }
 .page-dots .dot-add { background: none; border: none; color: var(--accent); font-size:calc(16px*var(--fscale,1)); cursor: pointer; line-height: 1; padding: 0 4px; }
+
+/* utility: scorrimento senza barra visibile (menu/elenchi eleganti) */
+.no-sb { -ms-overflow-style: none; scrollbar-width: none; }
+.no-sb::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* Launcher alternativo: "Lista con ricerca" (home a elenco, un launcher provider) */
+.app-grid.launcher-alt { overflow: hidden; }
+.launcher-list { height: 100%; display: flex; flex-direction: column; }
+.ll-search {
+  display: flex; align-items: center; gap: 9px; margin: 8px 16px 6px;
+  background: var(--surface); border-radius: 14px; padding: 10px 13px;
+}
+.ll-search svg { width: 17px; height: 17px; color: var(--text-dim); flex: 0 0 auto; }
+.ll-search input {
+  flex: 1; min-width: 0; background: none; border: none; outline: none;
+  color: var(--text); font-family: inherit; font-size:calc(14px*var(--fscale,1));
+}
+.ll-search input::placeholder { color: var(--text-dim); }
+.ll-scroll { flex: 1; overflow-y: auto; padding: 2px 12px 22px; }
+.ll-cat {
+  font-size:calc(11px*var(--fscale,1)); letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-dim); padding: 13px 8px 6px; font-weight: 600;
+}
+.ll-row {
+  display: flex; align-items: center; gap: 13px; padding: 9px 8px; border-radius: 13px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background .12s;
+}
+.ll-row:active { background: var(--surface-2); }
+.ll-ic {
+  width: 42px; height: 42px; border-radius: 12px; flex: 0 0 auto;
+  display: grid; place-items: center; font-size:calc(21px*var(--fscale,1));
+  box-shadow: 0 3px 8px rgba(0,0,0,.22);
+}
+.ll-nm { flex: 1; min-width: 0; font-size:calc(15px*var(--fscale,1)); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ll-grip {
+  margin-left: auto; flex: 0 0 auto; width: 34px; height: 34px; border: none; background: none;
+  display: grid; grid-auto-flow: row; gap: 3px; align-content: center; justify-items: center;
+  cursor: grab; touch-action: none; -webkit-tap-highlight-color: transparent; padding: 0; opacity: .5;
+}
+.ll-grip:active { cursor: grabbing; }
+.ll-grip span { display: block; width: 15px; height: 2px; border-radius: 2px; background: var(--text-dim); }
+.ll-empty { text-align: center; color: var(--text-dim); padding: 40px 20px; font-size:calc(13px*var(--fscale,1)); }
+/* stato di trascinamento riga */
+.ll-row.ll-dragging {
+  background: var(--surface-2);
+  box-shadow: 0 10px 24px rgba(0,0,0,.35); position: relative; z-index: 5;
+  opacity: .96;
+}
+.ll-scroll.ll-reordering { scroll-behavior: auto; }
+.ll-scroll.ll-reordering .ll-row { transition: transform .16s ease; }
+.ll-scroll.filtering .ll-grip { display: none; }   /* durante la ricerca niente riordino */
 .edit-bar {
   position: absolute; left: 12px; right: 12px; bottom: 26px; z-index: 6;
   display: flex; align-items: center; gap: 10px;

@@ -2811,7 +2811,16 @@ const NovaApps = (() => {
             <div class="section-label">Spegnimento schermo</div>
             <div class="seg">${[15,30,60,120].map(s=>`<button data-to="${s}" class="${S.screenTimeout===s?'on':''}">${s<60?s+"s":(s/60)+" min"}</button>`).join("")}</div>
             <div class="section-label">Sfondo</div>
-            <div class="swatches">${os.WALLS.map((w,i)=>`<div class="swatch ${i===S.wallpaper?'on':''}" data-w="${i}" style="background:${w}"></div>`).join("")}</div>
+            <div class="swatches">${os.WALLS.map((w,i)=>`<div class="swatch ${(!S.wallImage&&!S.deskColor&&i===S.wallpaper)?'on':''}" data-w="${i}" style="background:${w}"></div>`).join("")}</div>
+            <div style="display:flex;gap:10px;margin:12px 16px 0">
+              <label class="btn ghost" style="flex:1;text-align:center;cursor:pointer">${S.wallImage?'Cambia immagine':'Immagine di sfondo'}<input id="wall-img" type="file" accept="image/*" hidden></label>
+              ${S.wallImage?`<button class="btn ghost" id="wall-clear" style="flex:0 0 auto;color:var(--danger)">Rimuovi</button>`:''}
+            </div>
+            ${S.wallImage?`<div style="margin:12px 16px 0;height:150px;border-radius:16px;background:url('${S.wallImage}') center/cover;box-shadow:inset 0 0 0 1px var(--surface-2)"></div>`:''}
+
+            <div class="section-label">Home · launcher</div>
+            <div class="seg">${os.launchers().map(l=>`<button data-lch="${l.id}" class="${(S.launcher||'springboard')===l.id?'on':''}">${l.name}</button>`).join("")}</div>
+            <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));margin:6px 16px 0">${(S.launcher==='list')?'Elenco con ricerca. Trascina la maniglia ≡ a destra per riordinare le app.':'Griglia di icone a pagine con dock (predefinito).'}</div>
 
             <div class="section-label">Tema · stile icone</div>
             <div class="seg"><button data-is="filled" class="${S.iconStyle!=='outline'?'on':''}">Colorate</button><button data-is="outline" class="${S.iconStyle==='outline'?'on':''}">Contorno</button></div>
@@ -2832,9 +2841,10 @@ const NovaApps = (() => {
                 <button class="btn ghost" id="th-export" style="flex:1">Esporta tema</button>
                 <label class="btn ghost" style="flex:1;text-align:center;cursor:pointer">Importa tema<input id="th-import" type="file" accept=".json,.novatheme" hidden></label>
               </div>
-              <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));margin-top:8px">Salva o applica un tema (.novatheme): colori, forma e stile icone, sfondo, testo.</div>
+              <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));margin-top:8px">Salva o applica un tema (.novatheme/2): launcher, colori, forma e stile icone, sfondo, testo.</div>
             </div>`;
           sec.querySelectorAll("[data-th]").forEach(b => b.onclick = () => { os.set("theme", b.dataset.th); sections.display(); });
+          sec.querySelectorAll("[data-lch]").forEach(b => b.onclick = () => { os.set("launcher", b.dataset.lch); sections.display(); });
           sec.querySelectorAll("[data-is]").forEach(b => b.onclick = () => { os.set("iconStyle", b.dataset.is); sections.display(); });
           sec.querySelectorAll("[data-ish]").forEach(b => b.onclick = () => { os.set("iconShape", b.dataset.ish); sections.display(); });
           sec.querySelector("#deskcol").oninput = e => os.set("deskColor", e.target.value);
@@ -2843,10 +2853,11 @@ const NovaApps = (() => {
           const ir = sec.querySelector("#icon-reset"); if (ir) ir.onclick = () => { ["iconStyle","deskColor","iconColor","accentColor"].forEach((k,i)=>os.set(k, i?"":"filled")); os.set("iconShape","squircle"); sections.display(); };
           // esporta/importa tema nel formato .novatheme (allineato al Theme Studio)
           sec.querySelector("#th-export").onclick = () => {
-            const t = { format:"novatheme/1", meta:{ id:"tema-"+Date.now(), name:"Tema personale", base:S.theme },
+            const t = { format:"novatheme/2", meta:{ id:"tema-"+Date.now(), name:"Tema personale", base:S.theme },
+              layout:{ id:S.launcher||"springboard" },
               colors:{ accent:S.accentColor||undefined, bg:S.deskColor||undefined, icon:S.iconColor||undefined },
               shape:{ iconStyle:S.iconStyle, iconShape:S.iconShape||"squircle" },
-              wallpaper: S.deskColor?{type:"solid",value:S.deskColor}:{type:"gradient",value:os.WALLS[S.wallpaper]},
+              wallpaper: S.deskColor?{type:"solid",value:S.deskColor}:(S.wallImage?{type:"image",value:S.wallImage}:{type:"gradient",value:os.WALLS[S.wallpaper]}),
               typography:{ textScale:S.textScale } };
             const a = document.createElement("a");
             a.href = URL.createObjectURL(new Blob([JSON.stringify(t,null,2)],{type:"application/json"}));
@@ -2857,15 +2868,17 @@ const NovaApps = (() => {
             const f = e.target.files[0]; if (!f) return;
             const r = new FileReader();
             r.onload = () => { try { const t = JSON.parse(r.result);
-              if (t.format !== "novatheme/1") { os.notify({app:"settings",title:"Tema",text:"File non riconosciuto."}); return; }
+              if (t.format !== "novatheme/1" && t.format !== "novatheme/2") { os.notify({app:"settings",title:"Tema",text:"File non riconosciuto."}); return; }
               if (t.meta?.base) os.set("theme", t.meta.base);
+              if (t.layout?.id && os.launchers().some(l => l.id === t.layout.id)) os.set("launcher", t.layout.id);
               if (t.colors?.accent) os.set("accentColor", t.colors.accent);
               if (t.colors?.icon) os.set("iconColor", t.colors.icon);
               if (t.shape?.iconStyle) os.set("iconStyle", t.shape.iconStyle);
               if (t.shape?.iconShape) os.set("iconShape", t.shape.iconShape);
               if (t.typography?.textScale) os.set("textScale", t.typography.textScale);
-              if (t.wallpaper?.type === "solid") os.set("deskColor", t.wallpaper.value);
-              else os.set("deskColor", "");
+              if (t.wallpaper?.type === "solid") { os.set("deskColor", t.wallpaper.value); os.set("wallImage",""); }
+              else if (t.wallpaper?.type === "image") { os.set("wallImage", t.wallpaper.value); os.set("deskColor",""); }
+              else { os.set("deskColor", ""); os.set("wallImage",""); }
               os.notify({ app:"settings", title:"Tema", text:`Tema «${t.meta?.name||"importato"}» applicato.` });
               sections.display();
             } catch (err) { os.notify({app:"settings",title:"Tema",text:"File non valido."}); } };
@@ -2873,7 +2886,26 @@ const NovaApps = (() => {
           };
           sec.querySelector("#bri").oninput = e => os.set("brightness", +e.target.value);
           sec.querySelector("#ts").oninput = e => { os.set("textScale", +e.target.value); sec.querySelector("#ts-v").textContent = e.target.value+"%"; };
-          sec.querySelectorAll("[data-w]").forEach(el => el.onclick = () => { os.set("wallpaper", +el.dataset.w); sections.display(); });
+          sec.querySelectorAll("[data-w]").forEach(el => el.onclick = () => { os.set("wallpaper", +el.dataset.w); os.set("wallImage",""); os.set("deskColor",""); sections.display(); });
+          // immagine di sfondo: ridimensiona (max lato 1080px, JPEG) prima di salvarla
+          const downscale = (file, max, q) => new Promise((res, rej) => {
+            const rd = new FileReader();
+            rd.onload = () => { const img = new Image();
+              img.onload = () => { let { width:w, height:h } = img; const s = Math.min(1, max/Math.max(w,h));
+                w = Math.round(w*s); h = Math.round(h*s);
+                const cv = document.createElement("canvas"); cv.width=w; cv.height=h;
+                cv.getContext("2d").drawImage(img, 0, 0, w, h);
+                try { res(cv.toDataURL("image/jpeg", q)); } catch(e){ rej(e); } };
+              img.onerror = rej; img.src = rd.result; };
+            rd.onerror = rej; rd.readAsDataURL(file);
+          });
+          const wi = sec.querySelector("#wall-img");
+          if (wi) wi.onchange = e => { const f = e.target.files[0]; if (!f) return;
+            downscale(f, 1080, 0.82).then(url => { os.set("wallImage", url); os.set("deskColor",""); sections.display();
+              os.notify({ app:"settings", title:"Sfondo", text:"Immagine di sfondo impostata." }); })
+              .catch(() => os.notify({ app:"settings", title:"Sfondo", text:"Immagine non valida." })); };
+          const wc = sec.querySelector("#wall-clear");
+          if (wc) wc.onclick = () => { os.set("wallImage",""); sections.display(); };
           sec.querySelectorAll("[data-to]").forEach(b => b.onclick = () => { os.set("screenTimeout", +b.dataset.to); sections.display(); });
           const dsw = sec.querySelectorAll(".switch");   // solo 3 switch nella sezione Display
           dsw[0].onclick = () => { os.toggle("adaptiveBright"); dsw[0].classList.toggle("on"); };

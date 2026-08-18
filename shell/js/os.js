@@ -78,6 +78,11 @@ const OS = (() => {
     iconStyle: "filled", deskColor: "", iconColor: "",
     // forma delle tessere icona (circle|squircle|square) e colore di risalto (accento/bordo)
     iconShape: "squircle", accentColor: "",
+    // paradigma della home (launcher): "springboard" (griglia+dock, default) oppure
+    // un launcher alternativo registrato (es. "list"). Vedi Launcher provider.
+    launcher: "springboard",
+    // immagine di sfondo (data URL JPEG ridimensionato). Vuoto = usa il gradiente/tinta.
+    wallImage: "",
     // torcia (flash) e protezione occhi (filtro luce blu)
     torch: false, eyeComfort: false,
   };
@@ -164,10 +169,21 @@ const OS = (() => {
     if (eyeEl) eyeEl.style.opacity = state.eyeComfort ? "0.22" : "0";
     // il colore base viene dal tema (CSS var --bg); il wallpaper è solo la tinta sopra.
     // se l'utente ha scelto un colore di fondo, quello vince (tinta unita, niente wallpaper).
+    // priorità sfondo: colore unito (deskColor) > immagine (wallImage) > gradiente tema.
     const w = WALLS[state.wallpaper] || WALLS[0];
     const desk = state.deskColor || "var(--bg)";
     screens.home.style.backgroundColor = desk;
-    screens.home.style.backgroundImage = state.deskColor ? "none" : w;
+    if (state.deskColor) {
+      screens.home.style.backgroundImage = "none";
+    } else if (state.wallImage) {
+      screens.home.style.backgroundImage = `url("${state.wallImage}")`;
+      screens.home.style.backgroundSize = "cover";
+      screens.home.style.backgroundPosition = "center";
+    } else {
+      screens.home.style.backgroundImage = w;
+      screens.home.style.backgroundSize = "";
+      screens.home.style.backgroundPosition = "";
+    }
     // aspetto icone: stile e colori personalizzati (usati dal CSS via variabili)
     document.body.classList.toggle("icons-outline", state.iconStyle === "outline");
     const rootStyle = document.documentElement.style;
@@ -278,8 +294,126 @@ const OS = (() => {
     const pg = blankPage(); pg[0]=item; L.pages.push(pg);
   }
 
+  // ============================================================
+  //  Launcher provider: la home è un modulo intercambiabile. "springboard"
+  //  (griglia + dock) è il paradigma predefinito, gestito inline più sotto.
+  //  Altri launcher registrano una render(host) e ricevono il contesto tramite
+  //  le funzioni di modulo (allApps/openApp). Un tema (novatheme/2) può scegliere
+  //  il launcher via il campo layout.id. Le app non cambiano mai.
+  // ============================================================
+  const attrEsc = s => escH(s).replace(/"/g, "&quot;");
+  // ordine personalizzato del launcher Lista (id app), persistito; le app nuove
+  // non ancora ordinate finiscono in coda mantenendo l'ordine del registro.
+  const launcherOrder = () => store.get("launcherOrder", []);
+  function orderedApps() {
+    const apps = allApps();
+    const ord = launcherOrder();
+    if (!ord.length) return apps;
+    const byId = Object.fromEntries(apps.map(a => [a.id, a]));
+    const head = ord.map(id => byId[id]).filter(Boolean);
+    const seen = new Set(ord);
+    return head.concat(apps.filter(a => !seen.has(a.id)));
+  }
+  function llRow(a) {
+    const isImg = /^(https?:|data:)/.test(a.icon || "");
+    const glyph = isImg
+      ? `<div class="ll-ic" style="background:${a.color};padding:0;overflow:hidden"><img src="${a.icon}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='🌐'"></div>`
+      : `<div class="ll-ic" style="background:${a.color}">${a.icon}</div>`;
+    return `<div class="ll-row" data-app="${a.id}" data-name="${attrEsc((a.name||"").toLowerCase())}">${glyph}<div class="ll-nm">${escH(a.name)}</div>
+      <button class="ll-grip" aria-label="Trascina per riordinare"><span></span><span></span><span></span></button></div>`;
+  }
+  function renderListLauncher(host) {
+    host.innerHTML = `<div class="launcher-list">
+      <div class="ll-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+        <input id="ll-q" placeholder="Cerca app" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </div>
+      <div class="ll-scroll no-sb" id="ll-scroll">
+        ${orderedApps().map(llRow).join("")}
+        <div class="ll-empty" id="ll-empty" style="display:none">Nessuna app trovata</div>
+      </div></div>`;
+    const q = host.querySelector("#ll-q");
+    const scroll = host.querySelector("#ll-scroll");
+    const empty = host.querySelector("#ll-empty");
+    const filter = () => {
+      const v = (q.value || "").trim().toLowerCase();
+      let any = false;
+      scroll.querySelectorAll(".ll-row").forEach(r => {
+        const m = !v || (r.dataset.name || "").includes(v);
+        r.style.display = m ? "" : "none"; if (m) any = true;
+      });
+      empty.style.display = any ? "none" : "";
+      // il riordino ha senso solo senza filtro attivo
+      scroll.classList.toggle("filtering", !!v);
+    };
+    if (q) q.addEventListener("input", filter);
+    // apertura app: click sul corpo riga (non sulla maniglia)
+    scroll.querySelectorAll(".ll-row").forEach(r => r.addEventListener("click", e => {
+      if (e.target.closest(".ll-grip")) return;
+      openApp(r.dataset.app);
+    }));
+    enableListReorder(scroll, empty);
+  }
+  // Riordino per trascinamento della maniglia (Pointer Events: mouse + touch).
+  // La maniglia ha touch-action:none, così il resto della lista continua a scorrere.
+  function enableListReorder(scroll, empty) {
+    scroll.querySelectorAll(".ll-grip").forEach(grip => {
+      grip.addEventListener("pointerdown", e => {
+        e.preventDefault(); e.stopPropagation();
+        const row = grip.closest(".ll-row");
+        try { grip.setPointerCapture(e.pointerId); } catch (err) {}
+        row.classList.add("ll-dragging"); scroll.classList.add("ll-reordering");
+        try { vibrate(10); } catch (err) {}
+        const move = ev => {
+          const y = ev.clientY;
+          const others = [...scroll.querySelectorAll(".ll-row:not(.ll-dragging)")];
+          let target = null;
+          for (const s of others) {
+            const r = s.getBoundingClientRect();
+            if (y < r.top + r.height / 2) { target = s; break; }
+          }
+          if (target) scroll.insertBefore(row, target);
+          else scroll.insertBefore(row, empty);
+          // autoscroll ai bordi
+          const sr = scroll.getBoundingClientRect();
+          if (y < sr.top + 40) scroll.scrollTop -= 8;
+          else if (y > sr.bottom - 40) scroll.scrollTop += 8;
+        };
+        const up = () => {
+          grip.removeEventListener("pointermove", move);
+          grip.removeEventListener("pointerup", up);
+          grip.removeEventListener("pointercancel", up);
+          row.classList.remove("ll-dragging"); scroll.classList.remove("ll-reordering");
+          const ids = [...scroll.querySelectorAll(".ll-row")].map(r => r.dataset.app);
+          store.set("launcherOrder", ids);
+        };
+        grip.addEventListener("pointermove", move);
+        grip.addEventListener("pointerup", up);
+        grip.addEventListener("pointercancel", up);
+      });
+    });
+  }
+
+  const LAUNCHERS = {
+    springboard: { id:"springboard", name:"Griglia", desc:"Icone a pagine + dock" },
+    list:        { id:"list", name:"Lista", desc:"Elenco con ricerca", render: renderListLauncher },
+  };
+  const launcherList = () => Object.values(LAUNCHERS).map(l => ({ id:l.id, name:l.name, desc:l.desc }));
+
   function renderHome() {
     const host = $("#app-grid");
+    const dock = $("#dock");
+    // dispatch verso un launcher alternativo registrato (diverso da springboard)
+    const lch = state.launcher || "springboard";
+    if (lch !== "springboard" && LAUNCHERS[lch] && LAUNCHERS[lch].render) {
+      editing = false;
+      host.classList.remove("editing"); host.classList.add("launcher-alt");
+      dock.style.display = "none"; dock.innerHTML = "";
+      LAUNCHERS[lch].render(host);
+      return;
+    }
+    host.classList.remove("launcher-alt");
+    dock.style.display = "";
     const L = homeLayout();
     homePage = Math.max(0, Math.min(homePage, L.pages.length-1));
     host.classList.toggle("editing", editing);
@@ -293,7 +427,7 @@ const OS = (() => {
       </div>
       ${editing?`<div class="edit-bar"><span>Trascina le icone · tienile su un'altra per creare una cartella</span><button class="home-done" id="home-done">✓ Fine</button></div>`:''}`;
     bindHome(L, host);
-    const dock = $("#dock"); dock.innerHTML = "";
+    dock.innerHTML = "";
     NovaApps.dock.forEach((a, i) => dock.appendChild(iconEl(a, i)));
   }
 
@@ -1128,8 +1262,8 @@ const OS = (() => {
   // ============================================================
   function set(k, v) { state[k] = v; store.set(k, v);
     if (k==="theme") { applyTheme(); applyDisplay(); }
-    if (["brightness","textScale","wallpaper","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","iconShape","accentColor","saver","adaptiveBright","eyeComfort"].includes(k)) applyDisplay();
-    if (["iconStyle","deskColor","iconColor","iconShape"].includes(k) && screens.home.classList.contains("active")) renderHome();
+    if (["brightness","textScale","wallpaper","wallImage","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","iconShape","accentColor","saver","adaptiveBright","eyeComfort"].includes(k)) applyDisplay();
+    if (["iconStyle","deskColor","iconColor","iconShape","launcher"].includes(k) && screens.home.classList.contains("active")) renderHome();
     if (k==="notifLock") renderLockNotifs();
     renderStatusbars();
   }
@@ -1344,6 +1478,7 @@ const OS = (() => {
   // API esposta alle app
   const api = {
     state, store, notify, confirm: confirmDialog, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
+    launchers: launcherList, renderHome,
     WALLS, photos, vibrate, sounds: Sounds, updater: Updater,
     openSettings, takeSettingsSection,
     // gestione app di terze parti

@@ -1,9 +1,9 @@
 {
-  "version": "0.1.31",
-  "build": 32,
+  "version": "0.1.32",
+  "build": 33,
   "minNative": 12,
   "date": "2026-08-18",
-  "notes": "Corretto il loop dell'aggiornamento: ora la build della shell viene riconosciuta anche via OTA. Eliminazione di video e registrazioni dal File Manager. Barra di avanzamento audio.",
+  "notes": "Nuovo launcher Lista (Impostazioni → Display → Home): elenco con ricerca e riordino per trascinamento. Sfondo con immagine personale. Tema .novatheme/2 con launcher.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "js/version.js",    "manifest.webmanifest",    "sw.js",
