@@ -1,12 +1,12 @@
 {
-  "version": "0.1.30",
-  "build": 31,
+  "version": "0.1.31",
+  "build": 32,
   "minNative": 12,
   "date": "2026-08-18",
-  "notes": "Conferme di eliminazione con finestra elegante in tutto il sistema (risolto anche il problema per cui i file non venivano eliminati). Barra di avanzamento nella riproduzione audio. Aggiornamento in-app più chiaro.",
+  "notes": "Corretto il loop dell'aggiornamento: ora la build della shell viene riconosciuta anche via OTA. Eliminazione di video e registrazioni dal File Manager. Barra di avanzamento audio.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
-    "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",
+    "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "js/version.js",    "manifest.webmanifest",    "sw.js",
     "version.json"
   ]
 }

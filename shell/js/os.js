@@ -882,6 +882,11 @@ const OS = (() => {
     let last = null;   // ultimo esito del controllo
 
     async function localInfo() {
+      // Fonte primaria: window.__NOVA_SHELL iniettato da js/version.js. Funziona anche
+      // quando la shell gira da file:// (aggiornata via OTA), dove fetch() è bloccata
+      // dalla WebView → senza questo la build risultava 0 e l'update si riproponeva
+      // in loop. fetch("version.json") resta come fallback (web/PWA).
+      try { if (window.__NOVA_SHELL && window.__NOVA_SHELL.build) return window.__NOVA_SHELL; } catch {}
       try { const r = await fetch("version.json", { cache:"no-store" }); if (r.ok) return await r.json(); } catch {}
       return null;
     }

@@ -2037,6 +2037,7 @@ const NovaApps = (() => {
       const recDB = () => new Promise((res,rej)=>{ const r=indexedDB.open("nova-rec",1); r.onupgradeneeded=()=>r.result.createObjectStore("rec",{keyPath:"id"}); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); });
       const allRecs = () => new Promise(resolve=>{ let done=false; const fin=v=>{if(!done){done=true;resolve(v);}}; setTimeout(()=>fin([]),2000);
         (async()=>{ try{ const db=await recDB(); const rq=db.transaction("rec").objectStore("rec").getAll(); rq.onsuccess=()=>fin((rq.result||[]).sort((a,b)=>b.ts-a.ts)); rq.onerror=()=>fin([]);}catch{fin([]);} })(); });
+      const delRecFile = async (id) => { try{ const db=await recDB(); await new Promise(res=>{ const t=db.transaction("rec","readwrite"); t.objectStore("rec").delete(id); t.oncomplete=res; t.onerror=res; }); }catch{} };
       const fmtDur = s => { s=Math.round(s||0); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); };
 
       // riproduttore video a schermo intero (con traccia audio separata sincronizzata)
@@ -2326,13 +2327,16 @@ const NovaApps = (() => {
           root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="font-size:calc(16px*var(--fscale,1))">Video</div></div>
             ${vids.length?`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:0 4px 12px">${vids.map((p,i)=>`<div class="ph" data-vid="${i}" style="position:relative;aspect-ratio:1;border-radius:6px;background:#111 ${p.poster?`url('${p.poster}') center/cover`:''};cursor:pointer">
                 <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:calc(24px*var(--fscale,1));text-shadow:0 1px 6px rgba(0,0,0,.7)">▶</span>
-                <span style="position:absolute;right:5px;bottom:4px;color:#fff;font-size:calc(10px*var(--fscale,1));background:rgba(0,0,0,.55);padding:1px 5px;border-radius:8px">${fmtDur(p.dur)}</span></div>`).join("")}</div>`
+                <span style="position:absolute;right:5px;bottom:4px;color:#fff;font-size:calc(10px*var(--fscale,1));background:rgba(0,0,0,.55);padding:1px 5px;border-radius:8px">${fmtDur(p.dur)}</span>
+                <button class="fm-mdel" data-vdel="${i}" title="Elimina" style="position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:calc(12px*var(--fscale,1));cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2">🗑</button></div>`).join("")}</div>`
               :''}
             ${uvids.length?`<div class="group">${uvids.map(n=>nodeRow(n,subFor(n))).join("")}</div>`:''}
             ${(!vids.length&&!uvids.length)?`<div class="fm-empty" style="padding:40px">Nessun video. Registra con la Fotocamera.</div>`:''}
             <div style="height:80px"></div>`;
           root.querySelector(".back-btn").onclick=()=>{loc="home";draw();};
           root.querySelectorAll("[data-vid]").forEach(el=>el.onclick=()=>playVideo(vids[+el.dataset.vid]));
+          root.querySelectorAll("[data-vdel]").forEach(b=>b.onclick=async(e)=>{ e.stopPropagation(); const p=vids[+b.dataset.vdel]; if(!p) return;
+            if(await os.confirm({title:"Eliminare il video?",message:"Il video verrà eliminato definitivamente.",okText:"Elimina"})){ await os.photos.remove(p.id); draw(); } });
           bindNodeEvents();
           return;
         }
@@ -2345,6 +2349,7 @@ const NovaApps = (() => {
             ${recs.length?`<div class="section-label">Registrazioni</div><div class="group">${recs.map(r=>`
               <div class="item" style="flex-wrap:wrap"><button class="round-act small" data-play="${r.id}" style="background:var(--accent)">${ICO("play-fill","width:15px;height:15px")}</button>
                 <div class="i-body"><div class="i-title trunc">${esc(r.name)}.m4a</div><div class="i-sub">${fmtDur(r.dur)} · ${rel(r.ts)}</div></div>
+                <button class="round-act small" data-adel="${r.id}" title="Elimina" style="background:var(--surface-2);color:var(--danger)">${ICO("trash-fill","width:14px;height:14px")}</button>
                 <div class="i-ico i-ext" style="background:#ff9500">M4A</div>
                 <div class="fa-prog" data-prog="${r.id}" style="display:none;flex:0 0 100%;align-items:center;gap:12px;margin-top:6px">
                   <input type="range" class="slider fa-seek" min="0" max="${r.dur||1}" value="0" step="any" style="flex:1">
@@ -2374,6 +2379,8 @@ const NovaApps = (() => {
             seek.onchange=()=>{ try{ fa.currentTime=+seek.value; }catch{} faSeeking=false; };
             fa.play();
           });
+          root.querySelectorAll("[data-adel]").forEach(b=>b.onclick=async(e)=>{ e.stopPropagation(); const id=+b.dataset.adel; const r=recs.find(x=>x.id===id);
+            if(await os.confirm({title:"Eliminare la registrazione?",message:`"${r?r.name:"Questa registrazione"}" verrà eliminata definitivamente.`,okText:"Elimina"})){ try{fa.pause();}catch{} await delRecFile(id); draw(); } });
           bindNodeEvents();
           return;
         }

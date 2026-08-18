@@ -57,6 +57,15 @@ $FILES_JSON
 JSON
 echo "     version.json -> $VNAME (build $VCODE, minNative $MINNATIVE)"
 
+# genera js/version.js: espone la build via <script> (window.__NOVA_SHELL). Necessario
+# perché quando la shell gira da file:// (aggiornata via OTA) la WebView blocca
+# fetch("version.json"); così l'updater riconosce la build attiva e non ripropone in
+# loop lo stesso aggiornamento. Stessi numeri di version.json.
+cat > "$SHELL_SRC/js/version.js" <<JS
+/* Generato da build-apk.sh — build della shell in esecuzione. Vedi js/version.js nel repo. */
+window.__NOVA_SHELL = { version: "$VNAME", build: $VCODE, minNative: $MINNATIVE, date: "$VDATE" };
+JS
+
 rm -rf "$ASSETS/www"; mkdir -p "$ASSETS/www"
 cp -r "$SHELL_SRC"/. "$ASSETS/www/"
 rm -f "$ASSETS/www"/_t*.html   # non impacchettare gli harness di test
