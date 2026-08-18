@@ -61,6 +61,14 @@ public class MainActivity extends Activity {
     /** Esegue JS nella WebView dal thread UI (usato dai callback di rete della Mail). */
     void evalJs(String js) { runOnUiThread(() -> { if (web != null) web.evaluateJavascript(js, null); }); }
 
+    /** Al ritorno in primo piano (es. dopo le Impostazioni app) riacquisisce il microfono
+     *  nella Fotocamera se ora è concesso. */
+    @Override protected void onResume() {
+        super.onResume();
+        if (web != null && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+            evalJs("window.__novaMicResume && window.__novaMicResume()");
+    }
+
     /** Esito richieste permessi: avvisa la shell quando il microfono è concesso. */
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -356,6 +364,9 @@ public class MainActivity extends Activity {
         // microfono: la Fotocamera lo richiede a runtime prima di registrare un video,
         // così l'audio è già concesso quando parte la registrazione (video con suono).
         @JavascriptInterface public boolean micReady() {
+            return checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        }
+        @JavascriptInterface public boolean micGranted() {
             return checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
         }
         @JavascriptInterface public void requestMic() {

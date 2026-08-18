@@ -1,9 +1,9 @@
 {
-  "version": "0.1.23",
-  "build": 24,
-  "minNative": 24,
+  "version": "0.1.24",
+  "build": 25,
+  "minNative": 25,
   "date": "2026-08-18",
-  "notes": "v0.1.23: browser clone Chrome — selettore schede a griglia con anteprime e X, stella preferiti (blu=salvato), incognito distinto, schermo intero; audio video con avviso microfono; foto Rubrica/Galleria.",
+  "notes": "v0.1.24: nuova app Registratore audio; audio video con diagnostica microfono e riacquisizione dalle Impostazioni; browser Chrome con schede a griglia, stella, incognito, schermo intero.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",

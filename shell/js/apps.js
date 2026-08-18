@@ -269,8 +269,8 @@ const NovaApps = (() => {
             <div id="count" style="position:absolute;color:#fff;font-size:calc(96px*var(--fscale,1));font-weight:200;text-shadow:0 2px 20px rgba(0,0,0,.6);display:none"></div>
             <div id="flashfx" style="position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none"></div>
             <div id="cam-msg" style="position:absolute;color:#fff;text-align:center;padding:24px;font-size:calc(14px*var(--fscale,1));display:none"></div>
-            <div id="mic-chip" style="position:absolute;top:12px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:10px;background:rgba(0,0,0,.75);color:#fff;padding:8px 10px 8px 14px;border-radius:20px;font-size:calc(12px*var(--fscale,1));z-index:6;white-space:nowrap">
-              <span>🔇 Microfono disattivato</span>
+            <div id="mic-chip" style="position:absolute;top:12px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:10px;background:rgba(0,0,0,.78);color:#fff;padding:8px 10px 8px 14px;border-radius:20px;font-size:calc(12px*var(--fscale,1));z-index:6;white-space:nowrap">
+              <span id="mic-txt">🔇 Microfono disattivato</span>
               <button id="mic-enable" style="background:#0a84ff;border:none;color:#fff;padding:6px 14px;border-radius:15px;font-size:calc(12px*var(--fscale,1));cursor:pointer">Attiva</button></div>
           </div>
           <div class="cam-modes"><button data-mode="photo" class="on">FOTO</button><button data-mode="video">VIDEO</button></div>
@@ -340,7 +340,21 @@ const NovaApps = (() => {
 
       const shotBtn = root.querySelector("#shot");
       const micChip = root.querySelector("#mic-chip");
-      root.querySelector("#mic-enable").onclick = () => {
+      const micTxt = root.querySelector("#mic-txt");
+      const micBtn = root.querySelector("#mic-enable");
+      const micGranted = () => { try { return window.NovaNative && window.NovaNative.micGranted ? !!window.NovaNative.micGranted() : true; } catch { return true; } };
+      // aggiorna l'avviso microfono: nascosto se c'è audio; "Attiva" (Impostazioni)
+      // se il permesso è negato; "Riprova" se il permesso c'è ma manca la traccia audio.
+      const updateMicChip = () => {
+        if (!wantAudio || hasAudioTrack) { micChip.style.display = "none"; return; }
+        const granted = micGranted();
+        micTxt.textContent = granted ? "🔇 Audio non disponibile" : "🔇 Microfono disattivato";
+        micBtn.textContent = granted ? "Riprova" : "Attiva";
+        micChip.dataset.act = granted ? "retry" : "settings";
+        micChip.style.display = "flex";
+      };
+      micBtn.onclick = () => {
+        if (micChip.dataset.act === "retry") { start(); return; }
         try { if (window.NovaNative && window.NovaNative.openAppSettings) { window.NovaNative.openAppSettings(); return; } } catch {}
         try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {}
       };
@@ -381,8 +395,8 @@ const NovaApps = (() => {
           }
           if (!s) s = await navigator.mediaDevices.getUserMedia({ video: curVideo, audio: false });
           stream = s;
-          hasAudioTrack = stream.getAudioTracks().length > 0;
-          if (hasAudioTrack && micChip) micChip.style.display = "none";
+          hasAudioTrack = stream.getAudioTracks().some(t => t.readyState === "live");
+          updateMicChip();
           video.srcObject = stream; video.style.display = ""; msg.style.display = "none";
           vTrack = stream.getVideoTracks()[0] || null;
           try { const caps = vTrack && vTrack.getCapabilities && vTrack.getCapabilities(); zoomCap = caps && caps.zoom ? caps.zoom : null; } catch { zoomCap = null; }
@@ -426,9 +440,12 @@ const NovaApps = (() => {
           // niente notifica: se manca l'audio lo segnala il chip discreto in alto
           poster = grabPoster();
           recChunks = [];
-          let mime = "video/webm;codecs=vp8,opus";
-          if (!(window.MediaRecorder && MediaRecorder.isTypeSupported(mime))) mime = "video/webm";
-          rec = new MediaRecorder(stream, MediaRecorder.isTypeSupported(mime)?{mimeType:mime}:undefined);
+          // preferisci un container con audio Opus, così la traccia audio viene salvata
+          const cand = ["video/webm;codecs=vp8,opus","video/webm;codecs=vp9,opus","video/webm;codecs=h264,opus","video/mp4;codecs=h264,aac","video/webm"];
+          let mime = cand.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+          const opts = mime ? { mimeType:mime } : undefined;
+          if (opts && hasAudioTrack) opts.audioBitsPerSecond = 128000;
+          rec = new MediaRecorder(stream, opts);
           rec.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
           rec.onstop = () => {
             const blob = new Blob(recChunks, { type: recChunks[0]?recChunks[0].type:"video/webm" });
@@ -481,14 +498,17 @@ const NovaApps = (() => {
       // e riacquisisci lo stream con audio. Negato: mostra il chip "Attiva" (che apre
       // le Impostazioni dell'app) così l'utente può riattivare il microfono.
       window.__novaMic = (ok) => {
-        if (ok) { micChip.style.display = "none"; if (wantAudio && !hasAudioTrack && !rec) start(); }
-        else if (wantAudio) { micChip.style.display = "flex"; }
+        if (ok) { if (wantAudio && !hasAudioTrack && !rec) start(); else updateMicChip(); }
+        else updateMicChip();
       };
+      // tornando dall'app Impostazioni (dopo aver attivato il microfono a mano),
+      // riacquisisci lo stream così il video avrà l'audio senza riaprire la Fotocamera.
+      window.__novaMicResume = () => { if (wantAudio && !hasAudioTrack && !rec) start(); };
 
       start(); updateThumb();
       root._cleanup = () => { try{ if(rec) rec.stop(); }catch{} clearInterval(recTimer);
         try { if (flashOn && window.NovaNative && window.NovaNative.setTorch) window.NovaNative.setTorch(false); } catch {}
-        window.__novaMic = null;
+        window.__novaMic = null; window.__novaMicResume = null;
         if (stream) stream.getTracks().forEach(t=>t.stop()); };
     }});
 
@@ -3058,6 +3078,132 @@ const NovaApps = (() => {
       if (deep && sections[deep]) sections[deep](); else home();
     }});
 
-  const list = [phone, contacts, messages, mail, browser, camera, gallery, clock, calendar, weather, notes, calc, files, store, settings];
+  /* ---------- Registratore audio ---------- */
+  const recorder = app({ id:"recorder", name:"Registratore", icon:"🎙️", color:"#ff375f",
+    render(root, os) {
+      // store IndexedDB dedicato (le registrazioni possono essere grandi)
+      const DB = () => new Promise((res, rej) => {
+        const r = indexedDB.open("nova-rec", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("rec", { keyPath:"id" });
+        r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+      });
+      const allRecs = async () => { try { const db = await DB(); return await new Promise(res => {
+        const rq = db.transaction("rec").objectStore("rec").getAll();
+        rq.onsuccess = () => res((rq.result||[]).sort((a,b)=>b.ts-a.ts)); rq.onerror = () => res([]); }); } catch { return []; } };
+      const putRec = async (item) => { const db = await DB(); return new Promise((res,rej) => {
+        const t = db.transaction("rec","readwrite"); t.objectStore("rec").put(item); t.oncomplete = res; t.onerror = () => rej(t.error); }); };
+      const delRec = async (id) => { const db = await DB(); return new Promise((res) => {
+        const t = db.transaction("rec","readwrite"); t.objectStore("rec").delete(id); t.oncomplete = res; t.onerror = res; }); };
+
+      let stream = null, rec = null, chunks = [], t0 = 0, timer = null, recording = false;
+      let player = null, playingId = null;
+      const fmt = s => String(Math.floor(s/60)).padStart(2,"0")+":"+String(Math.floor(s%60)).padStart(2,"0");
+      const dayLabel = ts => { const d = new Date(ts), n = new Date(); const same = x => x.toDateString();
+        if (same(d)===same(n)) return "Oggi"; const y = new Date(n); y.setDate(n.getDate()-1);
+        if (same(d)===same(y)) return "Ieri"; return d.toLocaleDateString("it-IT",{day:"2-digit",month:"long",year:"numeric"}); };
+
+      const stopPlayback = () => { if (player) { try{ player.pause(); }catch{} player = null; } playingId = null; };
+
+      const draw = async () => {
+        stopPlayback();
+        const recs = await allRecs();
+        const groups = {};
+        recs.forEach(r => { const k = dayLabel(r.ts); (groups[k] = groups[k] || []).push(r); });
+        const listHtml = recs.length ? Object.entries(groups).map(([k,arr]) => `
+          <div class="date-head">${k}</div>
+          <div class="group">${arr.map(r => `
+            <div class="item" data-id="${r.id}">
+              <button class="round-act small play" data-play="${r.id}" style="background:var(--accent)">${ICO("play-fill","width:16px;height:16px")}</button>
+              <div class="i-body"><div class="i-title trunc rec-name" data-name="${r.id}">${r.name}</div>
+                <div class="i-sub">${fmt(r.dur||0)} · ${new Date(r.ts).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}</div></div>
+              <button class="round-act small" data-rename="${r.id}" style="background:var(--surface);color:var(--text)">${ICO("pencil-fill","width:14px;height:14px")}</button>
+              <button class="round-act small" data-del="${r.id}" style="background:var(--surface);color:var(--danger)">${ICO("trash-fill","width:14px;height:14px")}</button>
+            </div>`).join("")}</div>`).join("")
+          : `<div style="text-align:center;color:var(--text-dim);padding:30px 20px;font-size:calc(13px*var(--fscale,1))">Nessuna registrazione.<br>Tocca il pulsante rosso per iniziare.</div>`;
+
+        root.innerHTML = `<div class="hero"><div class="hero-l"><h1>Registratore</h1></div></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 16px 20px">
+            <div id="rec-time" style="font-size:calc(40px*var(--fscale,1));font-weight:200;font-variant-numeric:tabular-nums;letter-spacing:1px">00:00</div>
+            <div id="rec-state" style="color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">Pronto a registrare</div>
+            <button id="rec-btn" style="width:76px;height:76px;border-radius:50%;border:5px solid color-mix(in srgb,#ff375f 45%,transparent);background:#ff375f;cursor:pointer;transition:border-radius .2s,transform .1s"></button>
+            <div id="mic-warn" style="display:none;align-items:center;gap:10px;background:var(--surface);color:var(--text);padding:8px 10px 8px 14px;border-radius:16px;font-size:calc(12px*var(--fscale,1))">
+              <span>🔇 Microfono disattivato</span>
+              <button id="mic-go" class="btn" style="width:auto;padding:6px 14px;font-size:calc(12px*var(--fscale,1))">Attiva</button></div>
+          </div>
+          <div id="rec-list">${listHtml}</div>
+          <audio id="rec-audio" hidden></audio>`;
+        bind();
+      };
+
+      const setState = (txt) => { const e = root.querySelector("#rec-state"); if (e) e.textContent = txt; };
+
+      const start = async () => {
+        try {
+          try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {}
+          stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+        } catch (e) { root.querySelector("#mic-warn").style.display = "flex"; return; }
+        const cand = ["audio/webm;codecs=opus","audio/mp4;codecs=mp4a.40.2","audio/mp4","audio/webm","audio/ogg;codecs=opus"];
+        const mime = cand.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+        chunks = [];
+        rec = new MediaRecorder(stream, mime ? { mimeType:mime, audioBitsPerSecond:128000 } : undefined);
+        rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+        rec.onstop = async () => {
+          const blob = new Blob(chunks, { type: chunks[0] ? chunks[0].type : "audio/webm" });
+          const dur = Math.round((Date.now()-t0)/1000);
+          const r = new FileReader();
+          r.onload = async () => {
+            const now = new Date();
+            await putRec({ id: Date.now(), name: "Registrazione "+now.toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit"})+" "+now.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"}), ts: Date.now(), dur, data: r.result });
+            await draw();
+          };
+          r.readAsDataURL(blob);
+        };
+        rec.start();
+        recording = true; t0 = Date.now();
+        const btn = root.querySelector("#rec-btn"); btn.style.borderRadius = "20px"; btn.style.transform = "scale(.9)";
+        setState("Registrazione…");
+        os.vibrate && os.vibrate(20);
+        timer = setInterval(() => { const s = (Date.now()-t0)/1000; const e = root.querySelector("#rec-time"); if (e) e.textContent = fmt(s); }, 200);
+      };
+      const stop = () => {
+        if (!recording) return;
+        recording = false; clearInterval(timer); timer = null;
+        try { rec && rec.stop(); } catch {}
+        if (stream) { stream.getTracks().forEach(t=>t.stop()); stream = null; }
+        os.vibrate && os.vibrate(20);
+      };
+
+      const bind = () => {
+        const btn = root.querySelector("#rec-btn");
+        if (btn) btn.onclick = () => { recording ? stop() : start(); };
+        const go = root.querySelector("#mic-go");
+        if (go) go.onclick = () => { try { if (window.NovaNative && window.NovaNative.openAppSettings) { window.NovaNative.openAppSettings(); return; } } catch {}
+          try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {} };
+        const audio = root.querySelector("#rec-audio");
+        root.querySelectorAll("[data-play]").forEach(b => b.onclick = async () => {
+          const id = +b.dataset.play;
+          if (playingId === id) { stopPlayback(); b.innerHTML = ICO("play-fill","width:16px;height:16px"); return; }
+          root.querySelectorAll("[data-play]").forEach(x => x.innerHTML = ICO("play-fill","width:16px;height:16px"));
+          const recs = await allRecs(); const r = recs.find(x=>x.id===id); if (!r) return;
+          audio.src = r.data; audio.play(); player = audio; playingId = id;
+          b.innerHTML = ICO("pause-fill","width:16px;height:16px");
+          audio.onended = () => { b.innerHTML = ICO("play-fill","width:16px;height:16px"); playingId = null; };
+        });
+        root.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { stopPlayback(); await delRec(+b.dataset.del); await draw(); });
+        root.querySelectorAll("[data-rename]").forEach(b => b.onclick = async () => {
+          const id = +b.dataset.rename; const el = root.querySelector(`.rec-name[data-name="${id}"]`); if (!el) return;
+          const cur = el.textContent;
+          el.innerHTML = `<input value="${cur.replace(/"/g,'&quot;')}" style="width:100%;background:var(--surface-2);border:none;border-radius:8px;padding:6px 8px;color:var(--text);font-size:calc(14px*var(--fscale,1))">`;
+          const inp = el.querySelector("input"); inp.focus(); inp.select();
+          const commit = async () => { const recs = await allRecs(); const r = recs.find(x=>x.id===id); if (r) { r.name = inp.value.trim()||cur; await putRec(r); } await draw(); };
+          inp.onblur = commit; inp.onkeydown = e => { if (e.key==="Enter") inp.blur(); };
+        });
+      };
+
+      draw();
+      root._cleanup = () => { try { stop(); } catch {} stopPlayback(); };
+    }});
+
+  const list = [phone, contacts, messages, mail, browser, camera, gallery, recorder, clock, calendar, weather, notes, calc, files, store, settings];
   return { list, byId: Object.fromEntries(list.map(a => [a.id, a])), dock: list.filter(a => a.dock) };
 })();
