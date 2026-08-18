@@ -212,17 +212,25 @@ public class BrowserActivity extends Activity {
     }
 
     private void showTabSwitcher() {
-        String[] items = new String[tabs.size()];
-        for (int i = 0; i < tabs.size(); i++) {
+        // Ogni voce è una riga a tutta larghezza (chiara e toccabile): le schede
+        // aperte, poi le azioni "Nuova scheda" e "Chiudi scheda corrente".
+        int n = tabs.size();
+        String[] items = new String[n + 2];
+        for (int i = 0; i < n; i++) {
             Tab t = tabs.get(i);
             String ti = t.web.getTitle();
-            items[i] = (t.incognito ? "🕵 " : "") + (ti != null && !ti.isEmpty() ? ti : "Nuova scheda");
+            String label = (ti != null && !ti.isEmpty() ? ti : "Nuova scheda");
+            items[i] = (i == current ? "●  " : "○  ") + (t.incognito ? "🕵 " : "") + label;
         }
+        items[n]     = "＋  Nuova scheda";
+        items[n + 1] = "✕  Chiudi scheda corrente";
         new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
-            .setTitle("Schede (" + tabs.size() + ")")
-            .setItems(items, (d, w) -> selectTab(w))
-            .setPositiveButton("Nuova scheda", (d, w) -> newTab("https://www.google.com", false, false))
-            .setNeutralButton("Chiudi scheda", (d, w) -> closeTab(current))
+            .setTitle("Schede (" + n + ")")
+            .setItems(items, (d, w) -> {
+                if (w < tabs.size()) selectTab(w);
+                else if (w == tabs.size()) newTab("https://www.google.com", false, false);
+                else closeTab(current);
+            })
             .setNegativeButton("Annulla", null)
             .show();
     }

@@ -54,8 +54,33 @@ public class MainActivity extends Activity {
     private WebView web;
     private MailBridge mail;
 
+    // selezione file dai campi <input type="file"> della shell (foto rubrica, import galleria…)
+    private android.webkit.ValueCallback<android.net.Uri[]> filePathCallback;
+    private static final int REQ_FILE = 7;
+
     /** Esegue JS nella WebView dal thread UI (usato dai callback di rete della Mail). */
     void evalJs(String js) { runOnUiThread(() -> { if (web != null) web.evaluateJavascript(js, null); }); }
+
+    /** Consegna alla WebView il file scelto dal selettore di sistema (input type=file). */
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_FILE) {
+            if (filePathCallback == null) { super.onActivityResult(requestCode, resultCode, data); return; }
+            android.net.Uri[] results = null;
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                if (data.getClipData() != null) {
+                    int n = data.getClipData().getItemCount();
+                    results = new android.net.Uri[n];
+                    for (int i = 0; i < n; i++) results[i] = data.getClipData().getItemAt(i).getUri();
+                } else if (data.getData() != null) {
+                    results = new android.net.Uri[]{ data.getData() };
+                }
+            }
+            filePathCallback.onReceiveValue(results);
+            filePathCallback = null;
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
 
     // ============================================================
     //  Aggiornamento OTA della SOLA interfaccia (shell HTML/JS/CSS) senza reinstallare
@@ -159,6 +184,21 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient() {
             @Override public void onPermissionRequest(PermissionRequest request) {
                 runOnUiThread(() -> request.grant(request.getResources()));
+            }
+            // apre il selettore file di sistema per i campi <input type="file"> della shell
+            @Override public boolean onShowFileChooser(WebView view,
+                    android.webkit.ValueCallback<android.net.Uri[]> cb,
+                    WebChromeClient.FileChooserParams params) {
+                if (filePathCallback != null) { filePathCallback.onReceiveValue(null); }
+                filePathCallback = cb;
+                Intent intent;
+                try { intent = params.createIntent(); }
+                catch (Exception e) { intent = new Intent(Intent.ACTION_GET_CONTENT); intent.setType("*/*"); intent.addCategory(Intent.CATEGORY_OPENABLE); }
+                if (params.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE)
+                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                try { startActivityForResult(Intent.createChooser(intent, "Seleziona"), REQ_FILE); }
+                catch (Exception e) { filePathCallback = null; return false; }
+                return true;
             }
         });
 
@@ -303,6 +343,16 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void callMute(boolean m)   { CallHub.mute(m); }
         @JavascriptInterface public void callSpeaker(boolean s){ CallHub.speaker(s); }
         @JavascriptInterface public void callDtmf(String s)    { CallHub.dtmf(s); }
+
+        // microfono: la Fotocamera lo richiede a runtime prima di registrare un video,
+        // così l'audio è già concesso quando parte la registrazione (video con suono).
+        @JavascriptInterface public boolean micReady() {
+            return checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        }
+        @JavascriptInterface public void requestMic() {
+            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+                runOnUiThread(() -> requestPermissions(new String[]{ android.Manifest.permission.RECORD_AUDIO }, 4));
+        }
 
         // apre un URL nel browser nativo a schermo intero (niente limiti iframe)
         @JavascriptInterface public void openBrowser(String url) {

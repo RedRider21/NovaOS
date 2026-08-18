@@ -339,6 +339,9 @@ const NovaApps = (() => {
       const setMode = (m) => { mode = m;
         root.querySelectorAll("[data-mode]").forEach(b=>b.classList.toggle("on", b.dataset.mode===m));
         shotBtn.classList.toggle("rec", m==="video");
+        // passando a Video, chiedi subito il permesso microfono al sistema:
+        // così l'audio è già concesso quando parte la registrazione.
+        if (m==="video") { try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {} }
       };
       root.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{ if(rec) return; setMode(b.dataset.mode); });
 
@@ -399,9 +402,13 @@ const NovaApps = (() => {
           // prova a ottenere l'audio del microfono; se non c'è permesso, registra muto
           let recStream = stream;
           try {
+            // assicura il permesso microfono a runtime prima di registrare
+            try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {}
             recAudio = await navigator.mediaDevices.getUserMedia({ audio:true });
-            recStream = new MediaStream([ ...stream.getVideoTracks(), ...recAudio.getAudioTracks() ]);
+            if (recAudio.getAudioTracks().length) recStream = new MediaStream([ ...stream.getVideoTracks(), ...recAudio.getAudioTracks() ]);
+            else { recAudio = null; }
           } catch { recAudio = null; }
+          if (!recAudio) os.notify({ app:"camera", title:"Video", text:"Microfono non disponibile: registro senza audio." });
           let mime = "video/webm;codecs=vp8,opus";
           if (!(window.MediaRecorder && MediaRecorder.isTypeSupported(mime))) mime = "video/webm";
           rec = new MediaRecorder(recStream, MediaRecorder.isTypeSupported(mime)?{mimeType:mime}:undefined);
@@ -606,73 +613,100 @@ const NovaApps = (() => {
       const go = (u) => {
         u = norm((u||"").trim()); if(!u) return;
         history = [{url:u, t:Date.now()}, ...history.filter(h=>h.url!==u)].slice(0,30); saveH();
-        if (native) {
-          try { window.NovaNative.openBrowser(u); return; }
-          catch (e) { /* se il bridge fallisce, ripiega sull'anteprima */ }
-        }
+        // resta in-shell come le altre app: mostra l'anteprima incorporata.
+        // Se il sito blocca l'iframe, compare il pulsante "Apri sul dispositivo".
         drawFrame(u);
       };
-      const addBookmark = (u) => {
-        u = norm((u||"").trim()); if(!u) return;
-        if (!bookmarks.some(b=>b.url===u)) { bookmarks.push({ name:host(u), url:u }); saveB(); os.notify({ app:"browser", title:"Browser", text:"Aggiunto ai preferiti." }); }
-        drawHome();
+      const sameUrl = (a,b) => norm(a)===norm(b);
+      const isBm = (u) => bookmarks.some(b=>sameUrl(b.url,u));
+      // stella: piena colorata = preferito, piena grigia = non preferito (manca la stella vuota tra le icone)
+      const starBtn = (id, u, sz=16) => `<button class="round-act small" id="${id}" data-star="${u}" style="background:var(--surface);color:${isBm(u)?"#f5b301":"var(--text-dim)"}">${ICO("star-fill","width:"+sz+"px;height:"+sz+"px")}</button>`;
+      const toggleBm = (u, label) => {
+        u = norm((u||"").trim()); if(!u) return false;
+        const i = bookmarks.findIndex(b=>sameUrl(b.url,u));
+        if (i>=0) { bookmarks.splice(i,1); saveB(); os.notify({ app:"browser", title:"Browser", text:"Rimosso dai preferiti." }); return false; }
+        bookmarks.push({ name:(label||host(u)), url:u }); saveB(); os.notify({ app:"browser", title:"Browser", text:"Aggiunto ai preferiti." }); return true;
       };
+      let editBm = false;
+
       const bar = (val="") => `<div style="display:flex;gap:8px;padding:6px 16px 12px;align-items:center">
           <div class="searchbar" style="flex:1;margin:0"><span class="sb-i">${ICO("search")}</span>
-            <input id="url" value="${val}" placeholder="Cerca su Google o digita URL"></div>
-          <button class="round-act small" id="star" style="background:var(--surface);color:var(--text)">${ICO("star-fill","width:17px;height:17px")}</button>
+            <input id="url" value="${val.replace(/"/g,'&quot;')}" placeholder="Cerca su Google o digita URL"></div>
+          ${starBtn("star", val, 17)}
           <button class="round-act small" id="go" style="background:var(--accent)">${ICO("send-fill","width:16px;height:16px")}</button></div>`;
       const bind = () => {
         const inp = root.querySelector("#url");
         root.querySelector("#go").onclick = () => go(inp.value);
         inp.onkeydown = e => { if(e.key==="Enter") go(inp.value); };
-        const star = root.querySelector("#star"); if (star) star.onclick = () => addBookmark(inp.value);
+        const star = root.querySelector("#star");
+        if (star) star.onclick = () => {
+          if (!inp.value.trim()) { os.notify({ app:"browser", title:"Browser", text:"Scrivi o apri un sito per aggiungerlo ai preferiti." }); return; }
+          const on = toggleBm(inp.value);
+          star.style.color = on ? "#f5b301" : "var(--text-dim)";
+          if (root.querySelector("#bm-grid") || editBm) drawHome();
+        };
       };
 
       const drawHome = () => {
-        root.innerHTML = `<div class="hero"><div class="hero-l"><h1>Browser</h1>${native?'':'<div class="hero-sub">Anteprima in-app — i siti reali si aprono sul device</div>'}</div></div>
+        const bmView = bookmarks.length ? (editBm
+          ? `<div class="group">${bookmarks.map((b,i)=>`
+              <div class="item"><div class="i-ico" style="background:hsl(${hue(b.url)} 60% 45%)">${ICO("globe2","width:20px;height:20px")}</div>
+                <div class="i-body"><input class="bm-name" data-i="${i}" value="${(b.name||"").replace(/"/g,'&quot;')}" style="width:100%;box-sizing:border-box;background:var(--surface-2);border:none;border-radius:8px;padding:7px 9px;color:var(--text);font-size:calc(13px*var(--fscale,1))"><div class="i-sub trunc" style="margin-top:3px">${b.url}</div></div>
+                <button class="round-act small" data-rm="${i}" style="background:var(--surface);color:var(--danger)">${ICO("trash-fill","width:15px;height:15px")}</button></div>`).join("")}</div>`
+          : `<div id="bm-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:6px 16px">
+              ${bookmarks.map((b)=>`<div class="bm" data-url="${b.url}" style="text-align:center;cursor:pointer">
+                <div style="width:52px;height:52px;border-radius:16px;margin:0 auto;background:hsl(${hue(b.url)} 60% 45%);display:flex;align-items:center;justify-content:center;color:#fff">${ICO("globe2","width:24px;height:24px")}</div>
+                <div style="font-size:calc(11px*var(--fscale,1));margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.name}</div></div>`).join("")}</div>`)
+          : `<div style="color:var(--text-dim);font-size:calc(13px*var(--fscale,1));padding:6px 16px">Nessun preferito. Apri un sito e tocca la stella.</div>`;
+
+        root.innerHTML = `<div class="hero"><div class="hero-l"><h1>Browser</h1>${native?'':'<div class="hero-sub">Anteprima in-app</div>'}</div></div>
           ${bar()}
-          <div class="section-label">Preferiti</div>
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:6px 16px">
-            ${bookmarks.length?bookmarks.map((b,i)=>`<div class="bm" data-url="${b.url}" style="text-align:center;cursor:pointer;position:relative">
-              <div style="width:52px;height:52px;border-radius:16px;margin:0 auto;background:hsl(${hue(b.url)} 60% 45%);display:flex;align-items:center;justify-content:center;color:#fff">${ICO("globe2","width:24px;height:24px")}</div>
-              <div style="font-size:calc(11px*var(--fscale,1));margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.name}</div>
-              <button data-rm="${i}" style="position:absolute;top:-4px;right:6px;width:18px;height:18px;border-radius:50%;background:var(--surface-2);border:none;color:var(--text-dim);font-size:calc(10px*var(--fscale,1));cursor:pointer">✕</button></div>`).join("")
-              :`<div style="grid-column:span 4;color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">Nessun preferito. Apri un sito e tocca la stella.</div>`}
-          </div>
+          <div class="section-label" style="display:flex;align-items:center;justify-content:space-between;padding-right:16px">
+            <span>Preferiti</span>
+            ${bookmarks.length?`<button id="editbm" class="btn ghost" style="width:auto;padding:2px 12px;font-size:calc(12px*var(--fscale,1))">${editBm?"Fine":"Modifica"}</button>`:""}</div>
+          ${bmView}
           <div class="section-label">Cronologia</div>
-          <div class="group">${history.length?history.slice(0,8).map(h=>`
+          <div class="group">${history.length?history.slice(0,10).map(h=>`
             <div class="item" data-url="${h.url}"><div class="i-ico" style="background:hsl(${hue(h.url)} 60% 45%)">${ICO("globe2","width:20px;height:20px")}</div>
-              <div class="i-body"><div class="i-title trunc">${host(h.url)}</div><div class="i-sub trunc">${h.url}</div></div></div>`).join("")
+              <div class="i-body"><div class="i-title trunc">${host(h.url)}</div><div class="i-sub trunc">${h.url}</div></div>
+              ${starBtn("", h.url, 15)}</div>`).join("")
             :'<div class="item"><div class="i-sub" style="padding:6px">Nessuna cronologia</div></div>'}</div>
           ${history.length?'<button class="btn ghost" id="clrh" style="margin:12px 16px;color:var(--danger)">Cancella cronologia</button>':''}
-          <div style="height:80px"></div>`;
+          <div style="height:16px"></div>`;
         bind();
-        root.querySelectorAll("[data-url]").forEach(el => el.onclick = e => { if (e.target.dataset.rm!==undefined) return; go(el.dataset.url); });
-        root.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => { e.stopPropagation(); bookmarks.splice(+b.dataset.rm,1); saveB(); drawHome(); });
+        const eb = root.querySelector("#editbm"); if (eb) eb.onclick = () => { editBm=!editBm; drawHome(); };
+        root.querySelectorAll("[data-url]").forEach(el => el.onclick = e => { if (e.target.closest("[data-star]")) return; go(el.dataset.url); });
+        root.querySelectorAll("[data-star]").forEach(b => { if (b.id==="star") return; b.onclick = e => { e.stopPropagation(); toggleBm(b.dataset.star); drawHome(); }; });
+        root.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => { e.stopPropagation(); bookmarks.splice(+b.dataset.rm,1); saveB(); if(!bookmarks.length) editBm=false; drawHome(); });
+        root.querySelectorAll(".bm-name").forEach(inp => inp.onchange = () => { const i=+inp.dataset.i; if(bookmarks[i]){ bookmarks[i].name = inp.value.trim()||host(bookmarks[i].url); saveB(); } });
         const clr = root.querySelector("#clrh"); if (clr) clr.onclick = () => { history=[]; saveH(); drawHome(); };
       };
 
       const drawFrame = (u) => {
-        root.innerHTML = `<div class="back-bar" style="padding:6px 12px"><button class="back-btn"></button>
-            <div class="back-title" style="flex:1;font-size:calc(14px*var(--fscale,1));overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${host(u)}</div>
-            <button class="btn ghost" id="newtab" style="width:auto;padding:0 12px;font-size:calc(13px*var(--fscale,1))">↗ Nuova scheda</button></div>
-          ${bar(u)}
-          <div style="padding:0 12px 90px;position:relative">
-            <div id="fload" style="position:absolute;left:12px;right:12px;top:0;height:500px;border-radius:12px;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">
-              <div class="spin"></div>Caricamento di ${host(u)}…</div>
-            <iframe id="frame" src="${u}" style="width:100%;height:500px;border:none;border-radius:12px;background:#fff"></iframe>
-            <div id="fblock" style="display:none;color:var(--text-dim);font-size:calc(13px*var(--fscale,1));padding:14px 6px;line-height:1.5">
-              ⚠️ <b>${host(u)}</b> non consente l'anteprima incorporata (protezione anti-iframe, tipica di banche e Google).<br>
-              <button class="btn" id="opnew" style="margin-top:10px;width:auto;padding:10px 16px">Apri in una nuova scheda</button></div>
-          </div>`;
-        root.querySelector(".back-btn").onclick = drawHome;
+        u = norm(u);
         const openReal = () => {
           if (window.NovaNative && window.NovaNative.openBrowser) { try { window.NovaNative.openBrowser(u); return; } catch(e){} }
           try { window.open(u, "_blank", "noopener"); } catch(e){}
         };
-        root.querySelector("#newtab").onclick = openReal;
-        root.querySelector("#opnew").onclick = openReal;
+        root.innerHTML = `<div class="back-bar" style="padding:6px 10px;gap:6px"><button class="back-btn"></button>
+            <div class="back-title" style="flex:1;font-size:calc(14px*var(--fscale,1));overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${host(u)}</div>
+            <button class="round-act small" id="b-reload" style="background:var(--surface);color:var(--text)">${ICO("arrow-repeat","width:16px;height:16px")}</button>
+            ${starBtn("b-star", u, 16)}
+            <button class="round-act small" id="b-open" style="background:var(--accent)" title="Apri sul dispositivo">${ICO("box-arrow-right","width:15px;height:15px")}</button></div>
+          ${bar(u)}
+          <div style="padding:0 12px 24px;position:relative">
+            <div id="fload" style="position:absolute;left:12px;right:12px;top:0;height:500px;border-radius:12px;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">
+              <div class="spin"></div>Caricamento di ${host(u)}…</div>
+            <iframe id="frame" src="${u}" style="width:100%;height:500px;border:none;border-radius:12px;background:#fff"></iframe>
+            <div id="fblock" style="display:none;color:var(--text-dim);font-size:calc(13px*var(--fscale,1));padding:14px 6px;line-height:1.5;text-align:center">
+              <div style="font-size:calc(30px*var(--fscale,1))">🔒</div><b>${host(u)}</b> non consente l'anteprima incorporata (protezione tipica di banche e Google).<br>
+              <button class="btn" id="opnew" style="margin-top:12px;width:auto;padding:11px 18px">Apri sul dispositivo</button></div>
+          </div>`;
+        root.querySelector(".back-btn").onclick = drawHome;
+        root.querySelector("#b-open").onclick = openReal;
+        root.querySelector("#b-reload").onclick = () => drawFrame(u);
+        const bstar = root.querySelector("#b-star");
+        bstar.onclick = () => { const on = toggleBm(u); bstar.style.color = on ? "#f5b301" : "var(--text-dim)"; };
         const frame = root.querySelector("#frame");
         const load = root.querySelector("#fload");
         const block = root.querySelector("#fblock");
@@ -686,14 +720,15 @@ const NovaApps = (() => {
           frame.style.display = "none";
           if (block) block.style.display = "block";
         }, 4000);
+        const opn = root.querySelector("#opnew"); if (opn) opn.onclick = openReal;
         bind();
       };
 
       drawHome();
-      // Sul device il browser "vero" è quello nativo stile Chrome (schede, incognito,
-      // download…). Aprendolo subito, dal dock parte direttamente il browser nuovo
-      // invece della sola home interna: un'unica esperienza allineata.
-      if (native) { try { window.NovaNative.openBrowser((history[0] && history[0].url) || "https://www.google.com"); } catch (e) {} }
+      // Il Browser si apre sulla sua home interna come ogni altra app: nessuna
+      // apertura automatica del browser nativo (evita il lancio con URL stantio).
+      // Il browser nativo a schermo intero resta disponibile toccando un sito o il
+      // pulsante "Apri sul dispositivo" per i siti che bloccano l'anteprima iframe.
     }});
 
   /* ---------- Galleria (foto, album, visualizzatore, modifica) ---------- */
