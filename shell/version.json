@@ -1,9 +1,9 @@
 {
-  "version": "0.1.27",
-  "build": 28,
-  "minNative": 28,
+  "version": "0.1.28",
+  "build": 29,
+  "minNative": 29,
   "date": "2026-08-18",
-  "notes": "v0.1.27: audio nei video — registrato in parallelo dal runtime e riprodotto sincronizzato in Galleria (web-first: su GeckoView sarà audio nello stream).",
+  "notes": "v0.1.28: File Manager mostra i Video reali (Fotocamera, con play) e le registrazioni Audio (Registratore, con riproduzione); conteggi aggiornati.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",

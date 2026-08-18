@@ -2033,6 +2033,31 @@ const NovaApps = (() => {
       const flat = pred => nodes.filter(n=>n.kind==="text"&&pred(n));
       const pathOf = n => { let p=[], cur=byId(n.parent); let g=0; while(cur&&g++<20){ p.unshift(cur.name); cur=byId(cur.parent);} return p.length?p.join(" / "):"I miei file"; };
 
+      // ---- media reali: registrazioni audio (store del Registratore) ----
+      const recDB = () => new Promise((res,rej)=>{ const r=indexedDB.open("nova-rec",1); r.onupgradeneeded=()=>r.result.createObjectStore("rec",{keyPath:"id"}); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); });
+      const allRecs = () => new Promise(resolve=>{ let done=false; const fin=v=>{if(!done){done=true;resolve(v);}}; setTimeout(()=>fin([]),2000);
+        (async()=>{ try{ const db=await recDB(); const rq=db.transaction("rec").objectStore("rec").getAll(); rq.onsuccess=()=>fin((rq.result||[]).sort((a,b)=>b.ts-a.ts)); rq.onerror=()=>fin([]);}catch{fin([]);} })(); });
+      const fmtDur = s => { s=Math.round(s||0); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); };
+
+      // riproduttore video a schermo intero (con traccia audio separata sincronizzata)
+      const playVideo = (p) => {
+        const ov = document.createElement("div");
+        ov.style.cssText = "position:fixed;inset:0;z-index:70;background:#000;display:flex;flex-direction:column";
+        ov.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;color:#fff"><button id="vx" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(18px*var(--fscale,1));cursor:pointer">✕</button><div style="flex:1;font-weight:600">Video · ${fmtDur(p.dur)}</div></div>
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden">
+            <video id="fv" src="${p.data}" controls autoplay playsinline ${p.audioTrack?'muted':''} style="max-width:100%;max-height:100%;object-fit:contain;background:#000"></video>
+            ${p.audioTrack?`<audio id="fva" src="${p.audioTrack}" preload="auto"></audio>`:''}</div>`;
+        document.body.appendChild(ov);
+        const close = () => ov.remove();
+        ov.querySelector("#vx").onclick = close;
+        if (p.audioTrack) { const vid=ov.querySelector("#fv"), aud=ov.querySelector("#fva");
+          vid.addEventListener("play",()=>{ aud.currentTime=vid.currentTime; aud.play().catch(()=>{}); });
+          vid.addEventListener("pause",()=>aud.pause());
+          vid.addEventListener("seeking",()=>{ try{aud.currentTime=vid.currentTime;}catch{} });
+          vid.addEventListener("timeupdate",()=>{ if(Math.abs(aud.currentTime-vid.currentTime)>0.25) aud.currentTime=vid.currentTime; });
+          vid.addEventListener("ended",()=>aud.pause()); }
+      };
+
       const stats = async () => {
         const photos = await os.photos.all();
         const photoBytes = photos.reduce((s,p)=>s+(p.data?p.data.length*0.75:0),0);
@@ -2229,7 +2254,7 @@ const NovaApps = (() => {
               <div class="fm-bar"><i style="width:0;background:#af52de" id="st-bar-p"></i><i style="width:${userBytes?60:0}%;background:#5e5ce6" id="st-bar-u"></i><i style="width:0;background:#ffd60a" id="st-bar-n"></i></div>
               <div class="fm-legend"><span><b style="background:#af52de"></b><span id="st-p">Foto …</span></span><span><b style="background:#5e5ce6"></b>File ${kb(userBytes)}</span><span><b style="background:#ffd60a"></b><span id="st-n">Note …</span></span></div></div>
             <div class="section-label">Categorie</div>
-            <div class="fm-cats">${cats.map(([id,ic,nm,col,sub])=>`<button class="fm-cat" data-loc="${id}"><span class="fm-cat-ic" style="background:${col}">${ic}</span><span class="fm-cat-b"><span class="fm-cat-n">${nm}</span><span class="fm-cat-s" ${id==='images'?'id="sm-img"':''}>${sub}</span></span></button>`).join("")}</div>
+            <div class="fm-cats">${cats.map(([id,ic,nm,col,sub])=>`<button class="fm-cat" data-loc="${id}"><span class="fm-cat-ic" style="background:${col}">${ic}</span><span class="fm-cat-b"><span class="fm-cat-n">${nm}</span><span class="fm-cat-s" ${id==='images'?'id="sm-img"':id==='cat:video'?'id="sm-vid"':id==='cat:audio'?'id="sm-aud"':''}>${sub}</span></span></button>`).join("")}</div>
             ${recent.length?`<div class="section-label">Recenti</div><div class="group">${recent.map(n=>nodeRow(n,subFor(n))).join("")}</div>`:''}
             <div style="height:80px"></div>`;
           root.querySelector("#new").onclick=createPanel;
@@ -2237,9 +2262,17 @@ const NovaApps = (() => {
           qi.oninput=e=>{ query=e.target.value; loc = query.trim()?"search":"home"; const p=e.target.selectionStart; draw().then(()=>{ const q2=root.querySelector("#q"); if(q2){q2.focus();q2.setSelectionRange(p,p);} }); };
           root.querySelectorAll("[data-loc]").forEach(el=>el.onclick=()=>{ loc=el.dataset.loc; query=""; selMode=false; sel.clear(); draw(); });
           bindNodeEvents();
+          // conteggi media reali (video Fotocamera + registrazioni)
+          Promise.all([os.photos.all(), allRecs()]).then(([ph, recs]) => {
+            const set=(id,v)=>{const e=root.querySelector(id); if(e) e.textContent=v;};
+            const nV = ph.filter(p=>p.video).length + flat(n=>catOf(n)==="video").length;
+            const nA = recs.length + flat(n=>catOf(n)==="audio").length;
+            set("#sm-vid", nV+(nV===1?" video":" video")); set("#sm-aud", nA+(nA===1?" audio":" audio"));
+            set("#sm-img", `${ph.filter(p=>!p.video).length} foto`);
+          }).catch(()=>{});
           stats().then(st => {
             const set=(id,v)=>{const e=root.querySelector(id); if(e) e.textContent=v;};
-            set("#st-total", kb(st.total)+" usati"); set("#st-p", "Foto "+kb(st.photoBytes)); set("#st-n","Note "+kb(st.noteBytes)); set("#sm-img", `${st.photos.length} foto · ${kb(st.photoBytes)}`);
+            set("#st-total", kb(st.total)+" usati"); set("#st-p", "Foto "+kb(st.photoBytes)); set("#st-n","Note "+kb(st.noteBytes)); set("#sm-img", `${st.photos.filter(p=>!p.video).length} foto · ${kb(st.photoBytes)}`);
             const bp=root.querySelector("#st-bar-p"), bu=root.querySelector("#st-bar-u"), bn=root.querySelector("#st-bar-n");
             if (bp&&st.total){ bp.style.width=Math.max(3,st.photoBytes/st.total*100)+"%"; bu.style.width=(st.userBytes/st.total*100)+"%"; bn.style.width=(st.noteBytes/st.total*100)+"%"; }
           }).catch(()=>{});
@@ -2266,7 +2299,7 @@ const NovaApps = (() => {
 
         // ------- IMMAGINI (foto reali) -------
         if (loc === "images") {
-          const photos = await os.photos.all();
+          const photos = (await os.photos.all()).filter(p=>!p.video);
           root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="font-size:calc(16px*var(--fscale,1))">Immagini</div></div>
             ${photos.length?`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:0 4px 90px">${photos.map((p,i)=>`<div class="ph" data-img="${i}" style="aspect-ratio:1;border-radius:6px;background:url('${p.data}') center/cover;cursor:pointer"></div>`).join("")}</div>`
               :`<div class="fm-empty" style="padding:40px">Nessuna foto. Scatta con la Fotocamera.</div>`}`;
@@ -2286,7 +2319,51 @@ const NovaApps = (() => {
           return;
         }
 
-        // ------- CATEGORIE (recent / doc / video / audio) -------
+        // ------- VIDEO (reali dalla Fotocamera/Galleria) -------
+        if (loc === "cat:video") {
+          const vids = (await os.photos.all()).filter(p=>p.video);
+          const uvids = catList("video");   // eventuali video tra i file utente
+          root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="font-size:calc(16px*var(--fscale,1))">Video</div></div>
+            ${vids.length?`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:0 4px 12px">${vids.map((p,i)=>`<div class="ph" data-vid="${i}" style="position:relative;aspect-ratio:1;border-radius:6px;background:#111 ${p.poster?`url('${p.poster}') center/cover`:''};cursor:pointer">
+                <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:calc(24px*var(--fscale,1));text-shadow:0 1px 6px rgba(0,0,0,.7)">▶</span>
+                <span style="position:absolute;right:5px;bottom:4px;color:#fff;font-size:calc(10px*var(--fscale,1));background:rgba(0,0,0,.55);padding:1px 5px;border-radius:8px">${fmtDur(p.dur)}</span></div>`).join("")}</div>`
+              :''}
+            ${uvids.length?`<div class="group">${uvids.map(n=>nodeRow(n,subFor(n))).join("")}</div>`:''}
+            ${(!vids.length&&!uvids.length)?`<div class="fm-empty" style="padding:40px">Nessun video. Registra con la Fotocamera.</div>`:''}
+            <div style="height:80px"></div>`;
+          root.querySelector(".back-btn").onclick=()=>{loc="home";draw();};
+          root.querySelectorAll("[data-vid]").forEach(el=>el.onclick=()=>playVideo(vids[+el.dataset.vid]));
+          bindNodeEvents();
+          return;
+        }
+
+        // ------- AUDIO (registrazioni reali + file utente) -------
+        if (loc === "cat:audio") {
+          const recs = await allRecs();
+          const uaud = catList("audio");
+          root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="font-size:calc(16px*var(--fscale,1))">Audio</div></div>
+            ${recs.length?`<div class="section-label">Registrazioni</div><div class="group">${recs.map(r=>`
+              <div class="item"><button class="round-act small" data-play="${r.id}" style="background:var(--accent)">${ICO("play-fill","width:15px;height:15px")}</button>
+                <div class="i-body"><div class="i-title trunc">${esc(r.name)}.m4a</div><div class="i-sub">${fmtDur(r.dur)} · ${rel(r.ts)}</div></div>
+                <div class="i-ico i-ext" style="background:#ff9500">M4A</div></div>`).join("")}</div>`:''}
+            ${uaud.length?`<div class="section-label">File audio</div><div class="group">${uaud.map(n=>nodeRow(n,subFor(n))).join("")}</div>`:''}
+            ${(!recs.length&&!uaud.length)?`<div class="fm-empty" style="padding:40px">Nessun audio. Usa il Registratore.</div>`:''}
+            <audio id="fa" hidden></audio><div style="height:80px"></div>`;
+          root.querySelector(".back-btn").onclick=()=>{loc="home";draw();};
+          const fa = root.querySelector("#fa"); let playingRec = null;
+          root.querySelectorAll("[data-play]").forEach(b=>b.onclick=async()=>{
+            const id=+b.dataset.play;
+            if(playingRec===id){ try{fa.pause();}catch{} playingRec=null; b.innerHTML=ICO("play-fill","width:15px;height:15px"); return; }
+            root.querySelectorAll("[data-play]").forEach(x=>x.innerHTML=ICO("play-fill","width:15px;height:15px"));
+            const r=recs.find(x=>x.id===id); if(!r) return;
+            fa.src=r.data; fa.play(); playingRec=id; b.innerHTML=ICO("pause-fill","width:15px;height:15px");
+            fa.onended=()=>{ b.innerHTML=ICO("play-fill","width:15px;height:15px"); playingRec=null; };
+          });
+          bindNodeEvents();
+          return;
+        }
+
+        // ------- CATEGORIE (recent / doc) -------
         if (/^cat:/.test(loc)) {
           const key=loc.slice(4);
           const title={recent:"Recenti",doc:"Documenti",video:"Video",audio:"Audio"}[key]||"File";
