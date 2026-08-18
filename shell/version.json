@@ -1,9 +1,9 @@
 {
-  "version": "0.1.28",
-  "build": 29,
-  "minNative": 29,
+  "version": "0.1.29",
+  "build": 30,
+  "minNative": 12,
   "date": "2026-08-18",
-  "notes": "v0.1.28: File Manager mostra i Video reali (Fotocamera, con play) e le registrazioni Audio (Registratore, con riproduzione); conteggi aggiornati.",
+  "notes": "Miglioramenti e correzioni.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",

@@ -2343,21 +2343,36 @@ const NovaApps = (() => {
           const uaud = catList("audio");
           root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="font-size:calc(16px*var(--fscale,1))">Audio</div></div>
             ${recs.length?`<div class="section-label">Registrazioni</div><div class="group">${recs.map(r=>`
-              <div class="item"><button class="round-act small" data-play="${r.id}" style="background:var(--accent)">${ICO("play-fill","width:15px;height:15px")}</button>
+              <div class="item" style="flex-wrap:wrap"><button class="round-act small" data-play="${r.id}" style="background:var(--accent)">${ICO("play-fill","width:15px;height:15px")}</button>
                 <div class="i-body"><div class="i-title trunc">${esc(r.name)}.m4a</div><div class="i-sub">${fmtDur(r.dur)} · ${rel(r.ts)}</div></div>
-                <div class="i-ico i-ext" style="background:#ff9500">M4A</div></div>`).join("")}</div>`:''}
+                <div class="i-ico i-ext" style="background:#ff9500">M4A</div>
+                <div class="fa-prog" data-prog="${r.id}" style="display:none;flex:0 0 100%;align-items:center;gap:12px;margin-top:6px">
+                  <input type="range" class="slider fa-seek" min="0" max="${r.dur||1}" value="0" step="any" style="flex:1">
+                  <span class="fa-tt" style="font-size:calc(12px*var(--fscale,1));color:var(--text-dim);font-variant-numeric:tabular-nums;white-space:nowrap">00:00 / ${fmtDur(r.dur)}</span>
+                </div></div>`).join("")}</div>`:''}
             ${uaud.length?`<div class="section-label">File audio</div><div class="group">${uaud.map(n=>nodeRow(n,subFor(n))).join("")}</div>`:''}
             ${(!recs.length&&!uaud.length)?`<div class="fm-empty" style="padding:40px">Nessun audio. Usa il Registratore.</div>`:''}
             <audio id="fa" hidden></audio><div style="height:80px"></div>`;
           root.querySelector(".back-btn").onclick=()=>{loc="home";draw();};
-          const fa = root.querySelector("#fa"); let playingRec = null;
+          const fa = root.querySelector("#fa"); let playingRec = null; let faSeeking = false;
+          const faDur = (fb) => (isFinite(fa.duration) && fa.duration>0) ? fa.duration : fb;
           root.querySelectorAll("[data-play]").forEach(b=>b.onclick=async()=>{
             const id=+b.dataset.play;
-            if(playingRec===id){ try{fa.pause();}catch{} playingRec=null; b.innerHTML=ICO("play-fill","width:15px;height:15px"); return; }
+            const item=b.closest(".item"), prog=item.querySelector(".fa-prog"), seek=item.querySelector(".fa-seek"), tt=item.querySelector(".fa-tt");
+            if(playingRec===id){ if(fa.paused){ fa.play(); b.innerHTML=ICO("pause-fill","width:15px;height:15px"); } else { fa.pause(); b.innerHTML=ICO("play-fill","width:15px;height:15px"); } return; }
+            try{fa.pause();}catch{}
             root.querySelectorAll("[data-play]").forEach(x=>x.innerHTML=ICO("play-fill","width:15px;height:15px"));
+            root.querySelectorAll(".fa-prog").forEach(p=>p.style.display="none");
             const r=recs.find(x=>x.id===id); if(!r) return;
-            fa.src=r.data; fa.play(); playingRec=id; b.innerHTML=ICO("pause-fill","width:15px;height:15px");
-            fa.onended=()=>{ b.innerHTML=ICO("play-fill","width:15px;height:15px"); playingRec=null; };
+            const total=r.dur||0;
+            fa.src=r.data; playingRec=id; faSeeking=false; prog.style.display="flex"; b.innerHTML=ICO("pause-fill","width:15px;height:15px");
+            seek.max=total||1; seek.value=0; tt.textContent="00:00 / "+fmtDur(total);
+            fa.onloadedmetadata=()=>{ const d=faDur(total); if(d){ seek.max=d; tt.textContent=fmtDur(fa.currentTime)+" / "+fmtDur(d); } };
+            fa.ontimeupdate=()=>{ if(faSeeking) return; const d=faDur(total); seek.value=fa.currentTime; tt.textContent=fmtDur(fa.currentTime)+" / "+fmtDur(d); };
+            fa.onended=()=>{ b.innerHTML=ICO("play-fill","width:15px;height:15px"); seek.value=0; tt.textContent="00:00 / "+fmtDur(faDur(total)); playingRec=null; };
+            seek.oninput=()=>{ faSeeking=true; tt.textContent=fmtDur(+seek.value)+" / "+fmtDur(faDur(total)); };
+            seek.onchange=()=>{ try{ fa.currentTime=+seek.value; }catch{} faSeeking=false; };
+            fa.play();
           });
           bindNodeEvents();
           return;
@@ -3204,7 +3219,7 @@ const NovaApps = (() => {
         const t = db.transaction("rec","readwrite"); t.objectStore("rec").delete(id); t.oncomplete = res; t.onerror = res; }); };
 
       let stream = null, rec = null, chunks = [], t0 = 0, timer = null, recording = false;
-      let player = null, playingId = null;
+      let player = null, playingId = null, seeking = false;
       const fmt = s => String(Math.floor(s/60)).padStart(2,"0")+":"+String(Math.floor(s%60)).padStart(2,"0");
       const dayLabel = ts => { const d = new Date(ts), n = new Date(); const same = x => x.toDateString();
         if (same(d)===same(n)) return "Oggi"; const y = new Date(n); y.setDate(n.getDate()-1);
@@ -3220,12 +3235,16 @@ const NovaApps = (() => {
         const listHtml = recs.length ? Object.entries(groups).map(([k,arr]) => `
           <div class="date-head">${k}</div>
           <div class="group">${arr.map(r => `
-            <div class="item" data-id="${r.id}">
+            <div class="item" data-id="${r.id}" style="flex-wrap:wrap">
               <button class="round-act small play" data-play="${r.id}" style="background:var(--accent)">${ICO("play-fill","width:16px;height:16px")}</button>
               <div class="i-body"><div class="i-title trunc rec-name" data-name="${r.id}">${r.name}</div>
                 <div class="i-sub">${fmt(r.dur||0)} · ${new Date(r.ts).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}</div></div>
               <button class="round-act small" data-rename="${r.id}" style="background:var(--surface);color:var(--text)">${ICO("pencil-fill","width:14px;height:14px")}</button>
               <button class="round-act small" data-del="${r.id}" style="background:var(--surface);color:var(--danger)">${ICO("trash-fill","width:14px;height:14px")}</button>
+              <div class="rec-prog" data-prog="${r.id}" style="display:none;flex:0 0 100%;align-items:center;gap:12px;margin-top:6px">
+                <input type="range" class="slider rec-seek" min="0" max="${r.dur||1}" value="0" step="any" style="flex:1">
+                <span class="rec-tt" style="font-size:calc(12px*var(--fscale,1));color:var(--text-dim);font-variant-numeric:tabular-nums;white-space:nowrap">00:00 / ${fmt(r.dur||0)}</span>
+              </div>
             </div>`).join("")}</div>`).join("")
           : `<div style="text-align:center;color:var(--text-dim);padding:30px 20px;font-size:calc(13px*var(--fscale,1))">Nessuna registrazione.<br>Tocca il pulsante rosso per iniziare.</div>`;
 
@@ -3338,16 +3357,41 @@ const NovaApps = (() => {
           try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {}
         };
         const audio = root.querySelector("#rec-audio");
+        const durOf = (fallback) => (isFinite(audio.duration) && audio.duration > 0) ? audio.duration : fallback;
         root.querySelectorAll("[data-play]").forEach(b => b.onclick = async () => {
           const id = +b.dataset.play;
-          if (playingId === id) { stopPlayback(); b.innerHTML = ICO("play-fill","width:16px;height:16px"); return; }
+          const item = b.closest(".item");
+          const prog = item.querySelector(".rec-prog");
+          const seek = item.querySelector(".rec-seek");
+          const tt = item.querySelector(".rec-tt");
+          // stessa traccia → metti in pausa / riprendi mantenendo la posizione e la barra
+          if (playingId === id && player) {
+            if (player.paused) { player.play(); b.innerHTML = ICO("pause-fill","width:16px;height:16px"); }
+            else { player.pause(); b.innerHTML = ICO("play-fill","width:16px;height:16px"); }
+            return;
+          }
+          // nuova traccia → azzera le altre
+          stopPlayback();
           root.querySelectorAll("[data-play]").forEach(x => x.innerHTML = ICO("play-fill","width:16px;height:16px"));
+          root.querySelectorAll(".rec-prog").forEach(p => p.style.display = "none");
           const recs = await allRecs(); const r = recs.find(x=>x.id===id); if (!r) return;
-          audio.src = r.data; audio.play(); player = audio; playingId = id;
-          b.innerHTML = ICO("pause-fill","width:16px;height:16px");
-          audio.onended = () => { b.innerHTML = ICO("play-fill","width:16px;height:16px"); playingId = null; };
+          const total = r.dur || 0;
+          audio.src = r.data; player = audio; playingId = id; seeking = false;
+          prog.style.display = "flex"; b.innerHTML = ICO("pause-fill","width:16px;height:16px");
+          seek.max = total || 1; seek.value = 0; tt.textContent = "00:00 / " + fmt(total);
+          audio.onloadedmetadata = () => { const d = durOf(total); if (d) { seek.max = d; tt.textContent = fmt(audio.currentTime) + " / " + fmt(d); } };
+          audio.ontimeupdate = () => { if (seeking) return; const d = durOf(total); seek.value = audio.currentTime; tt.textContent = fmt(audio.currentTime) + " / " + fmt(d); };
+          audio.onended = () => { b.innerHTML = ICO("play-fill","width:16px;height:16px"); seek.value = 0; tt.textContent = "00:00 / " + fmt(durOf(total)); playingId = null; };
+          seek.oninput = () => { seeking = true; tt.textContent = fmt(+seek.value) + " / " + fmt(durOf(total)); };
+          seek.onchange = () => { try { audio.currentTime = +seek.value; } catch {} seeking = false; };
+          audio.play();
         });
-        root.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { stopPlayback(); await delRec(+b.dataset.del); await draw(); });
+        root.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+          const id = +b.dataset.del;
+          const recs = await allRecs(); const r = recs.find(x=>x.id===id);
+          if (!confirm(`Eliminare "${r ? r.name : "questa registrazione"}"?`)) return;
+          stopPlayback(); await delRec(id); await draw();
+        });
         root.querySelectorAll("[data-rename]").forEach(b => b.onclick = async () => {
           const id = +b.dataset.rename; const el = root.querySelector(`.rec-name[data-name="${id}"]`); if (!el) return;
           const cur = el.textContent;
