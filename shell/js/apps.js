@@ -339,9 +339,14 @@ const NovaApps = (() => {
       const setMode = (m) => { mode = m;
         root.querySelectorAll("[data-mode]").forEach(b=>b.classList.toggle("on", b.dataset.mode===m));
         shotBtn.classList.toggle("rec", m==="video");
-        // passando a Video, chiedi subito il permesso microfono al sistema:
-        // così l'audio è già concesso quando parte la registrazione.
-        if (m==="video") { try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {} }
+        // Video: chiedi il permesso microfono e riacquisisci lo stream con audio.
+        // Foto: torna a solo video (rilascia il microfono).
+        const want = (m==="video");
+        if (want !== wantAudio) {
+          wantAudio = want;
+          if (want) { try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {} }
+          start();
+        }
       };
       root.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{ if(rec) return; setMode(b.dataset.mode); });
 
@@ -352,12 +357,22 @@ const NovaApps = (() => {
         else { t.style.backgroundImage = ""; t.innerHTML = ICO("images","width:22px;height:22px"); }
       };
 
-      const start = async (constraints) => {
+      // in modalità Video acquisiamo UN solo stream video+audio (registrazione
+      // affidabile su WebView); in Foto lo stream è solo video (così scattare
+      // non dipende mai dal permesso microfono).
+      let wantAudio = false, hasAudioTrack = false;
+      let curVideo = { facingMode: facing };
+      const start = async (videoConstraint) => {
+        if (videoConstraint) curVideo = videoConstraint;
         try {
           if (stream) stream.getTracks().forEach(t=>t.stop());
-          // anteprima SOLO video: chiedere l'audio qui farebbe fallire getUserMedia
-          // se manca il permesso microfono (regressione: cadeva anche la foto).
-          stream = await navigator.mediaDevices.getUserMedia(constraints || { video:{ facingMode: facing }, audio:false });
+          let s = null;
+          if (wantAudio) {
+            try { s = await navigator.mediaDevices.getUserMedia({ video: curVideo, audio: true }); } catch { s = null; }
+          }
+          if (!s) s = await navigator.mediaDevices.getUserMedia({ video: curVideo, audio: false });
+          stream = s;
+          hasAudioTrack = stream.getAudioTracks().length > 0;
           video.srcObject = stream; video.style.display = ""; msg.style.display = "none";
           vTrack = stream.getVideoTracks()[0] || null;
           try { const caps = vTrack && vTrack.getCapabilities && vTrack.getCapabilities(); zoomCap = caps && caps.zoom ? caps.zoom : null; } catch { zoomCap = null; }
@@ -393,28 +408,19 @@ const NovaApps = (() => {
         save(cv.toDataURL("image/jpeg", 0.9));
       };
 
-      let recAudio = null;
       const startRec = async () => {
         if (!stream) { root.querySelector("#pick").click(); return; }
         try {
+          // se il microfono non è ancora nello stream, prova a riacquisirlo ora
+          if (!hasAudioTrack && wantAudio) { try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {} await start(); }
+          if (!hasAudioTrack) os.notify({ app:"camera", title:"Video", text:"Microfono non disponibile: registro senza audio." });
           poster = grabPoster();
           recChunks = [];
-          // prova a ottenere l'audio del microfono; se non c'è permesso, registra muto
-          let recStream = stream;
-          try {
-            // assicura il permesso microfono a runtime prima di registrare
-            try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {}
-            recAudio = await navigator.mediaDevices.getUserMedia({ audio:true });
-            if (recAudio.getAudioTracks().length) recStream = new MediaStream([ ...stream.getVideoTracks(), ...recAudio.getAudioTracks() ]);
-            else { recAudio = null; }
-          } catch { recAudio = null; }
-          if (!recAudio) os.notify({ app:"camera", title:"Video", text:"Microfono non disponibile: registro senza audio." });
           let mime = "video/webm;codecs=vp8,opus";
           if (!(window.MediaRecorder && MediaRecorder.isTypeSupported(mime))) mime = "video/webm";
-          rec = new MediaRecorder(recStream, MediaRecorder.isTypeSupported(mime)?{mimeType:mime}:undefined);
+          rec = new MediaRecorder(stream, MediaRecorder.isTypeSupported(mime)?{mimeType:mime}:undefined);
           rec.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
           rec.onstop = () => {
-            if (recAudio) { recAudio.getTracks().forEach(t=>t.stop()); recAudio = null; }
             const blob = new Blob(recChunks, { type: recChunks[0]?recChunks[0].type:"video/webm" });
             const dur = Math.round((Date.now()-recStart)/1000);
             const r = new FileReader(); r.onload = () => save(r.result, { video:true, dur, poster }); r.readAsDataURL(blob);
@@ -454,16 +460,21 @@ const NovaApps = (() => {
       };
       root.querySelector("#flip").onclick = () => {
         if (rec) return;
-        if (cams.length > 1) { curCam = (curCam+1) % cams.length; start({ video:{ deviceId:{ exact: cams[curCam].deviceId } }, audio:false }); }
-        else { facing = facing==="environment" ? "user" : "environment"; start({ video:{ facingMode: facing }, audio:false }); }
+        if (cams.length > 1) { curCam = (curCam+1) % cams.length; start({ deviceId:{ exact: cams[curCam].deviceId } }); }
+        else { facing = facing==="environment" ? "user" : "environment"; start({ facingMode: facing }); }
       };
       root.querySelector("#thumb").onclick = () => os.openApp("gallery");
       root.querySelector("#pick").onchange = (e) => { const f=e.target.files[0]; if(!f) return;
         const r=new FileReader(); r.onload=()=>save(r.result); r.readAsDataURL(f); };
 
+      // il permesso microfono arriva in modo asincrono: quando concesso, se siamo
+      // in modalità Video senza audio, riacquisisci lo stream così il video avrà l'audio.
+      window.__novaMic = (ok) => { if (ok && wantAudio && !hasAudioTrack && !rec) start(); };
+
       start(); updateThumb();
       root._cleanup = () => { try{ if(rec) rec.stop(); }catch{} clearInterval(recTimer);
         try { if (flashOn && window.NovaNative && window.NovaNative.setTorch) window.NovaNative.setTorch(false); } catch {}
+        window.__novaMic = null;
         if (stream) stream.getTracks().forEach(t=>t.stop()); };
     }});
 

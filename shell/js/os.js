@@ -587,6 +587,12 @@ const OS = (() => {
     if (a.web && window.NovaNative && window.NovaNative.openBrowser) {
       try { window.NovaNative.openBrowser(a.url); return; } catch (e) {}
     }
+    // Browser: sul device apre direttamente il browser nativo (clone Chrome, schede,
+    // preferiti, download) — lo stesso che apre le web app. In emulatore (nessun
+    // bridge) resta l'anteprima interna in-app come ripiego.
+    if (a.id === "browser" && window.NovaNative && window.NovaNative.openBrowser) {
+      try { window.NovaNative.openBrowser(""); return; } catch (e) {}
+    }
     clearIntervals(); cleanupApp();
     currentApp = id;
     const frame = $("#app-frame");
@@ -644,7 +650,21 @@ const OS = (() => {
     $("#pin-keys").innerHTML = keys.map(k => k===""
       ? `<div></div>`
       : `<button class="pin-key ${k==='⌫'?'fn':''}" data-k="${k}">${k}</button>`).join("");
-    $("#pin-keys").querySelectorAll("[data-k]").forEach(b => b.onclick = () => pinPress(b.dataset.k));
+    // pointerdown = risposta immediata al tocco (niente ritardo del click ~300ms
+    // né interferenze con lo swipe del lockscreen); un solo evento per pressione.
+    $("#pin-keys").querySelectorAll("[data-k]").forEach(b => {
+      const press = e => {
+        e.preventDefault(); e.stopPropagation();
+        b.classList.add("press");
+        vibrate(8);
+        pinPress(b.dataset.k);
+      };
+      const release = () => b.classList.remove("press");
+      b.addEventListener("pointerdown", press);
+      b.addEventListener("pointerup", release);
+      b.addEventListener("pointerleave", release);
+      b.addEventListener("pointercancel", release);
+    });
   }
   function renderPinDots(len = 4) {
     $("#pin-dots").innerHTML = Array.from({length:len}).map((_,i) =>

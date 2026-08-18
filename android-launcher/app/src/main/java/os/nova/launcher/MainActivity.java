@@ -61,6 +61,15 @@ public class MainActivity extends Activity {
     /** Esegue JS nella WebView dal thread UI (usato dai callback di rete della Mail). */
     void evalJs(String js) { runOnUiThread(() -> { if (web != null) web.evaluateJavascript(js, null); }); }
 
+    /** Esito richieste permessi: avvisa la shell quando il microfono è concesso. */
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 4) {
+            boolean ok = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            evalJs("window.__novaMic && window.__novaMic(" + (ok ? "true" : "false") + ")");
+        }
+    }
+
     /** Consegna alla WebView il file scelto dal selettore di sistema (input type=file). */
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQ_FILE) {

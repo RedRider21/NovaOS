@@ -1,9 +1,9 @@
 {
-  "version": "0.1.21",
-  "build": 22,
-  "minNative": 22,
+  "version": "0.1.22",
+  "build": 23,
+  "minNative": 23,
   "date": "2026-08-18",
-  "notes": "v0.1.21: fix barra tabbar sotto i tasti di sistema, browser in-shell come le altre app con gestione preferiti rinnovata, selezione foto in Rubrica/Galleria, audio nei video, tab switcher browser più chiaro.",
+  "notes": "v0.1.22: dock apre il browser nativo (clone Chrome) come le web app; gestione preferiti completa (apri/rinomina/elimina) e schede incognito separate; selezione foto Rubrica/Galleria; audio nei video con richiesta microfono; spazio menu Galleria sopra i tasti; tastierino PIN reattivo.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "manifest.webmanifest",    "sw.js",

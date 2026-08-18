@@ -212,24 +212,46 @@ public class BrowserActivity extends Activity {
     }
 
     private void showTabSwitcher() {
-        // Ogni voce è una riga a tutta larghezza (chiara e toccabile): le schede
-        // aperte, poi le azioni "Nuova scheda" e "Chiudi scheda corrente".
-        int n = tabs.size();
-        String[] items = new String[n + 2];
-        for (int i = 0; i < n; i++) {
-            Tab t = tabs.get(i);
+        // Come Chrome: le schede normali e quelle in incognito sono in gruppi
+        // separati con intestazione, poi le azioni. Ogni voce è una riga a tutta
+        // larghezza; a ogni riga corrisponde un codice azione in `act`.
+        // Codici: >=0 seleziona la scheda con quell'indice; -1 intestazione (no-op);
+        // -2 nuova scheda; -3 nuova incognito; -4 chiudi scheda corrente.
+        java.util.List<String> items = new java.util.ArrayList<>();
+        java.util.List<Integer> act = new java.util.ArrayList<>();
+        int nNorm = 0, nInc = 0;
+        for (Tab t : tabs) { if (t.incognito) nInc++; else nNorm++; }
+
+        items.add("—  Schede  (" + nNorm + ")  —"); act.add(-1);
+        if (nNorm == 0) { items.add("    nessuna scheda normale"); act.add(-1); }
+        for (int i = 0; i < tabs.size(); i++) {
+            Tab t = tabs.get(i); if (t.incognito) continue;
             String ti = t.web.getTitle();
-            String label = (ti != null && !ti.isEmpty() ? ti : "Nuova scheda");
-            items[i] = (i == current ? "●  " : "○  ") + (t.incognito ? "🕵 " : "") + label;
+            items.add((i == current ? "●  " : "○  ") + (ti != null && !ti.isEmpty() ? ti : "Nuova scheda"));
+            act.add(i);
         }
-        items[n]     = "＋  Nuova scheda";
-        items[n + 1] = "✕  Chiudi scheda corrente";
+        items.add("—  In incognito 🕵  (" + nInc + ")  —"); act.add(-1);
+        if (nInc == 0) { items.add("    nessuna scheda in incognito"); act.add(-1); }
+        for (int i = 0; i < tabs.size(); i++) {
+            Tab t = tabs.get(i); if (!t.incognito) continue;
+            String ti = t.web.getTitle();
+            items.add((i == current ? "●  " : "○  ") + (ti != null && !ti.isEmpty() ? ti : "Nuova scheda"));
+            act.add(i);
+        }
+        items.add("＋  Nuova scheda");            act.add(-2);
+        items.add("＋  Nuova scheda in incognito"); act.add(-3);
+        items.add("✕  Chiudi scheda corrente");   act.add(-4);
+
+        final java.util.List<Integer> fa = act;
         new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
-            .setTitle("Schede (" + n + ")")
-            .setItems(items, (d, w) -> {
-                if (w < tabs.size()) selectTab(w);
-                else if (w == tabs.size()) newTab("https://www.google.com", false, false);
-                else closeTab(current);
+            .setTitle("Schede (" + tabs.size() + ")")
+            .setItems(items.toArray(new String[0]), (d, w) -> {
+                int a = fa.get(w);
+                if (a >= 0) selectTab(a);
+                else if (a == -2) newTab("https://www.google.com", false, false);
+                else if (a == -3) newTab("https://www.google.com", true, false);
+                else if (a == -4) closeTab(current);
+                else showTabSwitcher(); // intestazione: riapri l'elenco
             })
             .setNegativeButton("Annulla", null)
             .show();
@@ -242,7 +264,7 @@ public class BrowserActivity extends Activity {
         p.getMenu().add(0, 2, 0, "Nuova scheda in incognito");
         p.getMenu().add(0, 3, 0, curWeb() != null && curWeb().canGoForward() ? "Avanti →" : "Avanti");
         p.getMenu().add(0, 4, 0, "Preferiti");
-        p.getMenu().add(0, 5, 0, "Aggiungi ai preferiti ☆");
+        p.getMenu().add(0, 5, 0, (curWeb() != null && isBookmarked(curWeb().getUrl())) ? "Rimuovi dai preferiti ★" : "Aggiungi ai preferiti ☆");
         p.getMenu().add(0, 6, 0, "Cronologia");
         p.getMenu().add(0, 7, 0, "Trova nella pagina");
         p.getMenu().add(0, 8, 0, curTab() != null && curTab().desktop ? "Sito mobile" : "Sito desktop");
@@ -255,7 +277,7 @@ public class BrowserActivity extends Activity {
                 case 2: newTab("https://www.google.com", true, false); return true;
                 case 3: if (w != null && w.canGoForward()) w.goForward(); return true;
                 case 4: showBookmarks(); return true;
-                case 5: if (w != null) addBookmark(w.getTitle(), w.getUrl()); return true;
+                case 5: if (w != null) toggleBookmark(w.getTitle(), w.getUrl()); return true;
                 case 6: showHistory(); return true;
                 case 7: showFindBar(true); return true;
                 case 8: if (curTab() != null) { curTab().desktop = !curTab().desktop; applyUa(curTab()); if (w != null) w.reload(); } return true;
@@ -451,21 +473,89 @@ public class BrowserActivity extends Activity {
             putArr("history", out);
         } catch (Exception e) {}
     }
-    private void showBookmarks() { showList("Preferiti", arr("bookmarks"), true); }
-    private void showHistory() { showList("Cronologia", arr("history"), false); }
-    private void showList(String title, JSONArray a, boolean isBm) {
+    private boolean isBookmarked(String url) {
+        if (url == null || url.isEmpty()) return false;
+        JSONArray a = arr("bookmarks");
+        for (int i = 0; i < a.length(); i++) { JSONObject o = a.optJSONObject(i); if (o != null && url.equals(o.optString("url"))) return true; }
+        return false;
+    }
+    /** Aggiunge o rimuove il preferito (toggle) e mostra un avviso. */
+    private void toggleBookmark(String title, String url) {
+        if (url == null || url.isEmpty()) return;
+        if (isBookmarked(url)) { removeBookmarkByUrl(url); Toast.makeText(this, "Rimosso dai preferiti", Toast.LENGTH_SHORT).show(); }
+        else addBookmark(title, url);
+    }
+    private void removeBookmarkByUrl(String url) {
+        try { JSONArray a = arr("bookmarks"), out = new JSONArray();
+            for (int i = 0; i < a.length(); i++) { JSONObject o = a.getJSONObject(i); if (!url.equals(o.optString("url"))) out.put(o); }
+            putArr("bookmarks", out);
+        } catch (Exception e) {}
+    }
+    private void removeBookmarkAt(int idx) {
+        try { JSONArray a = arr("bookmarks"), out = new JSONArray();
+            for (int i = 0; i < a.length(); i++) if (i != idx) out.put(a.get(i));
+            putArr("bookmarks", out);
+        } catch (Exception e) {}
+    }
+
+    /** Elenco preferiti: tocca una voce per aprire/rinominare/eliminare. */
+    private void showBookmarks() {
+        JSONArray a = arr("bookmarks");
+        int n = a.length();
+        if (n == 0) {
+            new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle("Preferiti")
+                .setMessage("Nessun preferito.\nApri un sito e usa ☆ Aggiungi ai preferiti dal menu.")
+                .setNegativeButton("Chiudi", null).show();
+            return;
+        }
+        final String[] labels = new String[n];
+        for (int i = 0; i < n; i++) { JSONObject o = a.optJSONObject(i); labels[i] = "★  " + (o != null ? o.optString("title", o.optString("url")) : ""); }
+        new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle("Preferiti (" + n + ")")
+            .setItems(labels, (d, w) -> bookmarkActions(w))
+            .setNegativeButton("Chiudi", null).show();
+    }
+    private void bookmarkActions(int idx) {
+        JSONArray a = arr("bookmarks");
+        JSONObject o = a.optJSONObject(idx); if (o == null) return;
+        final String title = o.optString("title", o.optString("url"));
+        final String url = o.optString("url");
+        new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle(title)
+            .setItems(new String[]{ "Apri", "Apri in nuova scheda", "Rinomina", "Elimina" }, (d, w) -> {
+                switch (w) {
+                    case 0: WebView wv = curWeb(); if (wv != null) wv.loadUrl(url); break;
+                    case 1: newTab(url, false, false); break;
+                    case 2: renameBookmark(idx); break;
+                    case 3: removeBookmarkAt(idx); Toast.makeText(this, "Preferito eliminato", Toast.LENGTH_SHORT).show(); break;
+                }
+            })
+            .setNegativeButton("Annulla", null).show();
+    }
+    private void renameBookmark(int idx) {
+        JSONArray a = arr("bookmarks"); JSONObject o = a.optJSONObject(idx); if (o == null) return;
+        final EditText in = new EditText(this);
+        in.setText(o.optString("title", o.optString("url")));
+        in.setSelectAllOnFocus(true);
+        int pad = (int) (18 * getResources().getDisplayMetrics().density);
+        FrameLayout box = new FrameLayout(this); box.setPadding(pad, pad / 2, pad, 0); box.addView(in);
+        new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle("Rinomina preferito").setView(box)
+            .setPositiveButton("Salva", (d, w) -> {
+                try { JSONArray b = arr("bookmarks"); JSONObject bo = b.optJSONObject(idx);
+                    if (bo != null) { String t = in.getText().toString().trim(); bo.put("title", t.isEmpty() ? bo.optString("url") : t); putArr("bookmarks", b); }
+                } catch (Exception e) {}
+            })
+            .setNegativeButton("Annulla", null).show();
+    }
+
+    private void showHistory() {
+        JSONArray a = arr("history");
         int n = a.length();
         final String[] labels = new String[n];
         final String[] urls = new String[n];
-        for (int i = 0; i < n; i++) {
-            JSONObject o = a.optJSONObject(i);
-            labels[i] = o != null ? o.optString("title", o.optString("url")) : "";
-            urls[i] = o != null ? o.optString("url") : "";
-        }
-        AlertDialog.Builder bld = new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle(title);
-        if (n == 0) bld.setMessage(isBm ? "Nessun preferito." : "Nessuna cronologia.");
+        for (int i = 0; i < n; i++) { JSONObject o = a.optJSONObject(i); labels[i] = o != null ? o.optString("title", o.optString("url")) : ""; urls[i] = o != null ? o.optString("url") : ""; }
+        AlertDialog.Builder bld = new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle("Cronologia");
+        if (n == 0) bld.setMessage("Nessuna cronologia.");
         else bld.setItems(labels, (d, w) -> { WebView wv = curWeb(); if (wv != null) wv.loadUrl(urls[w]); });
-        if (!isBm && n > 0) bld.setNeutralButton("Cancella", (d, w) -> putArr("history", new JSONArray()));
+        if (n > 0) bld.setNeutralButton("Cancella", (d, w) -> putArr("history", new JSONArray()));
         bld.setNegativeButton("Chiudi", null).show();
     }
 

@@ -272,12 +272,13 @@ body[data-theme="light"] .dock { background: rgba(255,255,255,.6); }
 /* ============================================================
    APP VIEW
    ============================================================ */
-#app-view { background: var(--bg); transform: translateY(20px); }
+/* padding-bottom = altezza navbar: la navbar (tasti sistema) è trasparente e
+   galleggia in fondo; riservando lo spazio qui, l'app-frame (e la sua tabbar)
+   termina sopra i tasti invece di finirci sotto. */
+#app-view { background: var(--bg); transform: translateY(20px); padding-bottom: var(--nav-h); }
 #app-view.active { transform: translateY(0); }
 .statusbar--app { background: var(--bg-2); }
-/* padding-bottom = altezza navbar: la navbar è trasparente e galleggia sopra i
-   contenuti, quindi va riservato spazio o tabbar/liste finiscono sotto i tasti. */
-.app-frame { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding-bottom: var(--nav-h); }
+.app-frame { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
 
 /* ---------- componenti riusabili nelle app ---------- */
 .app-header { padding: 8px 20px 16px; }
@@ -409,11 +410,12 @@ body[data-theme="light"] .dock { background: rgba(255,255,255,.6); }
 .pin-dot.on { background: var(--text); border-color: var(--text); }
 .pin-keys { display: grid; grid-template-columns: repeat(3, 74px); gap: 18px; }
 .pin-key { width: 74px; height: 74px; border-radius: 50%; border: none; background: rgba(255,255,255,.08);
-  color: var(--text); font-size:calc(28px*var(--fscale,1)); font-weight: 300; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  color: var(--text); font-size:calc(28px*var(--fscale,1)); font-weight: 300; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
 body[data-theme="light"] .pin-key { background: rgba(0,0,0,.06); }
-.pin-key:active { background: var(--accent); color:#fff; }
+.pin-key:active, .pin-key.press { background: var(--accent); color:#fff; }
 .pin-key.fn { background: none; font-size:calc(15px*var(--fscale,1)); }
-.pin-key.fn:active { background: none; opacity: .6; }
+.pin-key.fn:active, .pin-key.fn.press { background: none; opacity: .6; }
 @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
 
 /* ============================================================
@@ -600,7 +602,7 @@ body.a11y-contrast[data-theme="light"] { --text: #000000; --text-dim: #1a1a1a; -
 .act-col { display:flex; flex-direction:column; align-items:center; gap:6px; color:var(--text-dim); font-size:calc(11px*var(--fscale,1)); }
 
 /* ---------- Barra a schede inferiore (Orologio, Galleria) ---------- */
-.tabbar { position:sticky; bottom:var(--nav-h); left:0; right:0; display:flex; background:var(--bg); border-top:1px solid var(--surface-2); padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px)); z-index:20; }
+.tabbar { position:sticky; bottom:0; left:0; right:0; display:flex; background:var(--bg); border-top:1px solid var(--surface-2); padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px)); z-index:20; }
 .tabbar button { flex:1; background:none; border:none; color:var(--text-dim); cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:3px; padding:7px 0; font-size:calc(11px*var(--fscale,1)); border-radius:12px; }
 .tabbar button.on { color:var(--accent); }
 .tabbar button.on .tb-pill { background:color-mix(in srgb, var(--accent) 18%, transparent); }
