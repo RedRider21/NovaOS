@@ -2853,11 +2853,15 @@ const NovaApps = (() => {
           const ir = sec.querySelector("#icon-reset"); if (ir) ir.onclick = () => { ["iconStyle","deskColor","iconColor","accentColor"].forEach((k,i)=>os.set(k, i?"":"filled")); os.set("iconShape","squircle"); sections.display(); };
           // esporta/importa tema nel formato .novatheme (allineato al Theme Studio)
           sec.querySelector("#th-export").onclick = () => {
+            const iconMap = {}; Object.entries(S.iconMap||{}).forEach(([id,v]) => { if (v) iconMap[id] = { type:"emoji", value:v }; });
+            const order = os.store.get("launcherOrder", []);
             const t = { format:"novatheme/2", meta:{ id:"tema-"+Date.now(), name:"Tema personale", base:S.theme },
-              layout:{ id:S.launcher||"springboard" },
+              layout:{ id:S.launcher||"springboard", ...(order.length?{order}:{}) },
               colors:{ accent:S.accentColor||undefined, bg:S.deskColor||undefined, icon:S.iconColor||undefined },
               shape:{ iconStyle:S.iconStyle, iconShape:S.iconShape||"squircle" },
+              icons:{ shape:S.iconShape||"squircle", ...(Object.keys(iconMap).length?{map:iconMap}:{}) },
               wallpaper: S.deskColor?{type:"solid",value:S.deskColor}:(S.wallImage?{type:"image",value:S.wallImage}:{type:"gradient",value:os.WALLS[S.wallpaper]}),
+              sounds:{ ringtone:{type:"builtin",value:S.ringtone}, notif:{type:"builtin",value:S.notifSound}, alarm:{type:"builtin",value:S.alarmSound} },
               typography:{ textScale:S.textScale } };
             const a = document.createElement("a");
             a.href = URL.createObjectURL(new Blob([JSON.stringify(t,null,2)],{type:"application/json"}));
@@ -2879,6 +2883,20 @@ const NovaApps = (() => {
               if (t.wallpaper?.type === "solid") { os.set("deskColor", t.wallpaper.value); os.set("wallImage",""); }
               else if (t.wallpaper?.type === "image") { os.set("wallImage", t.wallpaper.value); os.set("deskColor",""); }
               else { os.set("deskColor", ""); os.set("wallImage",""); }
+              // override icone per-app (icons.map: id → {type:"emoji",value})
+              if (t.icons && t.icons.map) { const m = {};
+                Object.entries(t.icons.map).forEach(([id,o]) => { const v = (o && typeof o==="object") ? o.value : o; if (v) m[id] = v; });
+                os.set("iconMap", m);
+              } else os.set("iconMap", {});
+              // suoni (solo nomi validi per categoria)
+              if (t.sounds) { const L = os.sounds.lists || {ring:[],notif:[],alarm:[]};
+                const sv = s => (s && typeof s==="object") ? s.value : s;
+                if (L.ring.includes(sv(t.sounds.ringtone))) os.set("ringtone", sv(t.sounds.ringtone));
+                if (L.notif.includes(sv(t.sounds.notif)))   os.set("notifSound", sv(t.sounds.notif));
+                if (L.alarm.includes(sv(t.sounds.alarm)))   os.set("alarmSound", sv(t.sounds.alarm));
+              }
+              // disposizione app (springboard + ordine lista)
+              if (t.layout && Array.isArray(t.layout.order) && t.layout.order.length) os.applyLayoutOrder(t.layout.order);
               os.notify({ app:"settings", title:"Tema", text:`Tema «${t.meta?.name||"importato"}» applicato.` });
               sections.display();
             } catch (err) { os.notify({app:"settings",title:"Tema",text:"File non valido."}); } };

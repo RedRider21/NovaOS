@@ -83,6 +83,8 @@ const OS = (() => {
     launcher: "springboard",
     // immagine di sfondo (data URL JPEG ridimensionato). Vuoto = usa il gradiente/tinta.
     wallImage: "",
+    // override icone per-app (id → emoji) applicato dai temi (.novatheme icons.map)
+    iconMap: {},
     // torcia (flash) e protezione occhi (filtro luce blu)
     torch: false, eyeComfort: false,
   };
@@ -121,6 +123,8 @@ const OS = (() => {
   function allApps() {
     return [...NovaApps.list, ...userApps().map(u => ({ ...u, web: true }))];
   }
+  // icona effettiva di un'app: override del tema (state.iconMap) oppure quella di default
+  function appIcon(a) { return (a && state.iconMap && state.iconMap[a.id]) || (a && a.icon) || ""; }
   function appById(id) {
     return NovaApps.byId[id] || userApps().map(u=>({...u,web:true})).find(a => a.id === id);
   }
@@ -315,10 +319,7 @@ const OS = (() => {
     return head.concat(apps.filter(a => !seen.has(a.id)));
   }
   function llRow(a) {
-    const isImg = /^(https?:|data:)/.test(a.icon || "");
-    const glyph = isImg
-      ? `<div class="ll-ic" style="background:${a.color};padding:0;overflow:hidden"><img src="${a.icon}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='🌐'"></div>`
-      : `<div class="ll-ic" style="background:${a.color}">${a.icon}</div>`;
+    const glyph = appGlyph(a, "ll-ic");
     return `<div class="ll-row" data-app="${a.id}" data-name="${attrEsc((a.name||"").toLowerCase())}">${glyph}<div class="ll-nm">${escH(a.name)}</div>
       <button class="ll-grip" aria-label="Trascina per riordinare"><span></span><span></span><span></span></button></div>`;
   }
@@ -405,10 +406,10 @@ const OS = (() => {
 
   // glifo icona app (tessera colorata o immagine) per i launcher alternativi
   function appGlyph(a, cls, extra) {
-    const isImg = /^(https?:|data:)/.test(a.icon || "");
+    const ic = appIcon(a); const isImg = /^(https?:|data:)/.test(ic || "");
     return isImg
-      ? `<div class="${cls}" style="background:${a.color};padding:0;overflow:hidden;${extra||""}"><img src="${a.icon}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='🌐'"></div>`
-      : `<div class="${cls}" style="background:${a.color};${extra||""}">${a.icon}</div>`;
+      ? `<div class="${cls}" style="background:${a.color};padding:0;overflow:hidden;${extra||""}"><img src="${ic}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='🌐'"></div>`
+      : `<div class="${cls}" style="background:${a.color};${extra||""}">${ic}</div>`;
   }
 
   // ---- Drawer: home minimale (orologio + scorciatoie) + menu laterale a scomparsa ----
@@ -423,7 +424,7 @@ const OS = (() => {
         <button class="lcd-burger" data-burger aria-label="Apri menu"><span></span><span></span><span></span></button>
         <div class="lc-clock lcd-clock"></div>
         <div class="lc-date lcd-date"></div>
-        <div class="lcd-quick">${quick.map(a => `<div class="lcd-qc" data-app="${a.id}">${a.icon}<small>${escH(a.name)}</small></div>`).join("")}</div>
+        <div class="lcd-quick">${quick.map(a => `<div class="lcd-qc" data-app="${a.id}">${appIcon(a)}<small>${escH(a.name)}</small></div>`).join("")}</div>
       </div>
       <div class="lc-scrim" data-scrim></div>
       <div class="lc-panel no-sb">
@@ -442,8 +443,9 @@ const OS = (() => {
     const cells = ctx.apps.map(a => {
       const big = a.id === "clock" ? `<div class="lc-clock lc-tbig"></div>`
                 : a.id === "weather" ? `<div class="lc-tbig">22°</div>` : "";
+      const ic = appIcon(a);
       return `<div class="lc-tile ${SIZE[a.id] || ""}" data-app="${a.id}" style="background:linear-gradient(150deg,${a.color},color-mix(in srgb,${a.color} 60%,#000))">
-        <div class="lc-ti">${/^(https?:|data:)/.test(a.icon||"")?`<img src="${a.icon}" style="width:26px;height:26px;border-radius:6px;object-fit:cover">`:a.icon}</div>${big}<b>${escH(a.name)}</b></div>`;
+        <div class="lc-ti">${/^(https?:|data:)/.test(ic||"")?`<img src="${ic}" style="width:26px;height:26px;border-radius:6px;object-fit:cover">`:ic}</div>${big}<b>${escH(a.name)}</b></div>`;
     }).join("");
     host.innerHTML = `<div class="lc-tiles no-sb">${cells}</div>`;
     host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
@@ -469,7 +471,8 @@ const OS = (() => {
     const ring = (arr, R, d0) => arr.map((a, i) => {
       const ang = (i / arr.length) * Math.PI * 2 - Math.PI / 2;
       const x = Math.round(Math.cos(ang) * R), y = Math.round(Math.sin(ang) * R);
-      return `<div class="lc-ra" data-app="${a.id}" style="--x:${x}px;--y:${y}px;transform:translate(${x}px,${y}px);background:${a.color};animation-delay:${(d0 + i * 0.025).toFixed(3)}s">${/^(https?:|data:)/.test(a.icon||"")?`<img src="${a.icon}" style="width:26px;height:26px;border-radius:8px;object-fit:cover">`:a.icon}</div>`;
+      const ic = appIcon(a);
+      return `<div class="lc-ra" data-app="${a.id}" style="--x:${x}px;--y:${y}px;transform:translate(${x}px,${y}px);background:${a.color};animation-delay:${(d0 + i * 0.025).toFixed(3)}s">${/^(https?:|data:)/.test(ic||"")?`<img src="${ic}" style="width:26px;height:26px;border-radius:8px;object-fit:cover">`:ic}</div>`;
     }).join("");
     host.innerHTML = `<div class="lc-radial">
       <div class="lc-hub"><div class="lc-clock t"></div><small>NOVA</small></div>
@@ -481,9 +484,9 @@ const OS = (() => {
 
   // ---- Cover flow: carosello orizzontale di grandi schede ----
   function renderCoverLauncher(host, ctx) {
-    const cards = ctx.apps.map(a => `<div class="lc-cv" data-app="${a.id}" style="background:linear-gradient(160deg,${a.color},color-mix(in srgb,${a.color} 45%,#000))">
-      <div class="lc-cvi">${/^(https?:|data:)/.test(a.icon||"")?`<img src="${a.icon}" style="width:42px;height:42px;border-radius:12px;object-fit:cover">`:a.icon}</div>
-      <b>${escH(a.name)}</b><small>${APP_CATS[a.id] || "App"}</small></div>`).join("");
+    const cards = ctx.apps.map(a => { const ic = appIcon(a); return `<div class="lc-cv" data-app="${a.id}" style="background:linear-gradient(160deg,${a.color},color-mix(in srgb,${a.color} 45%,#000))">
+      <div class="lc-cvi">${/^(https?:|data:)/.test(ic||"")?`<img src="${ic}" style="width:42px;height:42px;border-radius:12px;object-fit:cover">`:ic}</div>
+      <b>${escH(a.name)}</b><small>${APP_CATS[a.id] || "App"}</small></div>`; }).join("");
     host.innerHTML = `<div class="lc-cover no-sb">${cards}</div>`;
     host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
   }
@@ -545,19 +548,38 @@ const OS = (() => {
     NovaApps.dock.forEach((a, i) => dock.appendChild(iconEl(a, i)));
   }
 
+  // applica un ordine app (da un tema .novatheme, layout.order): imposta l'ordine del
+  // launcher Lista e ricostruisce la home a griglia disponendo le app in quell'ordine
+  // (le app del dock restano nel dock). Le app non elencate vanno in coda.
+  function applyLayoutOrder(order) {
+    if (!Array.isArray(order) || !order.length) return;
+    store.set("launcherOrder", order.slice());
+    const dock = new Set(dockIds());
+    const valid = order.filter(id => appById(id) && !dock.has(id));
+    const used = new Set(valid);
+    const rest = allApps().filter(a => !dock.has(a.id) && !used.has(a.id)).map(a => a.id);
+    const ids = valid.concat(rest);
+    const pages = [];
+    for (let i = 0; i < ids.length; i += PER) {
+      const pg = blankPage(); ids.slice(i, i + PER).forEach((id, j) => pg[j] = { t:"app", id }); pages.push(pg);
+    }
+    saveLayout({ pages: pages.length ? pages : [blankPage()] });
+    if (screens.home.classList.contains("active")) renderHome();
+  }
+
   function homeIcon(it, pi, ii) {
     if (it.t === "folder") {
       const mini = it.items.map(appById).filter(Boolean).slice(0,4).map(a => {
-        const isImg = /^(https?:|data:)/.test(a.icon||"");
-        return `<span style="background:${a.color}${isImg?`;background-image:url('${a.icon}')`:''}">${isImg?'':a.icon}</span>`;
+        const ic = appIcon(a); const isImg = /^(https?:|data:)/.test(ic||"");
+        return `<span style="background:${a.color}${isImg?`;background-image:url('${ic}')`:''}">${isImg?'':ic}</span>`;
       }).join("");
       return `<div class="app-icon folder" data-loc="${pi}:${ii}"><div class="glyph folder-glyph">${mini}</div><div class="label">${escH(it.name)}</div></div>`;
     }
     const a = appById(it.id); if (!a) return "";
-    const isImg = /^(https?:|data:)/.test(a.icon||"");
+    const ic = appIcon(a); const isImg = /^(https?:|data:)/.test(ic||"");
     const glyph = isImg
-      ? `<div class="glyph" style="background:${a.color};padding:0;overflow:hidden"><img src="${a.icon}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='🌐'"></div>`
-      : `<div class="glyph" style="background:${a.color}">${a.icon}</div>`;
+      ? `<div class="glyph" style="background:${a.color};padding:0;overflow:hidden"><img src="${ic}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='🌐'"></div>`
+      : `<div class="glyph" style="background:${a.color}">${ic}</div>`;
     return `<div class="app-icon" data-loc="${pi}:${ii}" data-app="${a.id}">${editing&&a.web?`<button class="icon-rm" data-rm="${a.id}">✕</button>`:''}${glyph}<div class="label">${a.name}</div></div>`;
   }
 
@@ -801,11 +823,11 @@ const OS = (() => {
     el.className = "app-icon";
     el.dataset.app = a.id;
     el.style.animationDelay = (i*0.02)+"s";
-    // icona come immagine (favicon/upload) oppure emoji
-    const isImg = /^(https?:|data:)/.test(a.icon || "");
+    // icona come immagine (favicon/upload) oppure emoji (con eventuale override del tema)
+    const ic = appIcon(a); const isImg = /^(https?:|data:)/.test(ic || "");
     const glyph = isImg
-      ? `<div class="glyph" style="background:${a.color};padding:0;overflow:hidden"><img src="${a.icon}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='🌐'"></div>`
-      : `<div class="glyph" style="background:${a.color}">${a.icon}</div>`;
+      ? `<div class="glyph" style="background:${a.color};padding:0;overflow:hidden"><img src="${ic}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='🌐'"></div>`
+      : `<div class="glyph" style="background:${a.color}">${ic}</div>`;
     el.innerHTML = `${glyph}<div class="label">${a.name}</div>`;
     el.onclick = () => openApp(a.id);
     // long-press per disinstallare le web app utente
@@ -1383,7 +1405,7 @@ const OS = (() => {
   function set(k, v) { state[k] = v; store.set(k, v);
     if (k==="theme") { applyTheme(); applyDisplay(); }
     if (["brightness","textScale","wallpaper","wallImage","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","iconShape","accentColor","saver","adaptiveBright","eyeComfort"].includes(k)) applyDisplay();
-    if (["iconStyle","deskColor","iconColor","iconShape","launcher"].includes(k) && screens.home.classList.contains("active")) renderHome();
+    if (["iconStyle","deskColor","iconColor","iconShape","launcher","iconMap"].includes(k) && screens.home.classList.contains("active")) renderHome();
     if (k==="notifLock") renderLockNotifs();
     renderStatusbars();
   }
@@ -1598,7 +1620,7 @@ const OS = (() => {
   // API esposta alle app
   const api = {
     state, store, notify, confirm: confirmDialog, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
-    launchers: launcherList, renderHome,
+    launchers: launcherList, renderHome, applyLayoutOrder,
     WALLS, photos, vibrate, sounds: Sounds, updater: Updater,
     openSettings, takeSettingsSection,
     // gestione app di terze parti
