@@ -224,7 +224,7 @@ const NovaApps = (() => {
             <button id="send" class="round-act small" style="background:var(--accent)">➤</button>
           </div>`;
         root.querySelector(".back-btn").onclick = drawList;
-        root.querySelector("#delc").onclick = () => { if(confirm("Eliminare la conversazione con "+name+"?")){ delete threads[name]; save(); drawList(); } };
+        root.querySelector("#delc").onclick = async () => { if(await os.confirm({title:"Eliminare conversazione?",message:"La chat con "+name+" verrà eliminata.",okText:"Elimina"})){ delete threads[name]; save(); drawList(); } };
         const th = root.querySelector("#thread"); th.scrollTop = th.scrollHeight;
         const input = root.querySelector("#msg");
         const nativeSms = window.NovaNative && window.NovaNative.sendSms;
@@ -609,7 +609,7 @@ const NovaApps = (() => {
           else window.location.href = "sms:" + num;
         };
         const mail = root.querySelector("#mail"); if (mail) mail.onclick = () => window.location.href = "mailto:" + c.email;
-        root.querySelector("#del").onclick = () => { if(confirm("Eliminare "+c.name+"?")){ list=list.filter(x=>x.id!==id); save(); drawList(); } };
+        root.querySelector("#del").onclick = async () => { if(await os.confirm({title:"Eliminare contatto?",message:c.name+" verrà eliminato dalla rubrica.",okText:"Elimina"})){ list=list.filter(x=>x.id!==id); save(); drawList(); } };
       };
 
       const drawEdit = (id) => {
@@ -955,7 +955,7 @@ const NovaApps = (() => {
 
         const del = root.querySelector("#vdel");
         if (del) del.onclick = async () => {
-          if (!confirm("Eliminare questa immagine?")) return;
+          if (!await os.confirm({title:"Eliminare elemento?",message:"Questo elemento verrà eliminato dalla Galleria.",okText:"Elimina"})) return;
           stopSlide();
           if (p.real) await os.photos.remove(p.id);
           else { hidden.push(p.id); os.store.set("galHidden", hidden); }
@@ -1633,9 +1633,9 @@ const NovaApps = (() => {
           drawList(); syncNow();
         };
         const disc = root.querySelector("#c-disc");
-        if (disc) disc.onclick = () => { if(confirm("Scollegare l'account? La password cifrata verrà rimossa.")){ window.NovaNative.mailClear(); os.notify({ app:"mail", title:"Mail", text:"Account scollegato." }); drawSettings(); } };
+        if (disc) disc.onclick = async () => { if(await os.confirm({title:"Scollegare l'account?",message:"La password cifrata verrà rimossa dal dispositivo.",okText:"Scollega"})){ window.NovaNative.mailClear(); os.notify({ app:"mail", title:"Mail", text:"Account scollegato." }); drawSettings(); } };
         root.querySelector("#c-read").onclick = () => { box.inbox.forEach(m=>m.read=true); save(); os.notify({ app:"mail", title:"Mail", text:"Tutte le email segnate come lette." }); };
-        root.querySelector("#c-empty").onclick = () => { if(confirm("Svuotare definitivamente il cestino?")){ box.trash=[]; save(); os.notify({ app:"mail", title:"Mail", text:"Cestino svuotato." }); drawSettings(); } };
+        root.querySelector("#c-empty").onclick = async () => { if(await os.confirm({title:"Svuotare il cestino?",message:"I messaggi nel cestino verranno eliminati definitivamente.",okText:"Svuota"})){ box.trash=[]; save(); os.notify({ app:"mail", title:"Mail", text:"Cestino svuotato." }); drawSettings(); } };
       };
 
       const quote = m => `\n\n\n----- Messaggio originale -----\nDa: ${m.from}\nData: ${m.time}\nOggetto: ${m.subj}\n\n${m.body.split("\n").map(l=>"> "+l).join("\n")}`;
@@ -2081,11 +2081,11 @@ const NovaApps = (() => {
         const close=()=>ov.remove();
         ov.onclick=e=>{ if(e.target===ov) close(); };
         document.body.appendChild(ov);
-        ov.querySelectorAll("[data-a]").forEach(el=>el.onclick=()=>{ const a=el.dataset.a; close();
+        ov.querySelectorAll("[data-a]").forEach(el=>el.onclick=async()=>{ const a=el.dataset.a; close();
           if(a==="rename") renamePanel(node);
           else if(a==="move") movePicker([node.id]);
           else if(a==="dup"){ const d={...node,id:uid(),name:node.name.replace(/(\.[^.]+)?$/,(m)=>" copia"+(m||"")),ts:Date.now()}; if(node.kind==="folder"){d.kind="folder";} nodes.push(d); save(); draw(); }
-          else if(a==="del"){ if(confirm(`Eliminare "${node.name}"${node.kind==="folder"?" e tutto il contenuto":""}?`)){ const rm=new Set([node.id,...descendants(node.id)]); nodes=nodes.filter(n=>!rm.has(n.id)); save(); draw(); } }
+          else if(a==="del"){ if(await os.confirm({title:node.kind==="folder"?"Eliminare la cartella?":"Eliminare il file?",message:`"${node.name}"${node.kind==="folder"?" e tutto il suo contenuto verranno eliminati":" verrà eliminato"}.`,okText:"Elimina"})){ const rm=new Set([node.id,...descendants(node.id)]); nodes=nodes.filter(n=>!rm.has(n.id)); save(); draw(); } }
         });
       };
       const renamePanel = (node) => {
@@ -2159,7 +2159,7 @@ const NovaApps = (() => {
           <div style="flex:1;display:flex;align-items:center;justify-content:center"><img src="${ph.data}" style="max-width:96%;max-height:100%;border-radius:12px"></div></div>`;
         root.querySelector(".back-btn").onclick=()=>draw();
         root.querySelector("#gal").onclick=()=>os.openApp("gallery");
-        root.querySelector("#dl").onclick=async()=>{ if(confirm("Eliminare questa foto?")){ await os.photos.remove(ph.id); draw(); } };
+        root.querySelector("#dl").onclick=async()=>{ if(await os.confirm({title:"Eliminare la foto?",message:"La foto verrà eliminata definitivamente.",okText:"Elimina"})){ await os.photos.remove(ph.id); draw(); } };
       };
 
       // ---------- barra strumenti (ordina / vista) ----------
@@ -2196,7 +2196,7 @@ const NovaApps = (() => {
       const bindSelBar = (ids) => {
         root.querySelector("#sel-all").onclick=()=>{ if(sel.size===ids.length) sel.clear(); else ids.forEach(i=>sel.add(i)); draw(); };
         const mv=root.querySelector("#sel-move"); if(mv&&sel.size) mv.onclick=()=>movePicker([...sel]);
-        const dl=root.querySelector("#sel-del"); if(dl&&sel.size) dl.onclick=()=>{ if(confirm(`Eliminare ${sel.size} elementi?`)){ const rm=new Set(); sel.forEach(id=>{rm.add(id); descendants(id).forEach(d=>rm.add(d));}); nodes=nodes.filter(n=>!rm.has(n.id)); save(); selMode=false; sel.clear(); draw(); } };
+        const dl=root.querySelector("#sel-del"); if(dl&&sel.size) dl.onclick=async()=>{ const msg=sel.size===1?"1 elemento selezionato verrà eliminato.":`${sel.size} elementi selezionati verranno eliminati.`; if(await os.confirm({title:"Eliminare gli elementi?",message:msg,okText:"Elimina"})){ const rm=new Set(); sel.forEach(id=>{rm.add(id); descendants(id).forEach(d=>rm.add(d));}); nodes=nodes.filter(n=>!rm.has(n.id)); save(); selMode=false; sel.clear(); draw(); } };
       };
 
       // riga / cella di un nodo
@@ -3017,8 +3017,8 @@ const NovaApps = (() => {
           if (locSens) locSens.onclick = () => sensorAct("location", () => sections.privacy());
           else { const lsw = sec.querySelector(".switch"); if (lsw) lsw.onclick = () => { os.toggle("location"); sections.privacy(); }; }
           sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
-          sec.querySelector("#clear-nav").onclick = () => {
-            if (!confirm("Cancellare cronologia e preferiti del Browser?")) return;
+          sec.querySelector("#clear-nav").onclick = async () => {
+            if (!await os.confirm({title:"Cancellare i dati di navigazione?",message:"Cronologia e preferiti del Browser verranno cancellati.",okText:"Cancella"})) return;
             os.store.del("browserHistory"); os.store.del("bookmarks");
             os.notify({ app:"settings", title:"Privacy", text:"Dati di navigazione cancellati." });
           };
@@ -3098,13 +3098,25 @@ const NovaApps = (() => {
               const rt = panel.querySelector("#upd-retry"); if (rt) rt.onclick = doCheck; return;
             }
             const up = info.hasUpdate;
+            // aggiornamento della SOLA interfaccia (shell HTML/JS/CSS) applicabile a caldo,
+            // senza reinstallare l'APK: serve il bridge nativo e una build nativa adeguata.
+            const nn = window.NovaNative;
+            const otaShell = up && info.files && info.files.length
+              && nn && nn.shellWrite && nn.shellCommit
+              && (!info.minNative || info.nativeBuild >= info.minNative);
+            const needsApk = up && !otaShell;
             sub.textContent = up ? `NovaOS ${info.currentName} · aggiornamento disponibile` : `NovaOS ${info.currentName} · aggiornato`;
             panel.innerHTML = `
               <div class="item" style="padding:6px 0"><div class="i-body"><div class="i-sub">Versione installata</div><div class="i-title">NovaOS ${esc(info.currentName)}${btag(info.current)}</div></div></div>
               ${info.reachable ? `<div class="item" style="padding:6px 0"><div class="i-body"><div class="i-sub">Ultima disponibile</div><div class="i-title">NovaOS ${esc(info.latestName)}${btag(info.latest)}${info.date?` · ${esc(info.date)}`:""}</div></div></div>` : ""}
               ${up && info.notes ? `<div style="background:var(--surface);border-radius:12px;padding:10px 12px;margin:6px 0;font-size:calc(13px*var(--fscale,1));color:var(--text-dim)">${esc(info.notes)}</div>` : ""}
               <div style="color:${up?'var(--accent)':'var(--ok)'};font-size:calc(13px*var(--fscale,1));margin:8px 0">${up?"⬇ È disponibile una versione più recente.":"✓ Il sistema è aggiornato all'ultima versione."}</div>
-              ${up ? `<button class="btn" id="upd-install">Installa aggiornamento</button>` : `<button class="btn ghost" id="upd-recheck">Cerca aggiornamenti</button>`}`;
+              ${up ? `<div style="display:flex;align-items:center;gap:8px;background:var(--surface);border-radius:12px;padding:9px 12px;margin-bottom:10px;font-size:calc(12.5px*var(--fscale,1))">
+                <span style="font-size:calc(15px*var(--fscale,1))">${otaShell?"⚡":"📦"}</span>
+                <span style="color:var(--text-dim)">${otaShell
+                  ? "Solo interfaccia · si applica subito, <b style=\"color:var(--text)\">nessuna reinstallazione</b>."
+                  : "Richiede la <b style=\"color:var(--text)\">reinstallazione dell'app</b> (aggiornamento del sistema)."}</span></div>` : ""}
+              ${up ? `<button class="btn" id="upd-install">${otaShell?"Aggiorna ora":"Scarica e installa"}</button>` : `<button class="btn ghost" id="upd-recheck">Cerca aggiornamenti</button>`}`;
             const ins = panel.querySelector("#upd-install");
             if (ins) ins.onclick = async () => {
               ins.disabled = true; ins.textContent = "Avvio aggiornamento…";
@@ -3122,7 +3134,7 @@ const NovaApps = (() => {
           };
           const doCheck = async () => { renderUpd(null, true); let info=null; try { info = await os.updater.check(); } catch {} renderUpd(info); };
           doCheck();   // controllo automatico all'apertura della sezione
-          sec.querySelector("#reset").onclick = () => { if (confirm("Ripristinare NovaOS? Verranno cancellati impostazioni e app installate.")) os.factoryReset(); };
+          sec.querySelector("#reset").onclick = async () => { if (await os.confirm({title:"Ripristino di fabbrica?",message:"Verranno cancellati impostazioni e app installate. L'operazione non è reversibile.",okText:"Ripristina"})) os.factoryReset(); };
           // Data e ora / Lingua: aprono i pannelli reali di sistema (sul dispositivo)
           sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
           // Backup reale: esporta/importa tutti i dati nova:* come file JSON
@@ -3389,7 +3401,7 @@ const NovaApps = (() => {
         root.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
           const id = +b.dataset.del;
           const recs = await allRecs(); const r = recs.find(x=>x.id===id);
-          if (!confirm(`Eliminare "${r ? r.name : "questa registrazione"}"?`)) return;
+          if (!await os.confirm({title:"Eliminare la registrazione?",message:`"${r ? r.name : "Questa registrazione"}" verrà eliminata definitivamente.`,okText:"Elimina"})) return;
           stopPlayback(); await delRec(id); await draw();
         });
         root.querySelectorAll("[data-rename]").forEach(b => b.onclick = async () => {

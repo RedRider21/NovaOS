@@ -321,7 +321,9 @@ const OS = (() => {
     host.querySelectorAll(".dot").forEach(d => d.onclick = () => { homePage = +d.dataset.dot; renderHome(); });
     host.querySelectorAll(".icon-rm").forEach(b => b.onclick = e => {
       e.stopPropagation(); const id = b.dataset.rm;
-      if (confirm(`Rimuovere "${(appById(id)||{}).name||id}"?`)) { uninstallApp(id); saveLayout(homeLayout()); renderHome(); }
+      const nm = (appById(id)||{}).name||id;
+      confirmDialog({ title:"Rimuovere l'app?", message:`"${nm}" verrà rimossa dalla home.`, okText:"Rimuovi" })
+        .then(ok => { if (ok) { uninstallApp(id); saveLayout(homeLayout()); renderHome(); } });
     });
     host.querySelectorAll(".app-icon").forEach(el => {
       const [pi,ii] = el.dataset.loc.split(":").map(Number);
@@ -562,7 +564,8 @@ const OS = (() => {
     if (a.web) {
       let t;
       const arm = () => t = setTimeout(() => {
-        if (confirm(`Rimuovere "${a.name}"?`)) { uninstallApp(a.id); renderHome(); }
+        confirmDialog({ title:"Rimuovere l'app?", message:`"${a.name}" verrà rimossa.`, okText:"Rimuovi" })
+          .then(ok => { if (ok) { uninstallApp(a.id); renderHome(); } });
       }, 600);
       const dis = () => clearTimeout(t);
       el.addEventListener("touchstart", arm); el.addEventListener("touchend", dis); el.addEventListener("touchmove", dis);
@@ -805,6 +808,36 @@ const OS = (() => {
     if (!state.dnd) { pulse(); vibrate(60); Sounds.notif(state.notifSound, (state.volNotif==null?50:state.volNotif)/100*0.4);
       if (state.bubbles && !screens.lock.classList.contains("active")) showBubble(n); }
   }
+  // Dialog di conferma in-app (sostituisce window.confirm, che nella WebView Android
+  // con WebChromeClient personalizzato ritorna sempre false senza mostrare nulla —
+  // per questo le eliminazioni non andavano a buon fine). Ritorna una Promise<boolean>.
+  function confirmDialog(opts) {
+    opts = opts || {};
+    const title = opts.title || "Conferma";
+    const message = opts.message || "";
+    const okText = opts.okText || "Elimina";
+    const cancelText = opts.cancelText || "Annulla";
+    const danger = opts.danger !== false;   // default: azione distruttiva (rosso)
+    return new Promise(resolve => {
+      const ov = document.createElement("div"); ov.className = "nc-ov";
+      const card = document.createElement("div"); card.className = "nc-card";
+      card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "true");
+      const h = document.createElement("div"); h.className = "nc-title"; h.textContent = title; card.appendChild(h);
+      if (message) { const m = document.createElement("div"); m.className = "nc-msg"; m.textContent = message; card.appendChild(m); }
+      const act = document.createElement("div"); act.className = "nc-actions";
+      const bc = document.createElement("button"); bc.className = "nc-btn nc-cancel"; bc.textContent = cancelText;
+      const bo = document.createElement("button"); bo.className = "nc-btn nc-ok" + (danger ? " nc-danger" : ""); bo.textContent = okText;
+      act.appendChild(bc); act.appendChild(bo); card.appendChild(act); ov.appendChild(card);
+      let done = false;
+      const close = v => { if (done) return; done = true; ov.classList.remove("show"); setTimeout(() => ov.remove(), 180); resolve(v); };
+      ov.addEventListener("click", e => { if (e.target === ov) close(false); });
+      bc.onclick = () => close(false); bo.onclick = () => close(true);
+      document.body.appendChild(ov);
+      requestAnimationFrame(() => ov.classList.add("show"));
+      setTimeout(() => bo.focus(), 60);
+      try { vibrate(8); } catch (e) {}
+    });
+  }
   const notifAgo = n => {
     if (!n.ts) return n.time || "";
     const m = Math.floor((Date.now()-n.ts)/60000);
@@ -855,8 +888,16 @@ const OS = (() => {
     async function check(/*force*/) {
       const li = await localInfo();
       const ai = appInfo();
-      const curBuild = (ai && ai.code) || (li && li.build) || 0;
-      const curName  = (ai && ai.name && ai.name !== "?") ? ai.name : (li && li.version) || "0.1.15";
+      // La build "installata" è la più alta tra il codice dell'APK (PackageInfo) e la
+      // build della shell già applicata via OTA (version.json interno): senza questo,
+      // dopo un aggiornamento della sola interfaccia l'APK resta indietro e l'update
+      // verrebbe riproposto in loop. Il nome segue chi è più recente.
+      const apkCode = (ai && ai.code) || 0;
+      const apkName = (ai && ai.name && ai.name !== "?") ? ai.name : "";
+      const shellBuild = (li && li.build) || 0;
+      const shellName = (li && li.version) || "";
+      const curBuild = Math.max(apkCode, shellBuild) || 0;
+      const curName  = (shellBuild >= apkCode ? shellName : apkName) || apkName || shellName || "0.1.15";
       let rel = null;
       try { const r = await fetch(RAW + "?t=" + Date.now(), { cache:"no-store" }); if (r.ok) rel = await r.json(); } catch {}
       const latestBuild = rel ? (rel.build || 0) : curBuild;
@@ -1297,7 +1338,7 @@ const OS = (() => {
 
   // API esposta alle app
   const api = {
-    state, store, notify, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
+    state, store, notify, confirm: confirmDialog, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
     WALLS, photos, vibrate, sounds: Sounds, updater: Updater,
     openSettings, takeSettingsSection,
     // gestione app di terze parti

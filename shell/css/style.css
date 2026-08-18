@@ -452,6 +452,20 @@ body[data-theme="light"] .pin-key { background: rgba(0,0,0,.06); }
 .slider::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); cursor: pointer; }
 .slider::-moz-range-thumb { width: 22px; height: 22px; border: none; border-radius: 50%; background: var(--accent); }
 
+/* Dialog di conferma in-app (sostituisce window.confirm) */
+.nc-ov { position: fixed; inset: 0; z-index: 6000; display: flex; align-items: center; justify-content: center; padding: 28px; background: rgba(0,0,0,.5); opacity: 0; transition: opacity .18s ease; }
+.nc-ov.show { opacity: 1; }
+.nc-card { width: 100%; max-width: 320px; background: var(--surface); border-radius: 22px; padding: 24px 20px 16px; box-shadow: 0 24px 60px rgba(0,0,0,.45); transform: scale(.9); transition: transform .18s cubic-bezier(.2,.9,.3,1.2); }
+.nc-ov.show .nc-card { transform: scale(1); }
+.nc-title { font-size: calc(17px*var(--fscale,1)); font-weight: 700; color: var(--text); text-align: center; }
+.nc-msg { font-size: calc(13.5px*var(--fscale,1)); color: var(--text-dim); text-align: center; margin-top: 8px; line-height: 1.45; overflow-wrap: anywhere; }
+.nc-actions { display: flex; gap: 10px; margin-top: 22px; }
+.nc-btn { flex: 1; border: none; border-radius: 13px; padding: 12px; font-size: calc(15px*var(--fscale,1)); font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.nc-btn:active { transform: scale(.97); }
+.nc-cancel { background: var(--surface-2); color: var(--text); }
+.nc-ok { background: var(--accent); color: #fff; }
+.nc-ok.nc-danger { background: var(--danger); color: #fff; }
+
 .seg { display: flex; background: var(--surface-2); border-radius: 12px; padding: 4px; gap: 4px; margin: 0 16px; }
 .seg button { flex: 1; border: none; background: none; color: var(--text-dim); padding: 9px; border-radius: 9px; font-size:calc(14px*var(--fscale,1)); cursor: pointer; }
 .seg button.on { background: var(--accent); color: #fff; }
