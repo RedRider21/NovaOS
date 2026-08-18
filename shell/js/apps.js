@@ -2819,8 +2819,8 @@ const NovaApps = (() => {
             ${S.wallImage?`<div style="margin:12px 16px 0;height:150px;border-radius:16px;background:url('${S.wallImage}') center/cover;box-shadow:inset 0 0 0 1px var(--surface-2)"></div>`:''}
 
             <div class="section-label">Home · launcher</div>
-            <div class="seg">${os.launchers().map(l=>`<button data-lch="${l.id}" class="${(S.launcher||'springboard')===l.id?'on':''}">${l.name}</button>`).join("")}</div>
-            <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));margin:6px 16px 0">${(S.launcher==='list')?'Elenco con ricerca. Trascina la maniglia ≡ a destra per riordinare le app.':'Griglia di icone a pagine con dock (predefinito).'}</div>
+            <div class="lch-gallery">${os.launchers().map(l=>`<div class="lch-card ${(S.launcher||'springboard')===l.id?'on':''}" data-lch="${l.id}"><div class="g"><svg viewBox="0 0 24 24">${l.ic}</svg></div><div style="min-width:0"><b>${l.name}</b><small>${l.desc}</small></div></div>`).join("")}</div>
+            ${(S.launcher==='list')?`<div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));margin:8px 16px 0">Trascina la maniglia ⋮ a destra di una riga per riordinare le app.</div>`:''}
 
             <div class="section-label">Tema · stile icone</div>
             <div class="seg"><button data-is="filled" class="${S.iconStyle!=='outline'?'on':''}">Colorate</button><button data-is="outline" class="${S.iconStyle==='outline'?'on':''}">Contorno</button></div>

@@ -1,9 +1,9 @@
 {
-  "version": "0.1.32",
-  "build": 33,
+  "version": "0.1.33",
+  "build": 34,
   "minNative": 12,
   "date": "2026-08-18",
-  "notes": "Nuovo launcher Lista (Impostazioni → Display → Home): elenco con ricerca e riordino per trascinamento. Sfondo con immagine personale. Tema .novatheme/2 con launcher.",
+  "notes": "Sette launcher per la home selezionabili in Impostazioni → Display: Griglia, Lista, Drawer, Tiles, Dashboard, Radiale, Cover flow. Le app restano le stesse.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "js/version.js",    "manifest.webmanifest",    "sw.js",

@@ -222,8 +222,8 @@ const OS = (() => {
     const d = new Date();
     const time = d.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"});
     const date = d.toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"});
-    document.querySelectorAll(".lock-time,.home-time").forEach(e => e.textContent = time);
-    document.querySelectorAll(".lock-date,.home-date").forEach(e => e.textContent = date);
+    document.querySelectorAll(".lock-time,.home-time,.lc-clock").forEach(e => e.textContent = time);
+    document.querySelectorAll(".lock-date,.home-date,.lc-date").forEach(e => e.textContent = date);
   }
 
   // ============================================================
@@ -394,11 +394,120 @@ const OS = (() => {
     });
   }
 
-  const LAUNCHERS = {
-    springboard: { id:"springboard", name:"Griglia", desc:"Icone a pagine + dock" },
-    list:        { id:"list", name:"Lista", desc:"Elenco con ricerca", render: renderListLauncher },
+  // categorie app (usate da drawer e cover per raggruppare/etichettare)
+  const APP_CATS = {
+    phone:"Comunicazione", messages:"Comunicazione", contacts:"Comunicazione", mail:"Comunicazione",
+    camera:"Multimedia", gallery:"Multimedia", recorder:"Multimedia",
+    notes:"Produttività", calendar:"Produttività", calc:"Produttività", files:"Produttività",
+    browser:"Sistema", weather:"Sistema", clock:"Sistema", store:"Sistema", settings:"Sistema",
   };
-  const launcherList = () => Object.values(LAUNCHERS).map(l => ({ id:l.id, name:l.name, desc:l.desc }));
+  const CAT_ORDER = ["Comunicazione","Multimedia","Produttività","Sistema","Le tue app"];
+
+  // glifo icona app (tessera colorata o immagine) per i launcher alternativi
+  function appGlyph(a, cls, extra) {
+    const isImg = /^(https?:|data:)/.test(a.icon || "");
+    return isImg
+      ? `<div class="${cls}" style="background:${a.color};padding:0;overflow:hidden;${extra||""}"><img src="${a.icon}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='🌐'"></div>`
+      : `<div class="${cls}" style="background:${a.color};${extra||""}">${a.icon}</div>`;
+  }
+
+  // ---- Drawer: home minimale (orologio + scorciatoie) + menu laterale a scomparsa ----
+  function renderDrawerLauncher(host, ctx) {
+    const quick = ctx.dock.slice(0, 4);
+    const cats = CAT_ORDER.filter(c => ctx.apps.some(a => (APP_CATS[a.id] || "Le tue app") === c));
+    const panel = cats.map(c => `<div class="ll-cat">${c}</div>` +
+      ctx.apps.filter(a => (APP_CATS[a.id] || "Le tue app") === c)
+        .map(a => `<div class="lc-prow" data-app="${a.id}">${appGlyph(a, "ll-ic")}<div class="ll-nm">${escH(a.name)}</div></div>`).join("")).join("");
+    host.innerHTML = `<div class="lc-drawer">
+      <div class="lcd-main">
+        <button class="lcd-burger" data-burger aria-label="Apri menu"><span></span><span></span><span></span></button>
+        <div class="lc-clock lcd-clock"></div>
+        <div class="lc-date lcd-date"></div>
+        <div class="lcd-quick">${quick.map(a => `<div class="lcd-qc" data-app="${a.id}">${a.icon}<small>${escH(a.name)}</small></div>`).join("")}</div>
+      </div>
+      <div class="lc-scrim" data-scrim></div>
+      <div class="lc-panel no-sb">
+        <div class="lc-panel-h"><div class="lc-logo">✦</div><b>NovaOS</b></div>
+        ${panel}
+      </div></div>`;
+    const wrap = host.querySelector(".lc-drawer");
+    host.querySelector("[data-burger]").onclick = () => wrap.classList.add("open");
+    host.querySelector("[data-scrim]").onclick = () => wrap.classList.remove("open");
+    host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
+  }
+
+  // ---- Tiles: riquadri colorati di misure diverse (stile Metro) ----
+  function renderTilesLauncher(host, ctx) {
+    const SIZE = { phone:"w2", camera:"h2", browser:"w2", clock:"", weather:"" };
+    const cells = ctx.apps.map(a => {
+      const big = a.id === "clock" ? `<div class="lc-clock lc-tbig"></div>`
+                : a.id === "weather" ? `<div class="lc-tbig">22°</div>` : "";
+      return `<div class="lc-tile ${SIZE[a.id] || ""}" data-app="${a.id}" style="background:linear-gradient(150deg,${a.color},color-mix(in srgb,${a.color} 60%,#000))">
+        <div class="lc-ti">${/^(https?:|data:)/.test(a.icon||"")?`<img src="${a.icon}" style="width:26px;height:26px;border-radius:6px;object-fit:cover">`:a.icon}</div>${big}<b>${escH(a.name)}</b></div>`;
+    }).join("");
+    host.innerHTML = `<div class="lc-tiles no-sb">${cells}</div>`;
+    host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
+  }
+
+  // ---- Dashboard: widget (orologio, meteo, recenti, preferite) ----
+  function renderDashLauncher(host, ctx) {
+    const recent = (ctx.recent.length ? ctx.recent : ctx.apps).slice(0, 4);
+    const fav = ctx.dock.concat(appById("settings") ? [appById("settings")] : []).filter(Boolean).slice(0, 5);
+    host.innerHTML = `<div class="lc-dash no-sb">
+      <div class="lc-widget lc-wclock"><div class="lc-clock t"></div><div class="lc-date d"></div></div>
+      <div class="lc-widget lc-wwx"><div class="lft"><div class="em">⛅</div><div><div style="font-size:calc(13px*var(--fscale,1))">Meteo</div><div style="color:var(--text-dim);font-size:calc(11px*var(--fscale,1))">Nubi sparse</div></div></div><div class="tp">22°</div></div>
+      <div class="lc-widget"><div class="lc-wt">App recenti</div><div class="lc-wrow">${recent.map(a => `<div data-app="${a.id}">${appGlyph(a, "lc-wic")}</div>`).join("")}</div></div>
+      <div class="lc-widget"><div class="lc-wt">Preferite</div><div class="lc-wrow" style="justify-content:space-around">${fav.map(a => `<div data-app="${a.id}">${appGlyph(a, "lc-wic")}</div>`).join("")}</div></div>
+    </div>`;
+    host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
+  }
+
+  // ---- Radiale: app in orbita attorno a un hub centrale ----
+  function renderRadialLauncher(host, ctx) {
+    const apps = ctx.apps.slice(0, 16);
+    const inner = apps.slice(0, 6), outer = apps.slice(6, 16);
+    const ring = (arr, R, d0) => arr.map((a, i) => {
+      const ang = (i / arr.length) * Math.PI * 2 - Math.PI / 2;
+      const x = Math.round(Math.cos(ang) * R), y = Math.round(Math.sin(ang) * R);
+      return `<div class="lc-ra" data-app="${a.id}" style="--x:${x}px;--y:${y}px;transform:translate(${x}px,${y}px);background:${a.color};animation-delay:${(d0 + i * 0.025).toFixed(3)}s">${/^(https?:|data:)/.test(a.icon||"")?`<img src="${a.icon}" style="width:26px;height:26px;border-radius:8px;object-fit:cover">`:a.icon}</div>`;
+    }).join("");
+    host.innerHTML = `<div class="lc-radial">
+      <div class="lc-hub"><div class="lc-clock t"></div><small>NOVA</small></div>
+      ${ring(inner, 66, 0)}${ring(outer, 116, 0.12)}
+      <div class="lc-rlabel">Le app orbitano attorno all'hub</div>
+    </div>`;
+    host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
+  }
+
+  // ---- Cover flow: carosello orizzontale di grandi schede ----
+  function renderCoverLauncher(host, ctx) {
+    const cards = ctx.apps.map(a => `<div class="lc-cv" data-app="${a.id}" style="background:linear-gradient(160deg,${a.color},color-mix(in srgb,${a.color} 45%,#000))">
+      <div class="lc-cvi">${/^(https?:|data:)/.test(a.icon||"")?`<img src="${a.icon}" style="width:42px;height:42px;border-radius:12px;object-fit:cover">`:a.icon}</div>
+      <b>${escH(a.name)}</b><small>${APP_CATS[a.id] || "App"}</small></div>`).join("");
+    host.innerHTML = `<div class="lc-cover no-sb">${cards}</div>`;
+    host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
+  }
+
+  // registro launcher: id + metadati (glifo SVG per la galleria in Impostazioni) + render
+  const LG = {
+    grid:'<rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/>',
+    list:'<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+    drawer:'<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="5" y1="8" x2="7" y2="8"/><line x1="5" y1="11" x2="7" y2="11"/>',
+    tiles:'<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>',
+    dash:'<rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="12" width="10" height="9" rx="2"/><rect x="15" y="12" width="6" height="9" rx="2"/>',
+    radial:'<circle cx="12" cy="12" r="3"/><circle cx="12" cy="4" r="1.6"/><circle cx="12" cy="20" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="20" cy="12" r="1.6"/><circle cx="6" cy="6" r="1.6"/><circle cx="18" cy="18" r="1.6"/>',
+    cover:'<rect x="8" y="5" width="8" height="14" rx="1.6"/><rect x="2.5" y="8" width="4" height="8" rx="1.2" opacity=".6"/><rect x="17.5" y="8" width="4" height="8" rx="1.2" opacity=".6"/>',
+  };
+  const LAUNCHERS = {
+    springboard: { id:"springboard", name:"Griglia",     desc:"Icone a pagine + dock",       ic:LG.grid },
+    list:        { id:"list",        name:"Lista",       desc:"Elenco con ricerca e riordino", ic:LG.list,   render: renderListLauncher },
+    drawer:      { id:"drawer",      name:"Drawer",      desc:"Menu laterale a scomparsa",    ic:LG.drawer, render: renderDrawerLauncher },
+    tiles:       { id:"tiles",       name:"Tiles",       desc:"Riquadri colorati",            ic:LG.tiles,  render: renderTilesLauncher },
+    dash:        { id:"dash",        name:"Dashboard",   desc:"Widget + recenti",             ic:LG.dash,   render: renderDashLauncher },
+    radial:      { id:"radial",      name:"Radiale",     desc:"App in orbita attorno all'hub", ic:LG.radial, render: renderRadialLauncher },
+    cover:       { id:"cover",       name:"Cover flow",  desc:"Carosello di grandi schede",   ic:LG.cover,  render: renderCoverLauncher },
+  };
+  const launcherList = () => Object.values(LAUNCHERS).map(l => ({ id:l.id, name:l.name, desc:l.desc, ic:l.ic }));
 
   function renderHome() {
     const host = $("#app-grid");
@@ -408,11 +517,16 @@ const OS = (() => {
     if (lch !== "springboard" && LAUNCHERS[lch] && LAUNCHERS[lch].render) {
       editing = false;
       host.classList.remove("editing"); host.classList.add("launcher-alt");
+      host.setAttribute("data-launcher", lch);
       dock.style.display = "none"; dock.innerHTML = "";
-      LAUNCHERS[lch].render(host);
+      // contesto passato ai launcher: app, dock, recenti, apertura (le app non cambiano)
+      const ctx = { apps: allApps(), dock: NovaApps.dock, recent: recentApps().map(appById).filter(Boolean), open: openApp };
+      LAUNCHERS[lch].render(host, ctx);
+      renderClocks();   // popola subito eventuali orologi del launcher
       return;
     }
     host.classList.remove("launcher-alt");
+    host.removeAttribute("data-launcher");
     dock.style.display = "";
     const L = homeLayout();
     homePage = Math.max(0, Math.min(homePage, L.pages.length-1));
@@ -715,9 +829,15 @@ const OS = (() => {
     const frame = $("#app-frame");
     if (frame._cleanup) { try { frame._cleanup(); } catch {} frame._cleanup = null; }
   }
+  function recentApps() { return store.get("recentApps", []); }
+  function pushRecent(id) {
+    const r = store.get("recentApps", []).filter(x => x !== id);
+    r.unshift(id); if (r.length > 10) r.length = 10; store.set("recentApps", r);
+  }
   function openApp(id) {
     const a = appById(id);
     if (!a) return;
+    pushRecent(id);
     // web app sul device: apri nel browser nativo a schermo intero. Così i siti che
     // vietano l'incorporamento in iframe (WhatsApp Web, Telegram Web, banche, Google…)
     // si aprono davvero, invece di restare bianchi.
