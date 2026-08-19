@@ -2635,10 +2635,20 @@ const NovaApps = (() => {
         try { const fn = SETFN[k]; if (fn && NN[fn]) applied = NN[fn](!S[k]); } catch (e) {}
         setTimeout(redraw, applied ? 300 : 800); };
       const isPriv = () => { const ns = readSensors(); return !!(ns && ns.privileged); };
-      // versione REALE installata (da PackageInfo) con fallback alla build web
+      // versione REALE in esecuzione: la più recente tra l'APK nativo (PackageInfo) e la
+      // shell aggiornata via OTA (window.__NOVA_SHELL). Senza questo, dopo un aggiornamento
+      // della sola interfaccia le Info restavano ferme alla build dell'APK. Stessa logica
+      // dell'updater (build effettiva = max(apk, shell)).
       const appVer = (() => { try { return NN.appVersion ? JSON.parse(NN.appVersion()) : null; } catch { return null; } })();
-      const VER = (appVer && appVer.name && appVer.name !== "?") ? appVer.name : "0.1.15";
-      const VERLONG = appVer && appVer.code ? `${VER} · build ${appVer.code}` : `${VER} · build web`;
+      const shellVer = (() => { try { return (window.__NOVA_SHELL && window.__NOVA_SHELL.build) ? window.__NOVA_SHELL : null; } catch { return null; } })();
+      const apkCode = (appVer && appVer.code) || 0;
+      const shellBuild = (shellVer && shellVer.build) || 0;
+      const effCode = Math.max(apkCode, shellBuild);
+      const effName = shellBuild >= apkCode
+        ? ((shellVer && shellVer.version) || (appVer && appVer.name))
+        : ((appVer && appVer.name) || (shellVer && shellVer.version));
+      const VER = (effName && effName !== "?") ? effName : "0.1.15";
+      const VERLONG = effCode ? `${VER} · build ${effCode}` : `${VER} · build web`;
       // aggiornamento in attesa (rilevato dal controllo autonomo): mostra un pallino
       const updPend = () => { try { return os.store.get("updAvailable","") || ""; } catch { return ""; } };
 
@@ -2886,7 +2896,9 @@ const NovaApps = (() => {
             r.onload = () => { try { const t = JSON.parse(r.result);
               if (t.format !== "novatheme/1" && t.format !== "novatheme/2") { os.notify({app:"settings",title:"Tema",text:"File non riconosciuto."}); return; }
               if (t.meta?.base) os.set("theme", t.meta.base);
-              if (t.layout?.id && os.launchers().some(l => l.id === t.layout.id)) os.set("launcher", t.layout.id);
+              // layout: template a blocchi del tema (launcher "custom") oppure launcher predefinito
+              if (t.layout?.engine === "blocks" && Array.isArray(t.layout.blocks)) os.applyThemeLayout(t.layout);
+              else if (t.layout?.id && os.launchers().some(l => l.id === t.layout.id)) os.set("launcher", t.layout.id);
               if (t.colors?.accent) os.set("accentColor", t.colors.accent);
               if (t.colors?.icon) os.set("iconColor", t.colors.icon);
               if (t.shape?.iconStyle) os.set("iconStyle", t.shape.iconStyle);
@@ -3294,8 +3306,13 @@ const NovaApps = (() => {
           const cores = navigator.hardwareConcurrency;
           const ram = navigator.deviceMemory;
           const res = `${screen.width}×${screen.height} @${window.devicePixelRatio||1}x`;
+          // se interfaccia (OTA) e app (APK) hanno build diverse, lo mostriamo: chiarisce
+          // che alcune novità arrivano via aggiornamento interno e altre reinstallando l'APK.
+          const splitBuild = shellBuild && apkCode && shellBuild !== apkCode;
           const rows = [
             ["Nome dispositivo","Nova N1"],["Versione NovaOS",VERLONG],
+            splitBuild?["Interfaccia (OTA)","build "+shellBuild]:null,
+            splitBuild?["App installata (APK)","build "+apkCode]:null,
             android?["Sistema","Android "+android]:["Runtime","WebView / Chromium"],
             chrome?["Motore","Chromium "+chrome]:null,
             ["Risoluzione schermo",res],

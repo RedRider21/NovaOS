@@ -622,6 +622,116 @@ const OS = (() => {
     host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
   }
 
+  // ============================================================
+  //  Motore di layout a BLOCCHI (dichiarativo, per i temi)
+  // ------------------------------------------------------------
+  //  La home può essere composta da blocchi indipendenti descritti in un template
+  //  JSON (nessun codice: sicuro anche per i temi importati). NovaOS ha UN renderer
+  //  generico; lo Studio costruisce il template visualmente. I 7 launcher classici
+  //  restano come "standard" a cui tornare. Un tema può portarsi il proprio layout
+  //  (launcher "custom"): si importa, si esegue, si ripristina come i launcher veri.
+  // ============================================================
+
+  // ---- Blocco: indice alfabetico A-Z con scorrimento rapido (scrubber + bollicina) ----
+  function blkAppIndex(el, ctx, params) {
+    const apps = ctx.apps.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "", "it"));
+    const groups = {};
+    apps.forEach(a => { const L = (a.name || "#").charAt(0).toUpperCase(); (groups[L] = groups[L] || []).push(a); });
+    const letters = Object.keys(groups).sort((a, b) => a.localeCompare(b, "it"));
+    el.innerHTML = `
+      <div class="ai-scroll no-sb">${letters.map(L =>
+        `<div class="ai-hdr" data-letter="${attrEsc(L)}">${escH(L)}</div>` +
+        groups[L].map(a => `<div class="ai-row blk-app" data-app="${a.id}" data-appname="${attrEsc((a.name || "").toLowerCase())}">${appGlyph(a, "ai-ic")}<span>${escH(a.name)}</span></div>`).join("")
+      ).join("")}</div>
+      <div class="ai-rail">${letters.map(L => `<span data-jump="${attrEsc(L)}">${escH(L)}</span>`).join("")}</div>
+      <div class="ai-bubble"></div>`;
+    const scroll = el.querySelector(".ai-scroll"), rail = el.querySelector(".ai-rail"), bubble = el.querySelector(".ai-bubble");
+    el.querySelectorAll("[data-app]").forEach(r => r.onclick = () => openApp(r.dataset.app));
+    const jumpTo = L => { const h = el.querySelector(`.ai-hdr[data-letter="${L}"]`); if (h) scroll.scrollTop = h.offsetTop - 4; };
+    let bt = null;
+    const showBubble = L => { bubble.textContent = L; bubble.classList.add("on"); clearTimeout(bt); bt = setTimeout(() => bubble.classList.remove("on"), 480); };
+    const letterAt = y => { const r = rail.getBoundingClientRect(); const i = Math.min(letters.length - 1, Math.max(0, Math.floor((y - r.top) / (r.height / letters.length)))); return letters[i]; };
+    let active = false;
+    const at = y => { const L = letterAt(y); if (L) { jumpTo(L); showBubble(L); } };
+    rail.addEventListener("pointerdown", e => { active = true; at(e.clientY); try { rail.setPointerCapture(e.pointerId); } catch {} });
+    rail.addEventListener("pointermove", e => { if (active) at(e.clientY); });
+    const off = () => { active = false; };
+    rail.addEventListener("pointerup", off); rail.addEventListener("pointercancel", off);
+  }
+  // ---- Blocco: orologio + data (aggiornati da renderClocks via .lc-clock/.lc-date) ----
+  function blkClock(el, ctx, params) {
+    const big = params && params.size === "small" ? "blk-clock-sm" : "";
+    el.innerHTML = `<div class="lc-clock blk-clock ${big}"></div><div class="lc-date blk-cdate"></div>`;
+  }
+  // ---- Blocco: ricerca che filtra le app dei blocchi elenco nella stessa home ----
+  function blkSearch(el, ctx, params) {
+    el.innerHTML = `<div class="blk-search"><span>${LGI.search}</span><input type="search" placeholder="Cerca app" aria-label="Cerca app"></div>`;
+    const inp = el.querySelector("input");
+    inp.oninput = () => {
+      const q = inp.value.trim().toLowerCase();
+      const root = el.closest(".lc-blocks") || document;
+      root.querySelectorAll(".blk-app").forEach(r => { r.style.display = (!q || (r.dataset.appname || "").indexOf(q) >= 0) ? "" : "none"; });
+      // nasconde le intestazioni lettera senza righe visibili
+      root.querySelectorAll(".ai-hdr").forEach(h => {
+        let vis = false;
+        for (let n = h.nextElementSibling; n && n.classList.contains("ai-row"); n = n.nextElementSibling) if (n.style.display !== "none") { vis = true; break; }
+        h.style.display = vis ? "" : "none";
+      });
+    };
+  }
+  // ---- Blocco: griglia semplice di app (params.cols = 3..5) ----
+  function blkAppGrid(el, ctx, params) {
+    const cols = Math.min(5, Math.max(3, (params && params.cols) || 4));
+    el.style.setProperty("--blk-cols", cols);
+    el.innerHTML = `<div class="blk-grid no-sb">${ctx.apps.map(a =>
+      `<div class="blk-gapp blk-app" data-app="${a.id}" data-appname="${attrEsc((a.name || "").toLowerCase())}">${appGlyph(a, "blk-gic")}<span>${escH(a.name)}</span></div>`).join("")}</div>`;
+    el.querySelectorAll("[data-app]").forEach(r => r.onclick = () => openApp(r.dataset.app));
+  }
+  // ---- Blocco: dock delle preferite ----
+  function blkDock(el, ctx, params) {
+    el.innerHTML = `<div class="blk-dock">${ctx.dock.map(a => `<div data-app="${a.id}">${appGlyph(a, "blk-dic")}</div>`).join("")}</div>`;
+    el.querySelectorAll("[data-app]").forEach(r => r.onclick = () => openApp(r.dataset.app));
+  }
+  const BLOCKS = { appindex: blkAppIndex, clock: blkClock, search: blkSearch, appgrid: blkAppGrid, dock: blkDock };
+
+  // renderer generico: monta i blocchi del template nella home
+  function renderBlockLayout(host, ctx, layout) {
+    host.innerHTML = `<div class="lc-blocks no-sb"></div>`;
+    const root = host.querySelector(".lc-blocks");
+    (layout && Array.isArray(layout.blocks) ? layout.blocks : []).forEach(b => {
+      const fn = b && BLOCKS[b.type]; if (!fn) return;
+      const wrap = document.createElement("div");
+      wrap.className = "blk blk-" + b.type;
+      root.appendChild(wrap);
+      try { fn(wrap, ctx, b.params || {}); } catch (e) {}
+    });
+  }
+  // template del launcher predefinito "Indice A-Z" (usa il motore a blocchi)
+  const INDEX_TEMPLATE = { engine: "blocks", blocks: [
+    { type: "clock", params: { size: "small" } },
+    { type: "search", params: {} },
+    { type: "appindex", params: {} },
+    { type: "dock", params: {} },
+  ] };
+  // applica il layout a blocchi di un tema (launcher "custom"): salva e attiva.
+  function applyThemeLayout(layout) {
+    if (!layout || !Array.isArray(layout.blocks)) return false;
+    const safe = {
+      engine: "blocks",
+      name: safeIcon(layout.name) || "Tema personalizzato",
+      blocks: layout.blocks.filter(b => b && BLOCKS[b.type]).map(b => ({ type: b.type, params: (b.params && typeof b.params === "object") ? b.params : {} })),
+    };
+    if (!safe.blocks.length) return false;
+    store.set("customLayout", safe);
+    set("launcher", "custom");
+    return true;
+  }
+
+  // glifi per blocchi/launcher aggiuntivi
+  const LGI = {
+    search: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>',
+  };
+
   // registro launcher: id + metadati (glifo SVG per la galleria in Impostazioni) + render
   const LG = {
     grid:'<rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/>',
@@ -631,6 +741,8 @@ const OS = (() => {
     dash:'<rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="12" width="10" height="9" rx="2"/><rect x="15" y="12" width="6" height="9" rx="2"/>',
     radial:'<circle cx="12" cy="12" r="3"/><circle cx="12" cy="4" r="1.6"/><circle cx="12" cy="20" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="20" cy="12" r="1.6"/><circle cx="6" cy="6" r="1.6"/><circle cx="18" cy="18" r="1.6"/>',
     cover:'<rect x="8" y="5" width="8" height="14" rx="1.6"/><rect x="2.5" y="8" width="4" height="8" rx="1.2" opacity=".6"/><rect x="17.5" y="8" width="4" height="8" rx="1.2" opacity=".6"/>',
+    index:'<line x1="4" y1="6" x2="15" y2="6"/><line x1="4" y1="12" x2="15" y2="12"/><line x1="4" y1="18" x2="15" y2="18"/><circle cx="20" cy="5" r="1"/><circle cx="20" cy="9" r="1"/><circle cx="20" cy="13" r="1"/><circle cx="20" cy="17" r="1"/><circle cx="20" cy="21" r="1"/>',
+    custom:'<rect x="3" y="3" width="18" height="5" rx="1.5"/><rect x="3" y="10" width="18" height="4" rx="1.5" opacity=".7"/><rect x="3" y="16" width="11" height="5" rx="1.5" opacity=".7"/>',
   };
   const LAUNCHERS = {
     springboard: { id:"springboard", name:"Griglia",     desc:"Icone a pagine + dock",       ic:LG.grid },
@@ -640,14 +752,38 @@ const OS = (() => {
     dash:        { id:"dash",        name:"Dashboard",   desc:"Widget + recenti",             ic:LG.dash,   render: renderDashLauncher },
     radial:      { id:"radial",      name:"Radiale",     desc:"App in orbita attorno all'hub", ic:LG.radial, render: renderRadialLauncher },
     cover:       { id:"cover",       name:"Cover flow",  desc:"Carosello di grandi schede",   ic:LG.cover,  render: renderCoverLauncher },
+    index:       { id:"index",       name:"Indice A-Z",  desc:"Elenco alfabetico + scorrimento rapido", ic:LG.index, render: (host, ctx) => renderBlockLayout(host, ctx, INDEX_TEMPLATE) },
   };
-  const launcherList = () => Object.values(LAUNCHERS).map(l => ({ id:l.id, name:l.name, desc:l.desc, ic:l.ic }));
+  // lista per la galleria in Impostazioni: i launcher predefiniti + eventuale layout
+  // personalizzato attivo (portato da un tema), così l'utente può tornarci o cambiarlo.
+  function launcherList() {
+    const base = Object.values(LAUNCHERS).map(l => ({ id: l.id, name: l.name, desc: l.desc, ic: l.ic }));
+    const cl = store.get("customLayout", null);
+    if (cl && Array.isArray(cl.blocks) && cl.blocks.length)
+      base.push({ id: "custom", name: cl.name || "Personalizzato", desc: "Layout del tema importato", ic: LG.custom });
+    return base;
+  }
 
   function renderHome() {
     const host = $("#app-grid");
     const dock = $("#dock");
     // dispatch verso un launcher alternativo registrato (diverso da springboard)
     const lch = state.launcher || "springboard";
+    // launcher "custom": layout a blocchi portato da un tema importato (motore generico)
+    if (lch === "custom") {
+      const cl = store.get("customLayout", null);
+      if (cl && Array.isArray(cl.blocks) && cl.blocks.length) {
+        editing = false;
+        host.classList.remove("editing"); host.classList.add("launcher-alt");
+        host.setAttribute("data-launcher", "custom");
+        dock.style.display = "none"; dock.innerHTML = "";
+        const ctx = { apps: allApps(), dock: NovaApps.dock, recent: recentApps().map(appById).filter(Boolean), open: openApp };
+        renderBlockLayout(host, ctx, cl);
+        renderClocks();
+        return;
+      }
+      // nessun layout personalizzato salvato: ripiega sullo springboard
+    }
     if (lch !== "springboard" && LAUNCHERS[lch] && LAUNCHERS[lch].render) {
       editing = false;
       host.classList.remove("editing"); host.classList.add("launcher-alt");
@@ -1775,7 +1911,7 @@ const OS = (() => {
   // API esposta alle app
   const api = {
     state, store, notify, confirm: confirmDialog, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
-    launchers: launcherList, renderHome, applyLayoutOrder, backup: backupData, restore: restoreData,
+    launchers: launcherList, renderHome, applyLayoutOrder, applyThemeLayout, backup: backupData, restore: restoreData,
     WALLS, photos, vibrate, sounds: Sounds, updater: Updater,
     openSettings, takeSettingsSection,
     // gestione app di terze parti

@@ -327,6 +327,40 @@ body {
 .lc-cv b { font-size:calc(19px*var(--fscale,1)); font-weight: 600; }
 .lc-cv small { color: rgba(255,255,255,.75); font-size:calc(11px*var(--fscale,1)); }
 
+/* Motore di layout a BLOCCHI (launcher "custom" e "Indice A-Z") */
+.lc-blocks { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.blk { flex: 0 0 auto; }
+.blk-clock { text-align: center; font-size:calc(46px*var(--fscale,1)); font-weight: 200; letter-spacing: 1px; color: var(--text); margin-top: 10px; }
+.blk-clock.blk-clock-sm { font-size:calc(30px*var(--fscale,1)); margin-top: 6px; }
+.blk-cdate { text-align: center; color: var(--text-dim); font-size:calc(12px*var(--fscale,1)); text-transform: capitalize; margin-bottom: 6px; }
+.blk-search { display: flex; align-items: center; gap: 8px; margin: 8px 16px; padding: 9px 14px; border-radius: 22px; background: var(--surface); color: var(--text-dim); }
+.blk-search span { display: inline-flex; }
+.blk-search input { flex: 1; border: none; background: none; outline: none; color: var(--text); font-size:calc(14px*var(--fscale,1)); }
+/* blocco indice alfabetico A-Z */
+.blk-appindex { flex: 1 1 auto; position: relative; min-height: 0; }
+.ai-scroll { height: 100%; overflow-y: auto; padding: 2px 26px 12px 12px; }
+.ai-hdr { position: sticky; top: 0; background: var(--bg); color: var(--accent); font-size:calc(12px*var(--fscale,1)); font-weight: 700; letter-spacing: .05em; padding: 6px 4px 2px; z-index: 1; }
+.ai-row { display: flex; align-items: center; gap: 12px; padding: 7px 4px; cursor: pointer; border-radius: 12px; }
+.ai-row:active { background: var(--surface); }
+.ai-row span { color: var(--text); font-size:calc(15px*var(--fscale,1)); }
+.ai-ic { width: 38px; height: 38px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(20px*var(--fscale,1)); flex: 0 0 auto; }
+.ai-rail { position: absolute; top: 6px; right: 3px; bottom: 6px; width: 18px; display: flex; flex-direction: column; justify-content: space-between;
+  align-items: center; touch-action: none; z-index: 2; }
+.ai-rail span { font-size:calc(9px*var(--fscale,1)); line-height: 1; color: var(--text-dim); font-weight: 600; }
+.ai-bubble { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) scale(.6); width: 76px; height: 76px; border-radius: 22px;
+  background: var(--accent); color: #fff; display: grid; place-items: center; font-size:calc(38px*var(--fscale,1)); font-weight: 700;
+  opacity: 0; pointer-events: none; transition: opacity .12s, transform .12s; z-index: 3; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+.ai-bubble.on { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+/* blocco griglia semplice */
+.blk-grid { display: grid; grid-template-columns: repeat(var(--blk-cols,4), 1fr); gap: 10px 6px; padding: 8px 12px; overflow-y: auto; }
+.blk-gapp { display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; }
+.blk-gapp span { color: var(--text); font-size:calc(11px*var(--fscale,1)); text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blk-gic { width: 50px; height: 50px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(24px*var(--fscale,1)); }
+/* blocco dock */
+.blk-dock { display: flex; justify-content: space-around; align-items: center; gap: 8px; padding: 10px 16px calc(10px + var(--nav-h,0px)); }
+.blk-dock > div { cursor: pointer; }
+.blk-dic { width: 50px; height: 50px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(24px*var(--fscale,1)); }
+
 /* galleria di selezione launcher (Impostazioni → Display) */
 .lch-gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 16px; }
 .lch-card { display: flex; align-items: center; gap: 11px; padding: 12px; border-radius: 15px; cursor: pointer;

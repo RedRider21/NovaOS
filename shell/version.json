@@ -1,9 +1,9 @@
 {
-  "version": "0.1.38",
-  "build": 39,
+  "version": "0.1.39",
+  "build": 40,
   "minNative": 12,
   "date": "2026-08-19",
-  "notes": "Sicurezza: i temi importati non possono più iniettare contenuti non fidati nelle icone (sanificazione). Correzioni minori.",
+  "notes": "Nuovo launcher «Indice A-Z» con scorrimento alfabetico rapido. Motore di layout a blocchi per i temi. Info sul telefono ora mostrano la versione effettiva in esecuzione (interfaccia OTA + app).",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "js/version.js",    "manifest.webmanifest",    "sw.js",
