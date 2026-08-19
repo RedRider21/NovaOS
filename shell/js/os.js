@@ -125,8 +125,16 @@ const OS = (() => {
   function allApps() {
     return [...NovaApps.list, ...userApps().map(u => ({ ...u, web: true }))];
   }
-  // icona effettiva di un'app: override del tema (state.iconMap) oppure quella di default
-  function appIcon(a) { return (a && state.iconMap && state.iconMap[a.id]) || (a && a.icon) || ""; }
+  // icona effettiva di un'app: override del tema (state.iconMap) oppure quella di default.
+  // SICUREZZA: l'icona viene inserita in innerHTML (ramo testo e attributo src). Un tema
+  // importato è un file esterno non fidato: scartiamo i valori che contengono caratteri
+  // capaci di uscire dal contesto HTML/attributo (< > " ' `). Emoji, data-URI SVG
+  // percent-encoded, immagini base64 e URL https non ne contengono → restano validi.
+  function safeIcon(v) { v = String(v == null ? "" : v); return /[<>"'`]/.test(v) ? "" : v; }
+  function appIcon(a) {
+    const ov = safeIcon(a && state.iconMap && state.iconMap[a.id]);
+    return ov || safeIcon(a && a.icon) || "";
+  }
   function appById(id) {
     return NovaApps.byId[id] || userApps().map(u=>({...u,web:true})).find(a => a.id === id);
   }

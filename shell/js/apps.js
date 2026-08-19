@@ -2898,8 +2898,18 @@ const NovaApps = (() => {
                 os.set("wallPosX", t.wallpaper.posX??50); os.set("wallPosY", t.wallpaper.posY??50); }
               else { os.set("deskColor", ""); os.set("wallImage",""); }
               // override icone per-app (icons.map: id → {type:"emoji",value})
+              // SICUREZZA: un tema è un file esterno non fidato. Accettiamo solo emoji/testo
+              // brevi senza caratteri HTML pericolosi, oppure URL immagine data:image//https.
               if (t.icons && t.icons.map) { const m = {};
-                Object.entries(t.icons.map).forEach(([id,o]) => { const v = (o && typeof o==="object") ? o.value : o; if (v) m[id] = v; });
+                Object.entries(t.icons.map).forEach(([id,o]) => {
+                  let v = (o && typeof o==="object") ? o.value : o;
+                  v = String(v == null ? "" : v).trim();
+                  if (!v) return;
+                  if (/[<>"'`]/.test(v)) return;                                  // possibile iniezione: scarta
+                  const isImg = /^data:image\//i.test(v) || /^https:\/\//i.test(v);
+                  const isText = !/^data:|^https?:|^javascript:/i.test(v) && v.length <= 8;  // emoji/simbolo breve
+                  if (isImg || isText) m[id] = v;                                 // altrimenti scartato
+                });
                 os.set("iconMap", m);
               } else os.set("iconMap", {});
               // suoni (solo nomi validi per categoria)
