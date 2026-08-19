@@ -91,12 +91,31 @@ public class BrowserActivity extends Activity {
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
     private static final String SEARCH = "https://www.google.com/search?q=";
 
-    private static final int BG = 0xFF0b0f17, BAR = 0xFF151a24, TXT = 0xFFe8ecf4, DIM = 0xFF9aa4b8, ACC = 0xFF0a84ff;
-    // tema incognito (come Chrome: barra scura viola, capsula più scura)
+    private static final int ACC = 0xFF0a84ff;
+    // Palette dinamica: segue il tema di NovaOS (chiaro/scuro), impostata da initTheme().
+    // BG=sfondo, BAR=barra, TXT=testo, DIM=testo attenuato, CAP=capsula omnibox,
+    // CARD=scheda nel selettore, PH=placeholder anteprima, SCRIM=velo selettore schede.
+    private int BG, BAR, TXT, DIM, CAP, CARD, PH, SCRIM;
+    // tema incognito (come Chrome: barra scura viola, capsula più scura) — sempre scuro
     private static final int INC_BG = 0xFF17141f, INC_BAR = 0xFF2a2438, INC_CAP = 0xFF3a3350;
+
+    /** Legge il tema salvato da NovaOS (SharedPreferences "novaos", chiave nova:theme)
+     *  e sceglie la palette chiara o scura, per andare di pari passo con il resto del sistema. */
+    private void initTheme() {
+        String t = getSharedPreferences("novaos", MODE_PRIVATE).getString("nova:theme", "\"dark\"");
+        boolean light = t != null && t.contains("light");
+        if (light) {
+            BG = 0xFFf2f4f8; BAR = 0xFFffffff; TXT = 0xFF141a24; DIM = 0xFF5b6472;
+            CAP = 0xFFe9edf3; CARD = 0xFFffffff; PH = 0xFFe4e8ef; SCRIM = 0xF2dfe4ea;
+        } else {
+            BG = 0xFF0b0f17; BAR = 0xFF151a24; TXT = 0xFFe8ecf4; DIM = 0xFF9aa4b8;
+            CAP = 0xFF232937; CARD = 0xFF1c2331; PH = 0xFF0f141d; SCRIM = 0xF2070A10;
+        }
+    }
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        initTheme();   // palette in base al tema di NovaOS, prima di costruire la UI
 
         LinearLayout rootv = new LinearLayout(this);
         rootv.setOrientation(LinearLayout.VERTICAL);
@@ -125,7 +144,7 @@ public class BrowserActivity extends Activity {
         cap.setOrientation(LinearLayout.HORIZONTAL);
         cap.setGravity(Gravity.CENTER_VERTICAL);
         GradientDrawable capBg = new GradientDrawable();
-        capBg.setColor(0xFF232937); capBg.setCornerRadius(dp(22));
+        capBg.setColor(CAP); capBg.setCornerRadius(dp(22));
         cap.setBackground(capBg);
         cap.setPadding(dp(14), 0, dp(6), 0);
         LinearLayout.LayoutParams capLp = new LinearLayout.LayoutParams(0, dp(42), 1f);
@@ -246,7 +265,7 @@ public class BrowserActivity extends Activity {
         captureThumb(curTab());   // anteprima aggiornata della scheda corrente
 
         FrameLayout overlay = new FrameLayout(this);
-        overlay.setBackgroundColor(0xF2070A10);   // scrim quasi opaco
+        overlay.setBackgroundColor(SCRIM);   // scrim quasi opaco (chiaro o scuro col tema)
         overlay.setClickable(true);
 
         LinearLayout col = new LinearLayout(this);
@@ -320,7 +339,7 @@ public class BrowserActivity extends Activity {
         lp.width = cardW; lp.height = cardH; lp.setMargins(dp(6), dp(6), dp(6), dp(6));
         card.setLayoutParams(lp);
         GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(t.incognito ? INC_CAP : 0xFF1c2331);
+        cardBg.setColor(t.incognito ? INC_CAP : CARD);
         cardBg.setCornerRadius(dp(14));
         if (index == current) cardBg.setStroke(dp(2), ACC);
         card.setBackground(cardBg);
@@ -353,7 +372,7 @@ public class BrowserActivity extends Activity {
         img.setLayoutParams(new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
         img.setScaleType(ImageView.ScaleType.FIT_START);
         GradientDrawable ph = new GradientDrawable();
-        ph.setColor(t.incognito ? 0xFF241d38 : 0xFF0f141d); ph.setCornerRadius(dp(10));
+        ph.setColor(t.incognito ? 0xFF241d38 : PH); ph.setCornerRadius(dp(10));
         img.setBackground(ph);
         img.setClipToOutline(true);
         if (t.thumb != null) img.setImageBitmap(t.thumb);
@@ -447,7 +466,7 @@ public class BrowserActivity extends Activity {
     private void applyChromeTheme(boolean inc) {
         bar.setBackgroundColor(inc ? INC_BAR : BAR);
         GradientDrawable capBg = new GradientDrawable();
-        capBg.setColor(inc ? INC_CAP : 0xFF232937); capBg.setCornerRadius(dp(22));
+        capBg.setColor(inc ? INC_CAP : CAP); capBg.setCornerRadius(dp(22));
         cap.setBackground(capBg);
         incBadge.setVisibility(inc ? View.VISIBLE : View.GONE);
         omnibox.setHint(inc ? "Cerca o digita (incognito)" : "Cerca o digita un indirizzo");

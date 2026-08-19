@@ -2816,7 +2816,18 @@ const NovaApps = (() => {
               <label class="btn ghost" style="flex:1;text-align:center;cursor:pointer">${S.wallImage?'Cambia immagine':'Immagine di sfondo'}<input id="wall-img" type="file" accept="image/*" hidden></label>
               ${S.wallImage?`<button class="btn ghost" id="wall-clear" style="flex:0 0 auto;color:var(--danger)">Rimuovi</button>`:''}
             </div>
-            ${S.wallImage?`<div style="margin:12px 16px 0;height:150px;border-radius:16px;background:url('${S.wallImage}') center/cover;box-shadow:inset 0 0 0 1px var(--surface-2)"></div>`:''}
+            ${S.wallImage?`
+            <div class="wall-frame">
+              <div id="wall-prev" class="wall-prev" style="background-image:url('${S.wallImage}')"></div>
+            </div>
+            <div class="seg" style="margin:10px 16px 0">
+              <button data-fit="cover" class="${(S.wallFit||'cover')==='cover'?'on':''}">Riempi</button>
+              <button data-fit="contain" class="${S.wallFit==='contain'?'on':''}">Adatta</button>
+              <button data-fit="custom" class="${S.wallFit==='custom'?'on':''}">Zoom</button>
+            </div>
+            ${S.wallFit==='custom'?`<div class="wall-slid"><span>Zoom</span><input id="wall-zoom" type="range" min="60" max="260" value="${S.wallZoom||100}"><b id="wall-zoom-v">${S.wallZoom||100}%</b></div>`:''}
+            <div class="wall-slid"><span>Orizz.</span><input id="wall-px" type="range" min="0" max="100" value="${S.wallPosX??50}"></div>
+            <div class="wall-slid"><span>Vert.</span><input id="wall-py" type="range" min="0" max="100" value="${S.wallPosY??50}"></div>`:''}
 
             <div class="section-label">Home · launcher</div>
             <div class="lch-gallery">${os.launchers().map(l=>`<div class="lch-card ${(S.launcher||'springboard')===l.id?'on':''}" data-lch="${l.id}"><div class="g"><svg viewBox="0 0 24 24">${l.ic}</svg></div><div style="min-width:0"><b>${l.name}</b><small>${l.desc}</small></div></div>`).join("")}</div>
@@ -2860,7 +2871,7 @@ const NovaApps = (() => {
               colors:{ accent:S.accentColor||undefined, bg:S.deskColor||undefined, icon:S.iconColor||undefined },
               shape:{ iconStyle:S.iconStyle, iconShape:S.iconShape||"squircle" },
               icons:{ shape:S.iconShape||"squircle", ...(Object.keys(iconMap).length?{map:iconMap}:{}) },
-              wallpaper: S.deskColor?{type:"solid",value:S.deskColor}:(S.wallImage?{type:"image",value:S.wallImage}:{type:"gradient",value:os.WALLS[S.wallpaper]}),
+              wallpaper: S.deskColor?{type:"solid",value:S.deskColor}:(S.wallImage?{type:"image",value:S.wallImage,fit:S.wallFit||"cover",zoom:S.wallZoom||100,posX:S.wallPosX??50,posY:S.wallPosY??50}:{type:"gradient",value:os.WALLS[S.wallpaper]}),
               sounds:{ ringtone:{type:"builtin",value:S.ringtone}, notif:{type:"builtin",value:S.notifSound}, alarm:{type:"builtin",value:S.alarmSound} },
               typography:{ textScale:S.textScale } };
             const a = document.createElement("a");
@@ -2881,7 +2892,9 @@ const NovaApps = (() => {
               if (t.shape?.iconShape) os.set("iconShape", t.shape.iconShape);
               if (t.typography?.textScale) os.set("textScale", t.typography.textScale);
               if (t.wallpaper?.type === "solid") { os.set("deskColor", t.wallpaper.value); os.set("wallImage",""); }
-              else if (t.wallpaper?.type === "image") { os.set("wallImage", t.wallpaper.value); os.set("deskColor",""); }
+              else if (t.wallpaper?.type === "image") { os.set("wallImage", t.wallpaper.value); os.set("deskColor","");
+                os.set("wallFit", t.wallpaper.fit||"cover"); os.set("wallZoom", t.wallpaper.zoom||100);
+                os.set("wallPosX", t.wallpaper.posX??50); os.set("wallPosY", t.wallpaper.posY??50); }
               else { os.set("deskColor", ""); os.set("wallImage",""); }
               // override icone per-app (icons.map: id → {type:"emoji",value})
               if (t.icons && t.icons.map) { const m = {};
@@ -2924,6 +2937,21 @@ const NovaApps = (() => {
               .catch(() => os.notify({ app:"settings", title:"Sfondo", text:"Immagine non valida." })); };
           const wc = sec.querySelector("#wall-clear");
           if (wc) wc.onclick = () => { os.set("wallImage",""); sections.display(); };
+          // inquadratura dello sfondo: anteprima live + adattamento/zoom/posizione
+          const prev = sec.querySelector("#wall-prev");
+          const paintPrev = () => { if (!prev) return;
+            const fit = os.store.get("wallFit","cover");
+            prev.style.backgroundSize = fit==="contain" ? "contain" : fit==="custom" ? (os.store.get("wallZoom",100)+"%") : "cover";
+            prev.style.backgroundPosition = os.store.get("wallPosX",50)+"% "+os.store.get("wallPosY",50)+"%";
+          };
+          paintPrev();
+          sec.querySelectorAll("[data-fit]").forEach(b => b.onclick = () => { os.set("wallFit", b.dataset.fit); sections.display(); });
+          const wz = sec.querySelector("#wall-zoom");
+          if (wz) wz.oninput = e => { os.set("wallZoom", +e.target.value); const v=sec.querySelector("#wall-zoom-v"); if(v) v.textContent=e.target.value+"%"; paintPrev(); };
+          const wpx = sec.querySelector("#wall-px");
+          if (wpx) wpx.oninput = e => { os.set("wallPosX", +e.target.value); paintPrev(); };
+          const wpy = sec.querySelector("#wall-py");
+          if (wpy) wpy.oninput = e => { os.set("wallPosY", +e.target.value); paintPrev(); };
           sec.querySelectorAll("[data-to]").forEach(b => b.onclick = () => { os.set("screenTimeout", +b.dataset.to); sections.display(); });
           const dsw = sec.querySelectorAll(".switch");   // solo 3 switch nella sezione Display
           dsw[0].onclick = () => { os.toggle("adaptiveBright"); dsw[0].classList.toggle("on"); };

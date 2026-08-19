@@ -83,6 +83,8 @@ const OS = (() => {
     launcher: "springboard",
     // immagine di sfondo (data URL JPEG ridimensionato). Vuoto = usa il gradiente/tinta.
     wallImage: "",
+    // inquadratura dello sfondo: adattamento + zoom (%) + posizione (% orizz./vert.)
+    wallFit: "cover", wallZoom: 100, wallPosX: 50, wallPosY: 50,
     // override icone per-app (id → emoji) applicato dai temi (.novatheme icons.map)
     iconMap: {},
     // torcia (flash) e protezione occhi (filtro luce blu)
@@ -181,8 +183,13 @@ const OS = (() => {
       screens.home.style.backgroundImage = "none";
     } else if (state.wallImage) {
       screens.home.style.backgroundImage = `url("${state.wallImage}")`;
-      screens.home.style.backgroundSize = "cover";
-      screens.home.style.backgroundPosition = "center";
+      // inquadratura: adattamento (riempi/adatta/zoom personalizzato) + posizione
+      screens.home.style.backgroundSize =
+        state.wallFit === "contain" ? "contain"
+        : state.wallFit === "custom" ? `${state.wallZoom}%`
+        : "cover";
+      screens.home.style.backgroundPosition = `${state.wallPosX}% ${state.wallPosY}%`;
+      screens.home.style.backgroundRepeat = "no-repeat";
     } else {
       screens.home.style.backgroundImage = w;
       screens.home.style.backgroundSize = "";
@@ -451,6 +458,44 @@ const OS = (() => {
     host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
   }
 
+  // ---- Foglio "Tutte le app": overlay a scomparsa dal basso, condivisibile ----
+  //  Usato dai launcher-widget (es. Dashboard) che non mostrano l'intero elenco.
+  //  Apribile con un pulsante o con lo swipe verso l'alto, come su Android.
+  function openAppSheet(ctx) {
+    const host = $("#app-grid");
+    if (host.querySelector(".lc-sheet")) return; // già aperto
+    const apps = ctx.apps;
+    const cells = apps.map(a => {
+      const ic = appIcon(a);
+      const g = /^(https?:|data:)/.test(ic || "")
+        ? `<img src="${ic}" alt="">` : `<span class="lcs-em">${ic}</span>`;
+      return `<div class="lcs-app" data-app="${a.id}"><div class="lcs-ic" style="--c:${a.color}">${g}</div><small>${escH(a.name)}</small></div>`;
+    }).join("");
+    const ov = document.createElement("div");
+    ov.className = "lc-sheet";
+    ov.innerHTML = `<div class="lcs-scrim"></div>
+      <div class="lcs-card no-sb">
+        <div class="lcs-grip"></div>
+        <div class="lcs-h">Tutte le app</div>
+        <div class="lcs-grid">${cells}</div>
+      </div>`;
+    host.appendChild(ov);
+    requestAnimationFrame(() => ov.classList.add("open"));
+    const card = ov.querySelector(".lcs-card"), grip = ov.querySelector(".lcs-grip");
+    let y0 = null;
+    const move = e => { if (y0 == null) return; const dy = Math.max(0, (e.touches ? e.touches[0] : e).clientY - y0); card.style.transform = `translateY(${dy}px)`; };
+    const up = e => { if (y0 == null) return; const dy = Math.max(0, (e.changedTouches ? e.changedTouches[0] : e).clientY - y0); card.style.transition = ""; card.style.transform = ""; y0 = null; if (dy > 90) close(); };
+    const close = () => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+      ov.classList.remove("open"); setTimeout(() => ov.remove(), 260);
+    };
+    ov.querySelector(".lcs-scrim").onclick = close;
+    ov.querySelectorAll("[data-app]").forEach(el => el.onclick = () => { close(); openApp(el.dataset.app); });
+    // trascina la maniglia verso il basso per chiudere
+    grip.addEventListener("pointerdown", e => { y0 = e.clientY; card.style.transition = "none"; });
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  }
+
   // ---- Dashboard: widget (orologio, meteo, recenti, preferite) ----
   function renderDashLauncher(host, ctx) {
     const recent = (ctx.recent.length ? ctx.recent : ctx.apps).slice(0, 4);
@@ -460,8 +505,15 @@ const OS = (() => {
       <div class="lc-widget lc-wwx"><div class="lft"><div class="em">⛅</div><div><div style="font-size:calc(13px*var(--fscale,1))">Meteo</div><div style="color:var(--text-dim);font-size:calc(11px*var(--fscale,1))">Nubi sparse</div></div></div><div class="tp">22°</div></div>
       <div class="lc-widget"><div class="lc-wt">App recenti</div><div class="lc-wrow">${recent.map(a => `<div data-app="${a.id}">${appGlyph(a, "lc-wic")}</div>`).join("")}</div></div>
       <div class="lc-widget"><div class="lc-wt">Preferite</div><div class="lc-wrow" style="justify-content:space-around">${fav.map(a => `<div data-app="${a.id}">${appGlyph(a, "lc-wic")}</div>`).join("")}</div></div>
+      <div class="lc-dash-hint" data-allapps><span class="lc-dash-chev"></span>Tutte le app</div>
     </div>`;
     host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
+    host.querySelector("[data-allapps]").onclick = () => openAppSheet(ctx);
+    // swipe verso l'alto per aprire il cassetto app (come su Android)
+    const wrap = host.querySelector(".lc-dash");
+    let sy = null;
+    wrap.addEventListener("pointerdown", e => { sy = e.clientY; });
+    wrap.addEventListener("pointerup", e => { if (sy != null && sy - e.clientY > 70) openAppSheet(ctx); sy = null; });
   }
 
   // ---- Radiale: app in orbita attorno a un hub centrale ----
@@ -475,11 +527,16 @@ const OS = (() => {
       return `<div class="lc-ra" data-app="${a.id}" style="--x:${x}px;--y:${y}px;transform:translate(${x}px,${y}px);background:${a.color};animation-delay:${(d0 + i * 0.025).toFixed(3)}s">${/^(https?:|data:)/.test(ic||"")?`<img src="${ic}" style="width:26px;height:26px;border-radius:8px;object-fit:cover">`:ic}</div>`;
     }).join("");
     host.innerHTML = `<div class="lc-radial">
-      <div class="lc-hub"><div class="lc-clock t"></div><small>NOVA</small></div>
+      <div class="lc-hub" data-allapps><div class="lc-clock t"></div><small>TUTTE</small></div>
       ${ring(inner, 66, 0)}${ring(outer, 116, 0.12)}
-      <div class="lc-rlabel">Le app orbitano attorno all'hub</div>
+      <div class="lc-rlabel">Tocca l'hub o scorri in alto per tutte le app</div>
     </div>`;
     host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
+    host.querySelector("[data-allapps]").onclick = () => openAppSheet(ctx);
+    const wrap = host.querySelector(".lc-radial");
+    let sy = null;
+    wrap.addEventListener("pointerdown", e => { sy = e.clientY; });
+    wrap.addEventListener("pointerup", e => { if (sy != null && sy - e.clientY > 70) openAppSheet(ctx); sy = null; });
   }
 
   // ---- Cover flow: carosello orizzontale di grandi schede ----
@@ -1404,7 +1461,7 @@ const OS = (() => {
   // ============================================================
   function set(k, v) { state[k] = v; store.set(k, v);
     if (k==="theme") { applyTheme(); applyDisplay(); }
-    if (["brightness","textScale","wallpaper","wallImage","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","iconShape","accentColor","saver","adaptiveBright","eyeComfort"].includes(k)) applyDisplay();
+    if (["brightness","textScale","wallpaper","wallImage","wallFit","wallZoom","wallPosX","wallPosY","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","iconShape","accentColor","saver","adaptiveBright","eyeComfort"].includes(k)) applyDisplay();
     if (["iconStyle","deskColor","iconColor","iconShape","launcher","iconMap"].includes(k) && screens.home.classList.contains("active")) renderHome();
     if (k==="notifLock") renderLockNotifs();
     renderStatusbars();
