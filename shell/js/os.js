@@ -458,14 +458,17 @@ const OS = (() => {
     host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
   }
 
-  // ---- Foglio "Tutte le app": overlay a scomparsa dal basso, condivisibile ----
-  //  Usato dai launcher-widget (es. Dashboard) che non mostrano l'intero elenco.
-  //  Apribile con un pulsante o con lo swipe verso l'alto, come su Android.
-  function openAppSheet(ctx) {
+  // ---- Foglio "Tutte le app": cassetto a scomparsa dal basso (stile Android) ----
+  //  Usato dai launcher-widget (es. Dashboard/Radiale) che non mostrano l'intero
+  //  elenco. Apribile con un pulsante o con un TRASCINAMENTO reale verso l'alto:
+  //  il cassetto segue il dito e si assesta aperto/chiuso al rilascio.
+  //  buildAppSheet costruisce il DOM (chiuso); openAppSheet lo apre animato;
+  //  enableDrawerDrag collega un trascinamento interattivo a una maniglia/area.
+
+  // Costruisce il cassetto in stato "chiuso" e ritorna i controlli per pilotarlo.
+  function buildAppSheet(ctx) {
     const host = $("#app-grid");
-    if (host.querySelector(".lc-sheet")) return; // già aperto
-    const apps = ctx.apps;
-    const cells = apps.map(a => {
+    const cells = ctx.apps.map(a => {
       const ic = appIcon(a);
       const g = /^(https?:|data:)/.test(ic || "")
         ? `<img src="${ic}" alt="">` : `<span class="lcs-em">${ic}</span>`;
@@ -480,20 +483,87 @@ const OS = (() => {
         <div class="lcs-grid">${cells}</div>
       </div>`;
     host.appendChild(ov);
-    requestAnimationFrame(() => ov.classList.add("open"));
-    const card = ov.querySelector(".lcs-card"), grip = ov.querySelector(".lcs-grip");
-    let y0 = null;
-    const move = e => { if (y0 == null) return; const dy = Math.max(0, (e.touches ? e.touches[0] : e).clientY - y0); card.style.transform = `translateY(${dy}px)`; };
-    const up = e => { if (y0 == null) return; const dy = Math.max(0, (e.changedTouches ? e.changedTouches[0] : e).clientY - y0); card.style.transition = ""; card.style.transform = ""; y0 = null; if (dy > 90) close(); };
-    const close = () => {
-      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
-      ov.classList.remove("open"); setTimeout(() => ov.remove(), 260);
+    const card = ov.querySelector(".lcs-card");
+    const scrim = ov.querySelector(".lcs-scrim");
+    let closing = false;
+    const remove = () => { try { ov.remove(); } catch {} };
+    // progress 0 = chiuso (in basso), 1 = aperto; pilota card e velo senza classi
+    const setProgress = p => {
+      p = Math.min(1, Math.max(0, p));
+      card.style.transition = "none"; scrim.style.transition = "none";
+      card.style.transform = `translateY(${(1 - p) * 100}%)`;
+      scrim.style.opacity = String(p);
     };
-    ov.querySelector(".lcs-scrim").onclick = close;
+    const settleOpen = () => {
+      card.style.transition = ""; scrim.style.transition = "";
+      card.style.transform = ""; scrim.style.opacity = "";
+      ov.classList.add("open");
+    };
+    const close = () => {
+      if (closing) return; closing = true;
+      card.style.transition = ""; scrim.style.transition = "";
+      ov.classList.remove("open");
+      card.style.transform = "translateY(100%)"; scrim.style.opacity = "0";
+      setTimeout(remove, 280);
+    };
+    scrim.onclick = close;
     ov.querySelectorAll("[data-app]").forEach(el => el.onclick = () => { close(); openApp(el.dataset.app); });
     // trascina la maniglia verso il basso per chiudere
-    grip.addEventListener("pointerdown", e => { y0 = e.clientY; card.style.transition = "none"; });
-    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+    const grip = ov.querySelector(".lcs-grip");
+    let gy = null;
+    grip.addEventListener("pointerdown", e => { gy = e.clientY; try { grip.setPointerCapture(e.pointerId); } catch {} });
+    grip.addEventListener("pointermove", e => { if (gy == null) return; const dy = e.clientY - gy; if (dy > 0) { card.style.transition = "none"; card.style.transform = `translateY(${dy}px)`; } });
+    grip.addEventListener("pointerup", e => { if (gy == null) return; const dy = e.clientY - gy; gy = null; card.style.transition = ""; if (dy > 90) close(); else card.style.transform = ""; });
+    return { ov, card, setProgress, settleOpen, close, get closing() { return closing; } };
+  }
+
+  // Apertura semplice (pulsante): costruisce e anima l'apertura.
+  function openAppSheet(ctx) {
+    const host = $("#app-grid");
+    if (host.querySelector(".lc-sheet")) return; // già aperto
+    const s = buildAppSheet(ctx);
+    requestAnimationFrame(() => s.settleOpen());
+  }
+
+  // Collega un trascinamento verso l'alto: il cassetto nasce e segue il dito.
+  //  el = area su cui iniziare il gesto; opts.fromBottom limita l'avvio alla
+  //  parte bassa dell'area (per non interferire con i tocchi in alto).
+  function enableDrawerDrag(el, ctx, opts) {
+    opts = opts || {};
+    let startY = null, startX = null, sheet = null, dragging = false, h = 1;
+    el.addEventListener("pointerdown", e => {
+      if ($("#app-grid").querySelector(".lc-sheet")) return;
+      const r = el.getBoundingClientRect();
+      if (opts.fromBottom && e.clientY < r.top + r.height * (1 - opts.fromBottom)) { startY = null; return; }
+      startY = e.clientY; startX = e.clientX; h = r.height || window.innerHeight; dragging = false;
+    });
+    el.addEventListener("pointermove", e => {
+      if (startY == null) return;
+      const dy = startY - e.clientY;                 // positivo = verso l'alto
+      const dx = Math.abs(e.clientX - startX);
+      if (!dragging) {
+        if (dy > 8 && dy > dx) {                      // gesto verticale verso l'alto
+          if ($("#app-grid").querySelector(".lc-sheet")) { startY = null; return; } // già aperto/in apertura
+          dragging = true;
+          sheet = buildAppSheet(ctx);
+          try { el.setPointerCapture(e.pointerId); } catch {}
+        } else if (dx > 10 || dy < -8) {              // gesto orizzontale/in giù: annulla
+          startY = null; return;
+        }
+      }
+      if (dragging && sheet) sheet.setProgress(dy / (h * 0.55));
+    });
+    const end = e => {
+      if (startY == null) { return; }
+      const dy = startY - (e.clientY != null ? e.clientY : startY);
+      startY = null;
+      if (!dragging || !sheet) { dragging = false; sheet = null; return; }
+      const vOpen = dy > h * 0.18;                    // soglia di assestamento
+      if (vOpen) sheet.settleOpen(); else sheet.close();
+      dragging = false; sheet = null;
+    };
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
   }
 
   // ---- Dashboard: widget (orologio, meteo, recenti, preferite) ----
@@ -505,15 +575,13 @@ const OS = (() => {
       <div class="lc-widget lc-wwx"><div class="lft"><div class="em">⛅</div><div><div style="font-size:calc(13px*var(--fscale,1))">Meteo</div><div style="color:var(--text-dim);font-size:calc(11px*var(--fscale,1))">Nubi sparse</div></div></div><div class="tp">22°</div></div>
       <div class="lc-widget"><div class="lc-wt">App recenti</div><div class="lc-wrow">${recent.map(a => `<div data-app="${a.id}">${appGlyph(a, "lc-wic")}</div>`).join("")}</div></div>
       <div class="lc-widget"><div class="lc-wt">Preferite</div><div class="lc-wrow" style="justify-content:space-around">${fav.map(a => `<div data-app="${a.id}">${appGlyph(a, "lc-wic")}</div>`).join("")}</div></div>
-      <div class="lc-dash-hint" data-allapps><span class="lc-dash-chev"></span>Tutte le app</div>
+      <div class="lc-dash-hint" data-allapps><span class="lc-dash-chev"></span>Trascina in alto per tutte le app</div>
     </div>`;
     host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
+    // la maniglia in basso: tap apre il cassetto…
     host.querySelector("[data-allapps]").onclick = () => openAppSheet(ctx);
-    // swipe verso l'alto per aprire il cassetto app (come su Android)
-    const wrap = host.querySelector(".lc-dash");
-    let sy = null;
-    wrap.addEventListener("pointerdown", e => { sy = e.clientY; });
-    wrap.addEventListener("pointerup", e => { if (sy != null && sy - e.clientY > 70) openAppSheet(ctx); sy = null; });
+    // …e il trascinamento verso l'alto dalla metà bassa della dashboard lo apre interattivo
+    enableDrawerDrag(host.querySelector(".lc-dash"), ctx, { fromBottom: 0.5 });
   }
 
   // ---- Radiale: app in orbita attorno a un hub centrale ----
@@ -529,14 +597,12 @@ const OS = (() => {
     host.innerHTML = `<div class="lc-radial">
       <div class="lc-hub" data-allapps><div class="lc-clock t"></div><small>TUTTE</small></div>
       ${ring(inner, 66, 0)}${ring(outer, 116, 0.12)}
-      <div class="lc-rlabel">Tocca l'hub o scorri in alto per tutte le app</div>
+      <div class="lc-rlabel">Tocca l'hub o trascina in alto per tutte le app</div>
     </div>`;
     host.querySelectorAll("[data-app]").forEach(el => el.onclick = () => openApp(el.dataset.app));
     host.querySelector("[data-allapps]").onclick = () => openAppSheet(ctx);
-    const wrap = host.querySelector(".lc-radial");
-    let sy = null;
-    wrap.addEventListener("pointerdown", e => { sy = e.clientY; });
-    wrap.addEventListener("pointerup", e => { if (sy != null && sy - e.clientY > 70) openAppSheet(ctx); sy = null; });
+    // trascinamento verso l'alto dalla metà bassa dell'area radiale (senza scroll che intralcia)
+    enableDrawerDrag(host.querySelector(".lc-radial"), ctx, { fromBottom: 0.6 });
   }
 
   // ---- Cover flow: carosello orizzontale di grandi schede ----
@@ -1674,10 +1740,34 @@ const OS = (() => {
     };
   })();
 
+  // ---- Backup / ripristino dati ----
+  //  Raccoglie tutte le chiavi nova:* (impostazioni + dati app leggeri, salvati in
+  //  doppia copia localStorage+SharedPreferences). NON include foto/registrazioni
+  //  (IndexedDB, binari pesanti). restore riscrive nelle DUE copie e conta le voci.
+  function backupData() {
+    const d = {};
+    try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf("nova:") === 0) d[k] = localStorage.getItem(k); } } catch {}
+    // integra eventuali chiavi presenti solo nelle prefs native (se il bridge le elenca)
+    try { const nn = _prefs(); if (nn && nn.prefKeys) { const raw = nn.prefKeys(); const keys = raw ? JSON.parse(raw) : []; keys.forEach(k => { if (k && k.indexOf("nova:") === 0 && !(k in d)) { const v = nn.prefGet(k); if (v != null) d[k] = v; } }); } } catch {}
+    return d;
+  }
+  function restoreData(d) {
+    if (!d || typeof d !== "object") return 0;
+    let n = 0;
+    for (const k in d) {
+      if (k.indexOf("nova:") !== 0) continue;
+      const v = String(d[k]);
+      try { localStorage.setItem(k, v); } catch {}
+      try { if (_prefs().prefSet) _prefs().prefSet(k, v); } catch {}
+      n++;
+    }
+    return n;
+  }
+
   // API esposta alle app
   const api = {
     state, store, notify, confirm: confirmDialog, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
-    launchers: launcherList, renderHome, applyLayoutOrder,
+    launchers: launcherList, renderHome, applyLayoutOrder, backup: backupData, restore: restoreData,
     WALLS, photos, vibrate, sounds: Sounds, updater: Updater,
     openSettings, takeSettingsSection,
     // gestione app di terze parti

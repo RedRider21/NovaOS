@@ -2684,6 +2684,7 @@ const NovaApps = (() => {
               ? `<div class="item" data-go="system"><div class="i-ico" style="background:#8e8e93">⚙️</div><div class="i-body"><div class="i-title">Sistema <span class="upd-dot"></span></div><div class="i-sub" style="color:var(--accent)">Aggiornamento a NovaOS ${updPend()} disponibile</div></div><div class="chev"></div></div>`
               : row("system","⚙️","#8e8e93","Sistema", "Lingua, data e ora, aggiornamenti")}
             ${row("about","ℹ️","#8e8e93","Info sul telefono", "NovaOS "+VER+" · Nova N1")}
+            ${row("help","❓","#0a84ff","Guida e assistenza", "Come usare NovaOS · link utili")}
           </div><div style="height:80px"></div>`;
         root.querySelectorAll("[data-go]").forEach(el => el.onclick = () => sections[el.dataset.go]());
         // ricerca: filtra le voci per titolo
@@ -3165,7 +3166,14 @@ const NovaApps = (() => {
             <div class="group">
               <div class="item" ${hasSensors?'data-open="locale"':''}><div class="i-ico" style="background:#8e8e93">🌐</div><div class="i-body"><div class="i-title">Lingue e inserimento</div><div class="i-sub">${navigator.language||"Italiano"}${hasSensors?' · apri':''}</div></div><div class="${hasSensors?'chev':'i-val'}">${hasSensors?'':'Italiano'}</div></div>
               <div class="item" ${hasSensors?'data-open="date"':''}><div class="i-ico" style="background:#8e8e93">🕐</div><div class="i-body"><div class="i-title">Data e ora</div><div class="i-sub">${new Date().toLocaleString("it-IT",{dateStyle:"medium",timeStyle:"short"})}${hasSensors?' · apri':''}</div></div><div class="${hasSensors?'chev':'i-val'}">${hasSensors?'':'Auto'}</div></div>
-              <div class="item"><div class="i-ico" style="background:#8e8e93">💾</div><div class="i-body"><div class="i-title">Backup dati</div><div class="i-sub">Esporta/importa i dati di NovaOS</div></div><div class="chev" id="sys-backup"></div></div>
+              <div class="item"><div class="i-ico" style="background:#8e8e93">💾</div><div class="i-body"><div class="i-title">Backup dati</div><div class="i-sub">Esporta o ripristina impostazioni e dati delle app</div></div></div>
+              <div style="padding:2px 16px 12px">
+                <div style="display:flex;gap:10px;margin-bottom:8px">
+                  <button class="btn ghost" id="bk-export" style="flex:1">Esporta backup</button>
+                  <label class="btn ghost" style="flex:1;text-align:center;cursor:pointer">Ripristina da file<input id="bk-import" type="file" accept="application/json,.json" hidden></label>
+                </div>
+                <div style="color:var(--text-dim);font-size:calc(11.5px*var(--fscale,1));line-height:1.45">Il backup include impostazioni, contatti, note, messaggi, eventi, preferiti e app installate. Non include foto e registrazioni (troppo pesanti). Il ripristino sovrascrive i dati attuali e riavvia l'interfaccia.</div>
+              </div>
             </div>
             <div class="group" style="margin-top:12px">
               <div class="item"><div class="i-ico" style="background:#34c759">⬆️</div><div class="i-body"><div class="i-title">Aggiornamenti di Sistema</div><div class="i-sub" id="upd-sub">Versione installata: NovaOS ${VER}</div></div></div>
@@ -3222,14 +3230,48 @@ const NovaApps = (() => {
           sec.querySelector("#reset").onclick = async () => { if (await os.confirm({title:"Ripristino di fabbrica?",message:"Verranno cancellati impostazioni e app installate. L'operazione non è reversibile.",okText:"Ripristina"})) os.factoryReset(); };
           // Data e ora / Lingua: aprono i pannelli reali di sistema (sul dispositivo)
           sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
-          // Backup reale: esporta/importa tutti i dati nova:* come file JSON
-          const backup = sec.querySelector("#sys-backup");
-          if (backup) backup.closest(".item").onclick = () => {
-            const data = {}; try { for (let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k.startsWith("nova:")) data[k]=localStorage.getItem(k); } } catch {}
-            const blobUrl = URL.createObjectURL(new Blob([JSON.stringify(data,null,2)], {type:"application/json"}));
-            const a = document.createElement("a"); a.href = blobUrl; a.download = `novaos-backup-${new Date().toISOString().slice(0,10)}.json`;
-            document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(blobUrl), 2000);
-            os.notify({ app:"settings", title:"Backup", text:"Dati esportati come file JSON." });
+          // Backup reale: esporta i dati nova:* come file JSON, ripristina da file.
+          const bkName = () => `novaos-backup-${new Date().toISOString().slice(0,10)}.json`;
+          const bkJson = () => JSON.stringify({ format:"novaos-backup/1", date:new Date().toISOString(), data: os.backup() }, null, 2);
+          const b64utf8 = s => { try { return btoa(unescape(encodeURIComponent(s))); } catch { return btoa(s); } };
+          const exp = sec.querySelector("#bk-export");
+          if (exp) exp.onclick = async () => {
+            const json = bkJson(); const n = Object.keys(os.backup()).length;
+            const nn = window.NovaNative;
+            if (nn && nn.saveDownload) {           // sul dispositivo: salva in Download
+              let path = ""; try { path = nn.saveDownload(bkName(), b64utf8(json)); } catch {}
+              os.notify({ app:"settings", title:"Backup", text: path ? `Backup salvato in ${path} (${n} voci).` : "Backup non riuscito." });
+            } else {                                // desktop/PWA: download del file
+              try {
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(new Blob([json], { type:"application/json" }));
+                a.download = bkName(); document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+                os.notify({ app:"settings", title:"Backup", text:`Backup esportato (${n} voci).` });
+              } catch {
+                try { await navigator.clipboard.writeText(json); os.notify({ app:"settings", title:"Backup", text:"Backup copiato negli appunti." }); }
+                catch { os.notify({ app:"settings", title:"Backup", text:"Esportazione non riuscita." }); }
+              }
+            }
+          };
+          const imp = sec.querySelector("#bk-import");
+          if (imp) imp.onchange = e => {
+            const f = e.target.files && e.target.files[0]; if (!f) return;
+            const rd = new FileReader();
+            rd.onload = async () => {
+              let obj = null;
+              try { obj = JSON.parse(rd.result); } catch { obj = null; }
+              const data = obj && (obj.data || (obj.format ? null : obj));   // accetta {format,data} o mappa diretta
+              const keys = data && typeof data === "object" ? Object.keys(data).filter(k => k.indexOf("nova:") === 0) : [];
+              if (!keys.length) { os.notify({ app:"settings", title:"Ripristino", text:"File di backup non valido." }); imp.value=""; return; }
+              const ok = await os.confirm({ title:"Ripristinare il backup?", message:`Verranno ripristinate ${keys.length} voci, sovrascrivendo i dati attuali. L'interfaccia si riavvierà.`, okText:"Ripristina" });
+              if (!ok) { imp.value=""; return; }
+              const n = os.restore(data);
+              os.notify({ app:"settings", title:"Ripristino", text:`Ripristinate ${n} voci. Riavvio…` });
+              setTimeout(() => { try { location.reload(); } catch {} }, 700);
+            };
+            rd.onerror = () => os.notify({ app:"settings", title:"Ripristino", text:"Impossibile leggere il file." });
+            rd.readAsText(f);
           };
         }),
 
@@ -3257,6 +3299,42 @@ const NovaApps = (() => {
               <svg viewBox="0 0 120 120" style="width:72px;height:72px"><circle cx="60" cy="60" r="40" fill="none" stroke="#8a63ff" stroke-width="3" stroke-dasharray="150 90"/><circle cx="60" cy="60" r="28" fill="#8a63ff"/><path fill="#fff" d="M60 36 C62 51,69 58,84 60 C69 62,62 69,60 84 C58 69,51 62,36 60 C51 58,58 51,60 36 Z"/></svg>
               <div style="font-size:calc(22px*var(--fscale,1));font-weight:700;margin-top:8px">NovaOS</div></div>
             <div class="group">${rows.map(([k,v])=>`<div class="item"><div class="i-body"><div class="i-sub">${k}</div><div class="i-title">${v}</div></div></div>`).join("")}</div>`;
+        }),
+
+        // ---------------- Guida e assistenza (manuale offline + link utili) ----------------
+        help: () => nav("Guida e assistenza", sec => {
+          // guida rapida, tutta offline: titolo + testo per ogni argomento
+          const topics = [
+            ["🏠","Home e launcher","La home è a pagine: scorri lateralmente e apri le app con un tocco; le preferite stanno nel dock in basso. Per riordinare le icone apri la tendina dall'alto e tocca ✎ (modifica), poi trascinale. In Impostazioni → Display → «Home · launcher» scegli lo stile: Griglia, Lista, Drawer, Tiles, Dashboard, Radiale o Cover flow."],
+            ["📲","Tutte le app","Nei launcher Dashboard e Radiale non tutte le app sono in vista: trascina verso l'alto dalla parte bassa (o tocca la maniglia in fondo nella Dashboard, l'hub centrale nel Radiale) per aprire il cassetto con l'elenco completo."],
+            ["🎨","Personalizzazione","In Impostazioni → Display cambi tema chiaro/scuro, colore di risalto e forma delle icone. Per lo sfondo scegli un'immagine e regolane l'inquadratura (Riempi, Adatta o Zoom) con la posizione orizzontale e verticale. Puoi esportare e importare interi temi in formato .novatheme."],
+            ["⚡","Tendina rapida","Scorri dall'alto per aprire i comandi rapidi: Wi-Fi, Bluetooth, torcia, luminosità, non disturbare e altro. Da qui apri anche la modifica della home (✎) e le Impostazioni (⚙️)."],
+            ["💾","Backup e ripristino","In Impostazioni → Sistema → «Backup dati» esporti tutte le impostazioni e i dati delle app in un file JSON (salvato nella cartella Download). Con «Ripristina da file» ricarichi un backup: i dati attuali vengono sovrascritti e l'interfaccia si riavvia. Le foto e le registrazioni non sono incluse."],
+            ["⬆️","Aggiornamenti","In Impostazioni → Sistema → «Aggiornamenti» controlli e installi le novità. Gli aggiornamenti della sola interfaccia si applicano subito («Aggiorna ora»); quelli che toccano le funzioni di sistema richiedono la reinstallazione dell'app."],
+            ["🔒","Blocco e sicurezza","In Impostazioni → «Sicurezza e blocco» imposti PIN o sblocco a scorrimento e la schermata di blocco. Il dispositivo si blocca da solo dopo un periodo di inattività."],
+          ];
+          const openUrl = u => { const nn = window.NovaNative; if (nn && nn.openBrowser) { try { nn.openBrowser(u); return; } catch(e){} } try { window.open(u, "_blank"); } catch(e){} };
+          const REPO = "https://github.com/dPlusOS21/NovaOS";
+          sec.innerHTML = `
+            <div style="padding:6px 16px 4px;color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">Guida rapida a NovaOS ${VER}. Tocca un argomento per i dettagli.</div>
+            <div id="help-list">${topics.map(([ic,t,txt])=>`
+              <div class="item help-q" style="align-items:flex-start"><div class="i-ico" style="background:var(--surface-2)">${ic}</div>
+                <div class="i-body"><div class="i-title">${t}</div><div class="i-sub help-a" style="display:none;margin-top:6px;line-height:1.5;white-space:normal;overflow-wrap:anywhere">${txt}</div></div>
+                <div class="chev help-chev"></div></div>`).join("")}</div>
+            <div class="section-label">Link utili</div>
+            <div class="group">
+              <div class="item" data-url="${REPO}"><div class="i-ico" style="background:#24292e">${ICO("globe2","width:20px;height:20px")}</div><div class="i-body"><div class="i-title">Repository e documentazione</div><div class="i-sub trunc">${REPO}</div></div><div class="chev"></div></div>
+              <div class="item" data-url="${REPO}/releases"><div class="i-ico" style="background:#0a84ff">${ICO("box-arrow-right","width:18px;height:18px")}</div><div class="i-body"><div class="i-title">Ultime versioni (Release)</div><div class="i-sub trunc">${REPO}/releases</div></div><div class="chev"></div></div>
+              <div class="item" data-url="${REPO}/blob/main/docs/GUIDA-ROM.md"><div class="i-ico" style="background:#5e5ce6">${ICO("info-circle-fill","width:18px;height:18px")}</div><div class="i-body"><div class="i-title">Guida tecnica (ROM)</div><div class="i-sub">Per sviluppatori · installazione come sistema</div></div><div class="chev"></div></div>
+            </div>
+            <div style="color:var(--text-dim);font-size:calc(11.5px*var(--fscale,1));padding:10px 16px 24px">I link aprono il browser del dispositivo. La guida rapida qui sopra funziona anche offline.</div>`;
+          // accordion: espandi/comprimi il testo di ogni argomento
+          sec.querySelectorAll(".help-q").forEach(q => q.onclick = () => {
+            const a = q.querySelector(".help-a"), open = a.style.display !== "none";
+            a.style.display = open ? "none" : "block";
+            q.querySelector(".help-chev").style.transform = open ? "" : "rotate(90deg)";
+          });
+          sec.querySelectorAll("[data-url]").forEach(el => el.onclick = () => openUrl(el.dataset.url));
         }),
       };
 

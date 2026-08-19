@@ -777,6 +777,50 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void prefDel(String k) {
             getSharedPreferences("novaos", MODE_PRIVATE).edit().remove(k).apply();
         }
+        // elenco delle chiavi salvate (JSON array): usato dal backup per catturare
+        // anche le chiavi presenti solo nelle prefs native.
+        @JavascriptInterface public String prefKeys() {
+            try {
+                org.json.JSONArray arr = new org.json.JSONArray();
+                for (String k : getSharedPreferences("novaos", MODE_PRIVATE).getAll().keySet()) arr.put(k);
+                return arr.toString();
+            } catch (Exception e) { return "[]"; }
+        }
+
+        // ---- Salva un file (es. backup dati) nella cartella Download del dispositivo.
+        //      La WebView della shell non ha un DownloadListener, quindi <a download>
+        //      non salverebbe nulla: passiamo il contenuto in base64 e lo scriviamo noi. ----
+        @JavascriptInterface public String saveDownload(String name, String base64) {
+            try {
+                byte[] bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    android.content.ContentValues cv = new android.content.ContentValues();
+                    cv.put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name);
+                    cv.put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json");
+                    cv.put(android.provider.MediaStore.Downloads.IS_PENDING, 1);
+                    android.net.Uri uri = getContentResolver().insert(
+                        android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                    if (uri == null) throw new java.io.IOException("MediaStore insert nullo");
+                    java.io.OutputStream out = getContentResolver().openOutputStream(uri);
+                    out.write(bytes); out.close();
+                    cv.clear(); cv.put(android.provider.MediaStore.Downloads.IS_PENDING, 0);
+                    getContentResolver().update(uri, cv, null, null);
+                    toast("Backup salvato in Download");
+                    return "Download/" + name;
+                } else {
+                    java.io.File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                    if (!dir.exists()) dir.mkdirs();
+                    java.io.File f = new java.io.File(dir, name);
+                    java.io.FileOutputStream fo = new java.io.FileOutputStream(f);
+                    fo.write(bytes); fo.close();
+                    toast("Backup salvato in Download");
+                    return f.getAbsolutePath();
+                }
+            } catch (Exception e) {
+                toast("Backup non riuscito: " + e.getMessage());
+                return "";
+            }
+        }
 
         // ---- Torcia (flash fotocamera posteriore) ----
         @JavascriptInterface public boolean setTorch(boolean on) {

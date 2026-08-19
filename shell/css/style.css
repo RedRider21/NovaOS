@@ -284,6 +284,9 @@ body {
 .lc-wic { width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; font-size:calc(22px*var(--fscale,1)); cursor: pointer; }
 .lc-dash-hint { margin-top: auto; align-self: center; display: flex; flex-direction: column; align-items: center; gap: 3px;
   color: var(--text-dim); font-size:calc(11px*var(--fscale,1)); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; padding: 6px 0; }
+/* le aree da cui si trascina il cassetto gestiscono il gesto verticale da sé
+   (senza, la WebView interpreta il movimento come scroll e annulla il pointer) */
+.lc-dash, .lc-radial { touch-action: none; }
 .lc-dash-chev { width: 22px; height: 22px; border-radius: 50%; background: var(--surface); position: relative; animation: lc-bob 1.8s ease-in-out infinite; }
 .lc-dash-chev::before { content: ""; position: absolute; top: 8px; left: 6px; width: 8px; height: 8px; border-left: 2px solid var(--text); border-top: 2px solid var(--text); transform: rotate(45deg); }
 @keyframes lc-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }

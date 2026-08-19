@@ -1,9 +1,9 @@
 {
-  "version": "0.1.35",
-  "build": 36,
+  "version": "0.1.37",
+  "build": 38,
   "minNative": 12,
   "date": "2026-08-19",
-  "notes": "Launcher Dashboard e Radiale: accesso a tutte le app (pulsante + swipe / hub centrale). Sfondo: posizione, zoom e adattamento regolabili. Browser: colori adattati al tema chiaro/scuro.",
+  "notes": "Nuova Guida e assistenza in Impostazioni (manuale offline + link). Cassetto "Tutte le app" con trascinamento reale. Backup e ripristino dati. Browser adattato al tema chiaro/scuro.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "js/version.js",    "manifest.webmanifest",    "sw.js",
