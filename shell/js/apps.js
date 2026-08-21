@@ -2244,6 +2244,7 @@ const NovaApps = (() => {
             ["cat:doc","📄","Documenti","#5e5ce6",nDoc+" file"],
             ["folder:root","📁","Cartelle","#f4b400",kids("root").length+" elementi"],
             ["notes","📝","Note","#ffd60a",notes.length+" note"],
+            ["backups","🗄️","Backup","#34c759",(os.backupList?os.backupList().length:0)+" backup"],
           ];
           const recent=[...nodes.filter(n=>n.kind==="text")].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,4);
           root.innerHTML=`
@@ -2382,6 +2383,32 @@ const NovaApps = (() => {
           root.querySelectorAll("[data-adel]").forEach(b=>b.onclick=async(e)=>{ e.stopPropagation(); const id=+b.dataset.adel; const r=recs.find(x=>x.id===id);
             if(await os.confirm({title:"Eliminare la registrazione?",message:`"${r?r.name:"Questa registrazione"}" verrà eliminata definitivamente.`,okText:"Elimina"})){ try{fa.pause();}catch{} await delRecFile(id); draw(); } });
           bindNodeEvents();
+          return;
+        }
+
+        // ------- BACKUP interni (creati da Impostazioni → Sistema → Backup dati) -------
+        if (loc === "backups") {
+          const list = os.backupList ? os.backupList() : [];
+          root.innerHTML=`<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="font-size:calc(16px*var(--fscale,1))">Backup</div></div>
+            ${list.length?`<div class="group">${list.map(b=>`
+              <div class="item"><div class="i-ico i-ext" style="background:#34c759">BAK</div>
+                <div class="i-body"><div class="i-title trunc">${esc(b.name)}</div><div class="i-sub">${new Date(b.date).toLocaleString("it-IT",{dateStyle:"medium",timeStyle:"short"})} · ${kb(b.size)}</div></div>
+                <button class="round-act small" data-brestore="${b.id}" title="Ripristina" style="background:var(--accent)">${ICO("arrow-repeat","width:15px;height:15px")}</button>
+                <button class="round-act small" data-bdel="${b.id}" title="Elimina" style="background:var(--surface-2);color:var(--danger)">${ICO("trash-fill","width:14px;height:14px")}</button>
+              </div>`).join("")}</div>`:`<div class="fm-empty" style="padding:40px">Nessun backup interno.<br>Creane uno da Impostazioni › Sistema › Backup dati.</div>`}
+            <div style="height:80px"></div>`;
+          root.querySelector(".back-btn").onclick=()=>{loc="home";draw();};
+          root.querySelectorAll("[data-brestore]").forEach(b=>b.onclick=async()=>{
+            const json=os.backupGet(b.dataset.brestore); let obj=null; try{obj=JSON.parse(json);}catch{}
+            const data=obj&&(obj.data||(obj.format?null:obj)); const keys=data&&typeof data==="object"?Object.keys(data).filter(k=>k.indexOf("nova:")===0):[];
+            if(!keys.length){ os.notify({app:"files",title:"Ripristino",text:"Backup non valido."}); return; }
+            if(await os.confirm({title:"Ripristinare questo backup?",message:`Verranno ripristinate ${keys.length} voci, sovrascrivendo i dati attuali. L'interfaccia si riavvierà.`,okText:"Ripristina"})){
+              os.restore(data); os.notify({app:"files",title:"Ripristino",text:"Ripristino completato. Riavvio…"}); setTimeout(()=>{try{location.reload();}catch{}},700);
+            }
+          });
+          root.querySelectorAll("[data-bdel]").forEach(b=>b.onclick=async()=>{
+            if(await os.confirm({title:"Eliminare il backup?",message:"Il backup interno verrà rimosso (l'eventuale file in Download resta).",okText:"Elimina"})){ os.backupRemove(b.dataset.bdel); draw(); }
+          });
           return;
         }
 
@@ -3259,10 +3286,12 @@ const NovaApps = (() => {
           const exp = sec.querySelector("#bk-export");
           if (exp) exp.onclick = async () => {
             const json = bkJson(); const n = Object.keys(os.backup()).length;
+            // salva SEMPRE una copia interna → visibile/ripristinabile dal File Manager
+            try { os.backupSaveInternal(bkName(), json); } catch {}
             const nn = window.NovaNative;
             if (nn && nn.saveDownload) {           // sul dispositivo: salva in Download
               let path = ""; try { path = nn.saveDownload(bkName(), b64utf8(json)); } catch {}
-              os.notify({ app:"settings", title:"Backup", text: path ? `Backup salvato in ${path} (${n} voci).` : "Backup non riuscito." });
+              os.notify({ app:"settings", title:"Backup", text: path ? `Backup in ${path} e nel File Manager (${n} voci).` : "Backup non riuscito." });
             } else {                                // desktop/PWA: download del file
               try {
                 const a = document.createElement("a");

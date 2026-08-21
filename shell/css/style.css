@@ -360,6 +360,50 @@ body {
 .blk-dock { display: flex; justify-content: space-around; align-items: center; gap: 8px; padding: 10px 16px calc(10px + var(--nav-h,0px)); }
 .blk-dock > div { cursor: pointer; }
 .blk-dic { width: 50px; height: 50px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(24px*var(--fscale,1)); }
+/* blocco widget meteo */
+.blk-weather { padding: 8px 14px; }
+.blk-wcard { background: var(--surface); border-radius: 18px; padding: 14px; display: flex; align-items: center; justify-content: space-between; }
+.blk-wcard .lft { display: flex; align-items: center; gap: 12px; color: var(--text); }
+.blk-wcard .em { font-size:calc(32px*var(--fscale,1)); }
+.blk-wcard .t { font-size:calc(13px*var(--fscale,1)); } .blk-wcard .s { color: var(--text-dim); font-size:calc(11px*var(--fscale,1)); }
+.blk-wcard .tp { font-size:calc(26px*var(--fscale,1)); font-weight: 300; color: var(--text); }
+/* blocco bolle per categoria */
+.blk-bubbles { flex: 1 1 auto; min-height: 0; }
+.bb-wrap { height: 100%; overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 10px; }
+.bb-cat { background: var(--surface); border-radius: 18px; padding: 10px 12px; }
+.bb-head { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.bb-bubble { position: relative; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-2)); }
+.bb-rep { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-size:calc(20px*var(--fscale,1)); }
+.bb-count { position: absolute; right: -3px; top: -3px; background: var(--accent); color: #fff; border-radius: 10px; min-width: 18px; height: 18px; padding: 0 4px; font-size:calc(10px*var(--fscale,1)); display: grid; place-items: center; }
+.bb-name { flex: 1; color: var(--text); font-size:calc(15px*var(--fscale,1)); font-weight: 500; }
+.bb-apps { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px 4px; max-height: 0; overflow: hidden; transition: max-height .28s ease, padding .28s ease; }
+.bb-cat.open .bb-apps { max-height: 320px; padding-top: 12px; }
+.bb-app { display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; }
+.bb-app small { color: var(--text); font-size:calc(10px*var(--fscale,1)); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bb-ic { width: 44px; height: 44px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(21px*var(--fscale,1)); }
+/* blocco arco / ventaglio */
+.blk-arc { flex: 1 1 auto; min-height: 0; }
+.arc-wrap { position: relative; height: 100%; }
+.arc-fab { position: absolute; right: 22px; bottom: 22px; width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; z-index: 5;
+  background: linear-gradient(150deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #000)); box-shadow: 0 10px 26px rgba(0,0,0,.4);
+  display: grid; place-items: center; transition: transform .3s; }
+.arc-fab span { position: absolute; width: 22px; height: 2.5px; background: #fff; border-radius: 2px; transition: transform .3s; }
+.arc-fab span:last-child { transform: rotate(90deg); }
+.arc-wrap.open .arc-fab { transform: rotate(135deg); }
+.arc-app { position: absolute; right: 27px; bottom: 27px; width: 50px; height: 50px; margin: -25px -25px 0 0; z-index: 4;
+  transform: translate(0,0) scale(.3); opacity: 0; pointer-events: none; transition: transform .32s cubic-bezier(.22,.8,.3,1), opacity .2s; transition-delay: var(--d,0s); }
+.arc-wrap.open .arc-app { transform: translate(var(--x),var(--y)) scale(1); opacity: 1; pointer-events: auto; }
+.arc-ic { width: 50px; height: 50px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(23px*var(--fscale,1)); box-shadow: 0 6px 14px rgba(0,0,0,.3); }
+/* blocco deck di carte */
+.blk-deck { flex: 1 1 auto; min-height: 0; }
+.deck-wrap { height: 100%; overflow-y: auto; scroll-snap-type: y mandatory; padding: 14px 18px; display: flex; flex-direction: column; gap: 14px; }
+.deck-card { scroll-snap-align: center; flex: 0 0 auto; min-height: 42%; border-radius: 24px; padding: 18px; color: #fff; cursor: pointer;
+  display: flex; flex-direction: column; justify-content: flex-end; box-shadow: 0 16px 36px rgba(0,0,0,.4); position: relative; overflow: hidden; }
+.deck-ic { position: absolute; top: 16px; left: 18px; font-size:calc(40px*var(--fscale,1)); }
+.deck-ic img { width: 46px; height: 46px; border-radius: 12px; object-fit: cover; }
+.deck-card b { font-size:calc(21px*var(--fscale,1)); font-weight: 600; }
+.deck-card small { color: rgba(255,255,255,.78); font-size:calc(12px*var(--fscale,1)); }
 
 /* galleria di selezione launcher (Impostazioni → Display) */
 .lch-gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 16px; }

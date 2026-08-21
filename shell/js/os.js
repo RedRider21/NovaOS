@@ -692,7 +692,47 @@ const OS = (() => {
     el.innerHTML = `<div class="blk-dock">${ctx.dock.map(a => `<div data-app="${a.id}">${appGlyph(a, "blk-dic")}</div>`).join("")}</div>`;
     el.querySelectorAll("[data-app]").forEach(r => r.onclick = () => openApp(r.dataset.app));
   }
-  const BLOCKS = { appindex: blkAppIndex, clock: blkClock, search: blkSearch, appgrid: blkAppGrid, dock: blkDock };
+  // ---- Blocco: bolle per categoria (tocca una bolla → si espande nelle sue app) ----
+  function blkBubbles(el, ctx, params) {
+    const cats = CAT_ORDER.filter(c => ctx.apps.some(a => (APP_CATS[a.id] || "Le tue app") === c));
+    el.innerHTML = `<div class="bb-wrap no-sb">${cats.map(c => {
+      const apps = ctx.apps.filter(a => (APP_CATS[a.id] || "Le tue app") === c);
+      return `<div class="bb-cat">
+        <div class="bb-head"><div class="bb-bubble">${appGlyph(apps[0], "bb-rep")}<span class="bb-count">${apps.length}</span></div><div class="bb-name">${escH(c)}</div></div>
+        <div class="bb-apps">${apps.map(a => `<div class="bb-app" data-app="${a.id}">${appGlyph(a, "bb-ic")}<small>${escH(a.name)}</small></div>`).join("")}</div>
+      </div>`;
+    }).join("")}</div>`;
+    el.querySelectorAll(".bb-head").forEach(h => h.onclick = () => h.parentElement.classList.toggle("open"));
+    el.querySelectorAll("[data-app]").forEach(r => r.onclick = () => openApp(r.dataset.app));
+  }
+  // ---- Blocco: arco/ventaglio (un pulsante; le app si aprono ad arco) ----
+  function blkArc(el, ctx, params) {
+    const apps = ctx.apps.slice(0, 9);
+    const R = 128, n = apps.length;
+    const cells = apps.map((a, i) => {
+      const ang = (n <= 1 ? 0 : (i / (n - 1)) * 90) * Math.PI / 180; // 0 (su) → 90 (sinistra)
+      const x = -Math.round(Math.sin(ang) * R), y = -Math.round(Math.cos(ang) * R);
+      return `<div class="arc-app" data-app="${a.id}" style="--x:${x}px;--y:${y}px;--d:${(i * 0.03).toFixed(2)}s">${appGlyph(a, "arc-ic")}</div>`;
+    }).join("");
+    el.innerHTML = `<div class="arc-wrap">${cells}<button class="arc-fab" aria-label="Apri app"><span></span><span></span></button></div>`;
+    const wrap = el.querySelector(".arc-wrap");
+    el.querySelector(".arc-fab").onclick = () => wrap.classList.toggle("open");
+    el.querySelectorAll("[data-app]").forEach(r => r.onclick = () => openApp(r.dataset.app));
+  }
+  // ---- Blocco: deck di carte (una app per carta, scorrimento verticale con snap) ----
+  function blkDeck(el, ctx, params) {
+    el.innerHTML = `<div class="deck-wrap no-sb">${ctx.apps.map(a => {
+      const ic = appIcon(a); const g = /^(https?:|data:)/.test(ic || "") ? `<img src="${attrEsc(ic)}" alt="">` : ic;
+      return `<div class="deck-card" data-app="${a.id}" style="background:linear-gradient(160deg,${a.color},color-mix(in srgb,${a.color} 42%,#000))"><div class="deck-ic">${g}</div><b>${escH(a.name)}</b><small>${escH(APP_CATS[a.id] || "App")}</small></div>`;
+    }).join("")}</div>`;
+    el.querySelectorAll("[data-app]").forEach(r => r.onclick = () => openApp(r.dataset.app));
+  }
+  // ---- Blocco widget: meteo (statico, come la Dashboard) ----
+  function blkWeather(el, ctx, params) {
+    el.innerHTML = `<div class="blk-wcard"><div class="lft"><div class="em">⛅</div><div><div class="t">Meteo</div><div class="s">Nubi sparse</div></div></div><div class="tp">22°</div></div>`;
+  }
+  const BLOCKS = { appindex: blkAppIndex, clock: blkClock, search: blkSearch, appgrid: blkAppGrid, dock: blkDock,
+                   bubbles: blkBubbles, arc: blkArc, deck: blkDeck, weather: blkWeather };
 
   // renderer generico: monta i blocchi del template nella home
   function renderBlockLayout(host, ctx, layout) {
@@ -1907,11 +1947,24 @@ const OS = (() => {
     }
     return n;
   }
+  // Registro backup INTERNI (visibili/ripristinabili dal File Manager, oltre al file in
+  // Download). Sono leggeri (solo impostazioni/dati app, niente media) → stanno nello store.
+  function backupList() { return store.get("backups", []).map(b => ({ id: b.id, name: b.name, date: b.date, size: b.size })); }
+  function backupSaveInternal(name, json) {
+    const arr = store.get("backups", []);
+    const entry = { id: Date.now() + "-" + Math.random().toString(36).slice(2, 7), name: String(name || "backup"), date: new Date().toISOString(), size: (json || "").length, json: String(json || "") };
+    arr.unshift(entry);
+    store.set("backups", arr.slice(0, 15));   // conserva gli ultimi 15
+    return entry.id;
+  }
+  function backupGet(id) { const b = store.get("backups", []).find(x => x.id === id); return b ? b.json : null; }
+  function backupRemove(id) { store.set("backups", store.get("backups", []).filter(x => x.id !== id)); }
 
   // API esposta alle app
   const api = {
     state, store, notify, confirm: confirmDialog, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
     launchers: launcherList, renderHome, applyLayoutOrder, applyThemeLayout, backup: backupData, restore: restoreData,
+    backupList, backupSaveInternal, backupGet, backupRemove,
     WALLS, photos, vibrate, sounds: Sounds, updater: Updater,
     openSettings, takeSettingsSection,
     // gestione app di terze parti
