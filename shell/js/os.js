@@ -1391,6 +1391,46 @@ const OS = (() => {
     if (!state.dnd) { pulse(); vibrate(60); Sounds.notif(state.notifSound, (state.volNotif==null?50:state.volNotif)/100*0.4);
       if (state.bubbles && !screens.lock.classList.contains("active")) showBubble(n); }
   }
+
+  // Condivisione unificata usabile da ogni app: immagine (data URL) e/o testo/URL.
+  //  Ordine di preferenza: bridge nativo Android (affidabile nella WebView) →
+  //  Web Share API → appunti (clipboard) come ripiego. Ritorna una Promise.
+  //  Uso: os.share({ image:dataUrl }) oppure os.share({ title, text, url }).
+  async function share(opts) {
+    opts = opts || {};
+    const N = window.NovaNative;
+    const title = opts.title || "NovaOS";
+    const url = opts.url || "";
+    const text = [opts.text, url].filter(Boolean).join(url && opts.text ? "\n" : "");
+    // Immagine: preferisci il bridge nativo, poi Web Share con file.
+    if (opts.image) {
+      if (N && N.shareImage) { try { N.shareImage(opts.image); return true; } catch {} }
+      try {
+        const blob = await (await fetch(opts.image)).blob();
+        const file = new File([blob], (opts.filename || "novaos") + (/(png)/.test(blob.type) ? ".png" : ".jpg"), { type: blob.type || "image/jpeg" });
+        if (navigator.canShare && navigator.canShare({ files:[file] })) { await navigator.share({ files:[file], title }); return true; }
+      } catch {}
+      // niente immagine condivisibile → prosegui con eventuale testo
+    }
+    // File generico (audio, documento…) da un data URL.
+    if (opts.file && opts.file.data) {
+      if (N && N.shareFile) { try { N.shareFile(opts.file.data, opts.file.name || "novaos"); return true; } catch {} }
+      try {
+        const blob = await (await fetch(opts.file.data)).blob();
+        const file = new File([blob], opts.file.name || "novaos", { type: blob.type || "application/octet-stream" });
+        if (navigator.canShare && navigator.canShare({ files:[file] })) { await navigator.share({ files:[file], title }); return true; }
+      } catch {}
+      notify({ app: opts.app || "settings", title: "Condivisione", text: "Aggiorna l'app per condividere questo file." });
+      return false;
+    }
+    if (text) {
+      if (N && N.shareText) { try { N.shareText(text); return true; } catch {} }
+      try { if (navigator.share) { await navigator.share({ title, text: opts.text || title, url: url || undefined }); return true; } } catch (e) { if (e && e.name === "AbortError") return false; }
+      try { await navigator.clipboard.writeText(text); notify({ app: opts.app || "settings", title: "Condivisione", text: "Copiato negli appunti." }); return true; } catch {}
+    }
+    notify({ app: opts.app || "settings", title: "Condivisione", text: "Condivisione non disponibile in questo contesto." });
+    return false;
+  }
   // Dialog di conferma in-app (sostituisce window.confirm, che nella WebView Android
   // con WebChromeClient personalizzato ritorna sempre false senza mostrare nulla —
   // per questo le eliminazioni non andavano a buon fine). Ritorna una Promise<boolean>.
@@ -1962,7 +2002,7 @@ const OS = (() => {
 
   // API esposta alle app
   const api = {
-    state, store, notify, confirm: confirmDialog, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
+    state, store, notify, share, confirm: confirmDialog, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
     launchers: launcherList, renderHome, applyLayoutOrder, applyThemeLayout, backup: backupData, restore: restoreData,
     backupList, backupSaveInternal, backupGet, backupRemove,
     WALLS, photos, vibrate, sounds: Sounds, updater: Updater,

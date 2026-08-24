@@ -864,3 +864,14 @@ body.a11y-contrast[data-theme="light"] { --text: #000000; --text-dim: #1a1a1a; -
 .clk-sec { display:none; }
 .clk-sec.on { display:block; }
 .date-head { padding:14px 18px 4px; font-weight:700; font-size:calc(15px*var(--fscale,1)); color:var(--text); }
+
+/* ---------- Barra strumenti del visualizzatore Galleria ---------- */
+.gv-bar { display:flex; align-items:center; gap:8px; padding:12px 14px calc(12px + env(safe-area-inset-top,0px)); color:#fff; background:linear-gradient(180deg, rgba(0,0,0,.6), rgba(0,0,0,0)); }
+.gv-title { flex:1; min-width:0; }
+.gv-title b { display:block; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.gv-title span { font-size:calc(12px*var(--fscale,1)); opacity:.65; }
+.gv-btn { width:40px; height:40px; flex:0 0 40px; border-radius:50%; border:none; background:rgba(255,255,255,.14); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:background .15s, transform .12s; -webkit-tap-highlight-color:transparent; }
+.gv-btn:active { transform:scale(.88); background:rgba(255,255,255,.3); }
+.gv-btn svg { width:19px; height:19px; }
+.gv-btn.danger { background:rgba(255,69,80,.24); }
+.gv-btn.danger:active { background:rgba(255,69,80,.46); }

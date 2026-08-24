@@ -251,7 +251,7 @@ const NovaApps = (() => {
     }});
 
   /* ---------- Fotocamera (getUserMedia, flip camere, miniatura, salvataggio) ---------- */
-  const camera = app({ id:"camera", name:"Fotocamera", icon:"📷", color:"#1c1c1e",
+  const camera = app({ id:"camera", name:"Fotocamera", icon:"📷", color:"#1c1c1e", dock:true,
     render(root, os) {
       root.innerHTML = `
         <div style="height:100%;display:flex;flex-direction:column;background:#000">
@@ -581,6 +581,7 @@ const NovaApps = (() => {
         const actCol = (btnId,bg,ico,lbl) => `<div class="act-col"><button class="round-act" id="${btnId}" style="background:${bg}">${ico}</button>${lbl}</div>`;
         root.innerHTML = `<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1">Contatto</div>
             <button id="fav" title="Preferito" style="background:none;border:none;color:${c.fav?'#ffcf3f':'var(--text-dim)'};font-size:calc(20px*var(--fscale,1));cursor:pointer;margin-right:6px">${c.fav?'★':'☆'}</button>
+            <button id="cshare" title="Condividi" style="background:none;border:none;color:var(--accent);cursor:pointer;display:flex;align-items:center;padding:4px;margin-right:2px">${ICO("share-fill","width:18px;height:18px")}</button>
             <button id="edit" style="background:none;border:none;color:var(--accent);font-size:calc(15px*var(--fscale,1));cursor:pointer">Modifica</button></div>
           <div style="text-align:center;padding:12px 16px 22px">
             <div class="av" style="width:104px;height:104px;border-radius:50%;margin:0 auto 14px;${avatarBg(c)};font-size:calc(44px*var(--fscale,1))">${avatarTxt(c)}</div>
@@ -597,6 +598,8 @@ const NovaApps = (() => {
           <button class="btn ghost" id="del" style="margin:18px 16px;color:var(--danger)">Elimina contatto</button>`;
         root.querySelector(".back-btn").onclick = drawList;
         root.querySelector("#fav").onclick = () => { c.fav = !c.fav; save(); drawDetail(id); };
+        root.querySelector("#cshare").onclick = () => os.share({ app:"contacts", title:c.name,
+          text:[c.name, "Tel: "+c.phone, c.email?"Email: "+c.email:""].filter(Boolean).join("\n") });
         root.querySelector("#edit").onclick = () => drawEdit(id);
         root.querySelector("#call").onclick = () => {
           const num = c.phone.replace(/\s/g,"");
@@ -903,14 +906,14 @@ const NovaApps = (() => {
           : `<div id="vimg" style="width:80%;aspect-ratio:3/4;border-radius:16px;background:${p.bg};display:flex;align-items:center;justify-content:center;font-size:calc(96px*var(--fscale,1))">${p.emoji}</div>`;
         root.innerHTML = `
           <div style="height:100%;display:flex;flex-direction:column;background:#000">
-            <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;color:#fff">
-              <button id="vclose" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(18px*var(--fscale,1));cursor:pointer">✕</button>
-              <div style="flex:1"><div style="font-weight:600">${p.name}</div><div style="font-size:calc(12px*var(--fscale,1));opacity:.6">${i+1} di ${items.length}</div></div>
-              <button id="vslide" title="Presentazione" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">▶️</button>
-              <button id="vinfo" title="Info" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">ℹ️</button>
-              ${p.real?`<button id="vshare" title="Condividi" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">📤</button>`:''}
-              ${p.real&&!p.video?`<button id="vedit" title="Modifica" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:calc(15px*var(--fscale,1));cursor:pointer">✏️</button>`:''}
-              <button id="vdel" title="Elimina" style="width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,80,90,.35);color:#fff;font-size:calc(16px*var(--fscale,1));cursor:pointer">🗑</button>
+            <div class="gv-bar">
+              <button id="vclose" class="gv-btn" title="Chiudi">${ICO("x-lg")||"✕"}</button>
+              <div class="gv-title"><b>${p.name}</b><span>${i+1} di ${items.length}</span></div>
+              <button id="vslide" class="gv-btn" title="Presentazione">${ICO("play-fill")||"▶"}</button>
+              <button id="vinfo" class="gv-btn" title="Info">${ICO("info-circle-fill")||"ℹ"}</button>
+              ${p.real?`<button id="vshare" class="gv-btn" title="Condividi">${ICO("share-fill")||"📤"}</button>`:''}
+              ${p.real&&!p.video?`<button id="vedit" class="gv-btn" title="Modifica">${ICO("pencil-fill")||"✏"}</button>`:''}
+              <button id="vdel" class="gv-btn danger" title="Elimina">${ICO("trash-fill")||"🗑"}</button>
             </div>
             <div id="vstage" style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">
               <button id="vprev" style="position:absolute;left:8px;z-index:2;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.12);color:#fff;font-size:calc(20px*var(--fscale,1));cursor:pointer">‹</button>
@@ -936,22 +939,13 @@ const NovaApps = (() => {
         // presentazione (slideshow) automatica
         const slideBtn = root.querySelector("#vslide");
         slideBtn.onclick = () => {
-          if (slideTimer) { stopSlide(); slideBtn.textContent="▶️"; }
-          else { slideBtn.textContent="⏸️"; slideTimer = setInterval(()=>go(i+1), 2200); }
+          if (slideTimer) { stopSlide(); slideBtn.innerHTML=ICO("play-fill")||"▶"; }
+          else { slideBtn.innerHTML=ICO("pause-fill")||"⏸"; slideTimer = setInterval(()=>go(i+1), 2200); }
         };
 
-        // condivisione: prima il bridge nativo (affidabile su Android), poi Web Share
+        // condivisione: helper unificato (bridge nativo → Web Share → appunti)
         const shareBtn = root.querySelector("#vshare");
-        if (shareBtn) shareBtn.onclick = async () => {
-          if (window.NovaNative && window.NovaNative.shareImage) { window.NovaNative.shareImage(p.data); return; }
-          try {
-            const blob = await (await fetch(p.data)).blob();
-            const file = new File([blob], "novaos-foto.jpg", { type: blob.type||"image/jpeg" });
-            if (navigator.canShare && navigator.canShare({ files:[file] })) { await navigator.share({ files:[file], title:"Foto da NovaOS" }); return; }
-            if (navigator.share) { await navigator.share({ title:"Foto da NovaOS", text:"Condivisa da NovaOS" }); return; }
-            os.notify({ app:"gallery", title:"Condivisione", text:"Condivisione non disponibile in questo contesto." });
-          } catch (e) {}
-        };
+        if (shareBtn) shareBtn.onclick = () => os.share({ app:"gallery", image:p.data, filename:"novaos-foto", title:"Foto da NovaOS" });
 
         const del = root.querySelector("#vdel");
         if (del) del.onclick = async () => {
@@ -1289,6 +1283,7 @@ const NovaApps = (() => {
         const render = () => {
           root.innerHTML = `<div class="back-bar"><button class="back-btn"></button><div class="back-title" style="flex:1">Nota</div>
               <button id="pin" style="background:none;border:none;font-size:calc(17px*var(--fscale,1));cursor:pointer">${n.pin?'📌':'📍'}</button>
+              <button id="share" title="Condividi" style="background:none;border:none;color:var(--accent);cursor:pointer;display:flex;align-items:center;padding:4px">${ICO("share-fill","width:19px;height:19px")}</button>
               <button id="prev" style="background:none;border:none;color:var(--accent);font-size:calc(14px*var(--fscale,1));cursor:pointer;margin:0 8px">${editMode?'Anteprima':'Modifica'}</button>
               <button id="del" style="background:none;border:none;color:var(--danger);font-size:calc(14px*var(--fscale,1));cursor:pointer">Elimina</button></div>
             ${editMode?`<div style="display:flex;gap:6px;padding:0 16px 8px">
@@ -1308,6 +1303,7 @@ const NovaApps = (() => {
             <div style="display:flex;gap:12px;padding:6px 16px 90px">${COLORS.map(c=>`<div data-col="${c}" style="width:34px;height:34px;border-radius:50%;background:${c};cursor:pointer;border:3px solid ${n.color===c?'var(--text)':'transparent'}"></div>`).join("")}</div>`;
           root.querySelector(".back-btn").onclick = drawList;
           root.querySelector("#pin").onclick = () => { n.pin=!n.pin; n.updated=Date.now(); save(); render(); };
+          root.querySelector("#share").onclick = () => os.share({ app:"notes", title:title(n.text), text:n.text||title(n.text) });
           root.querySelector("#prev").onclick = () => { editMode=!editMode; render(); };
           root.querySelector("#del").onclick = () => { list=list.filter(x=>x.id!==id); save(); drawList(); };
           root.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{n.cat=b.dataset.c;n.updated=Date.now();save();render();});
@@ -3471,6 +3467,7 @@ const NovaApps = (() => {
               <div class="i-body"><div class="i-title trunc rec-name" data-name="${r.id}">${r.name}</div>
                 <div class="i-sub">${fmt(r.dur||0)} · ${new Date(r.ts).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}</div></div>
               <button class="round-act small" data-rename="${r.id}" style="background:var(--surface);color:var(--text)">${ICO("pencil-fill","width:14px;height:14px")}</button>
+              <button class="round-act small" data-share="${r.id}" style="background:var(--surface);color:var(--accent)">${ICO("share-fill","width:14px;height:14px")}</button>
               <button class="round-act small" data-del="${r.id}" style="background:var(--surface);color:var(--danger)">${ICO("trash-fill","width:14px;height:14px")}</button>
               <div class="rec-prog" data-prog="${r.id}" style="display:none;flex:0 0 100%;align-items:center;gap:12px;margin-top:6px">
                 <input type="range" class="slider rec-seek" min="0" max="${r.dur||1}" value="0" step="any" style="flex:1">
@@ -3623,6 +3620,10 @@ const NovaApps = (() => {
           if (!await os.confirm({title:"Eliminare la registrazione?",message:`"${r ? r.name : "Questa registrazione"}" verrà eliminata definitivamente.`,okText:"Elimina"})) return;
           stopPlayback(); await delRec(id); await draw();
         });
+        root.querySelectorAll("[data-share]").forEach(b => b.onclick = async () => {
+          const id = +b.dataset.share; const recs = await allRecs(); const r = recs.find(x=>x.id===id);
+          if (r && r.data) os.share({ app:"recorder", title:r.name, file:{ data:r.data, name:r.name } });
+        });
         root.querySelectorAll("[data-rename]").forEach(b => b.onclick = async () => {
           const id = +b.dataset.rename; const el = root.querySelector(`.rec-name[data-name="${id}"]`); if (!el) return;
           const cur = el.textContent;
@@ -3642,6 +3643,6 @@ const NovaApps = (() => {
       root._cleanup = () => { try { stop(); } catch {} stopPlayback(); window.__novaMic = null; window.__novaMicResume = null; };
     }});
 
-  const list = [phone, contacts, messages, mail, browser, camera, gallery, recorder, clock, calendar, weather, notes, calc, files, store, settings];
+  const list = [phone, contacts, messages, mail, camera, browser, gallery, recorder, clock, calendar, weather, notes, calc, files, store, settings];
   return { list, byId: Object.fromEntries(list.map(a => [a.id, a])), dock: list.filter(a => a.dock) };
 })();

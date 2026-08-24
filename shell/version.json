@@ -1,9 +1,9 @@
 {
-  "version": "0.1.40",
-  "build": 41,
+  "version": "0.1.41",
+  "build": 42,
   "minNative": 12,
-  "date": "2026-08-21",
-  "notes": "Nuovi blocchi launcher: bolle per categoria, arco radiale, deck a schede e widget meteo. Backup di sistema ora salvato anche nel File Manager (categoria Backup) con ripristino e cancellazione.",
+  "date": "2026-08-24",
+  "notes": "Galleria: barra del visualizzatore ridisegnata con icone flat e pulsante Condividi. Condivisione ovunque utile: Note, Rubrica, Registratore (file audio), e foto — via pannello di condivisione Android. Fotocamera aggiunta al dock. Tema Drawer ora con 4 icone come nel Theme Studio.",
   "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "js/version.js",    "manifest.webmanifest",    "sw.js",

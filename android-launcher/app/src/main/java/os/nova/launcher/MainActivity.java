@@ -492,6 +492,40 @@ public class MainActivity extends Activity {
             }
         }
 
+        /** Condivide un file generico (audio, video, documento…) da un data URL.
+         *  Generalizza shareImage: rileva mime ed estensione dal data URL. */
+        @JavascriptInterface public void shareFile(String dataUrl, String name) {
+            try {
+                int comma = dataUrl.indexOf(',');
+                String meta = dataUrl.substring(dataUrl.indexOf(':') + 1, comma); // es. audio/mp4;base64
+                String mime = meta.split(";")[0];
+                byte[] bytes = android.util.Base64.decode(dataUrl.substring(comma + 1), android.util.Base64.DEFAULT);
+                java.io.File dir = new java.io.File(getCacheDir(), "share");
+                dir.mkdirs();
+                String safe = (name == null || name.trim().isEmpty()) ? ("novaos-" + System.currentTimeMillis()) : name.replaceAll("[^A-Za-z0-9._ -]", "_");
+                if (safe.indexOf('.') < 0) {
+                    String ext = mime.contains("mp4") || mime.contains("m4a") || mime.contains("aac") ? ".m4a"
+                            : mime.contains("mpeg") ? ".mp3" : mime.contains("webm") ? ".webm"
+                            : mime.contains("ogg") ? ".ogg" : mime.contains("wav") ? ".wav"
+                            : mime.contains("png") ? ".png" : mime.contains("pdf") ? ".pdf" : ".bin";
+                    safe = safe + ext;
+                }
+                java.io.File f = new java.io.File(dir, safe);
+                java.io.FileOutputStream fos = new java.io.FileOutputStream(f);
+                fos.write(bytes); fos.close();
+                Uri uri = Uri.parse("content://" + ShareProvider.AUTHORITY + "/" + f.getName());
+                Intent send = new Intent(Intent.ACTION_SEND).setType(mime)
+                        .putExtra(Intent.EXTRA_STREAM, uri)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                send.setClipData(ClipData.newUri(getContentResolver(), safe, uri));
+                Intent chooser = Intent.createChooser(send, "Condividi");
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(chooser);
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, "Condivisione non riuscita", Toast.LENGTH_SHORT).show());
+            }
+        }
+
         /** Condivide testo/URL (usato da Note, Browser, ecc.). */
         @JavascriptInterface public void shareText(String text) {
             Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text);
