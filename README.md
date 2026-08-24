@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.40** (build 41). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.41** (build 42). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
