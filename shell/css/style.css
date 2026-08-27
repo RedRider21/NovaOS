@@ -221,8 +221,8 @@ html.nova-preview #device { width: 390px !important; height: 844px !important; m
 }
 .ll-row:active { background: var(--surface-2); }
 .ll-ic {
-  width: 42px; height: 42px; border-radius: 12px; flex: 0 0 auto;
-  display: grid; place-items: center; font-size:calc(21px*var(--fscale,1));
+  width: 36px; height: 36px; border-radius: 11px; flex: 0 0 auto;
+  display: grid; place-items: center; font-size:calc(18px*var(--fscale,1));
   box-shadow: 0 3px 8px rgba(0,0,0,.22);
 }
 .ll-nm { flex: 1; min-width: 0; font-size:calc(15px*var(--fscale,1)); font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -290,7 +290,7 @@ html.nova-preview #device { width: 390px !important; height: 844px !important; m
 .lc-wwx .tp { font-size:calc(26px*var(--fscale,1)); font-weight: 300; color: var(--text); }
 .lc-wt { font-size:calc(11px*var(--fscale,1)); letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; }
 .lc-wrow { display: flex; gap: 10px; }
-.lc-wic { width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; font-size:calc(22px*var(--fscale,1)); cursor: pointer; }
+.lc-wic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-size:calc(19px*var(--fscale,1)); cursor: pointer; }
 .lc-dash-hint { margin-top: auto; align-self: center; display: flex; flex-direction: column; align-items: center; gap: 3px;
   color: var(--text-dim); font-size:calc(11px*var(--fscale,1)); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; padding: 6px 0; }
 /* le aree da cui si trascina il cassetto gestiscono il gesto verticale da sé
@@ -352,7 +352,7 @@ html.nova-preview #device { width: 390px !important; height: 844px !important; m
 .ai-row { display: flex; align-items: center; gap: 12px; padding: 7px 4px; cursor: pointer; border-radius: 12px; }
 .ai-row:active { background: var(--surface); }
 .ai-row span { color: var(--text); font-size:calc(15px*var(--fscale,1)); }
-.ai-ic { width: 38px; height: 38px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(20px*var(--fscale,1)); flex: 0 0 auto; }
+.ai-ic { width: 34px; height: 34px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(17px*var(--fscale,1)); flex: 0 0 auto; }
 .ai-rail { position: absolute; top: 6px; right: 3px; bottom: 6px; width: 18px; display: flex; flex-direction: column; justify-content: space-between;
   align-items: center; touch-action: none; z-index: 2; }
 .ai-rail span { font-size:calc(9px*var(--fscale,1)); line-height: 1; color: var(--text-dim); font-weight: 600; }
@@ -364,11 +364,11 @@ html.nova-preview #device { width: 390px !important; height: 844px !important; m
 .blk-grid { display: grid; grid-template-columns: repeat(var(--blk-cols,4), 1fr); gap: 10px 6px; padding: 8px 12px; overflow-y: auto; }
 .blk-gapp { display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; }
 .blk-gapp span { color: var(--text); font-size:calc(11px*var(--fscale,1)); text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.blk-gic { width: 50px; height: 50px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(24px*var(--fscale,1)); }
+.blk-gic { width: 46px; height: 46px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(22px*var(--fscale,1)); }
 /* blocco dock */
 .blk-dock { display: flex; justify-content: space-around; align-items: center; gap: 8px; padding: 10px 16px calc(10px + var(--nav-h,0px)); }
 .blk-dock > div { cursor: pointer; }
-.blk-dic { width: 50px; height: 50px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(24px*var(--fscale,1)); }
+.blk-dic { width: 46px; height: 46px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(22px*var(--fscale,1)); }
 /* blocco widget meteo */
 .blk-weather { padding: 8px 14px; }
 .blk-wcard { background: var(--surface); border-radius: 18px; padding: 14px; display: flex; align-items: center; justify-content: space-between; }
@@ -383,14 +383,14 @@ html.nova-preview #device { width: 390px !important; height: 844px !important; m
 .bb-head { display: flex; align-items: center; gap: 12px; cursor: pointer; }
 .bb-bubble { position: relative; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
   background: color-mix(in srgb, var(--accent) 16%, var(--surface-2)); }
-.bb-rep { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-size:calc(20px*var(--fscale,1)); }
+.bb-rep { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size:calc(18px*var(--fscale,1)); }
 .bb-count { position: absolute; right: -3px; top: -3px; background: var(--accent); color: #fff; border-radius: 10px; min-width: 18px; height: 18px; padding: 0 4px; font-size:calc(10px*var(--fscale,1)); display: grid; place-items: center; }
 .bb-name { flex: 1; color: var(--text); font-size:calc(15px*var(--fscale,1)); font-weight: 500; }
 .bb-apps { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px 4px; max-height: 0; overflow: hidden; transition: max-height .28s ease, padding .28s ease; }
 .bb-cat.open .bb-apps { max-height: 320px; padding-top: 12px; }
 .bb-app { display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; }
 .bb-app small { color: var(--text); font-size:calc(10px*var(--fscale,1)); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bb-ic { width: 44px; height: 44px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(21px*var(--fscale,1)); }
+.bb-ic { width: 40px; height: 40px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(19px*var(--fscale,1)); }
 /* blocco arco / ventaglio */
 .blk-arc { flex: 1 1 auto; min-height: 0; }
 .arc-wrap { position: relative; height: 100%; }
@@ -403,7 +403,7 @@ html.nova-preview #device { width: 390px !important; height: 844px !important; m
 .arc-app { position: absolute; right: 27px; bottom: 27px; width: 50px; height: 50px; margin: -25px -25px 0 0; z-index: 4;
   transform: translate(0,0) scale(.3); opacity: 0; pointer-events: none; transition: transform .32s cubic-bezier(.22,.8,.3,1), opacity .2s; transition-delay: var(--d,0s); }
 .arc-wrap.open .arc-app { transform: translate(var(--x),var(--y)) scale(1); opacity: 1; pointer-events: auto; }
-.arc-ic { width: 50px; height: 50px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(23px*var(--fscale,1)); box-shadow: 0 6px 14px rgba(0,0,0,.3); }
+.arc-ic { width: 46px; height: 46px; border-radius: var(--icon-radius,28%); display: grid; place-items: center; font-size:calc(21px*var(--fscale,1)); box-shadow: 0 6px 14px rgba(0,0,0,.3); }
 /* blocco deck di carte */
 .blk-deck { flex: 1 1 auto; min-height: 0; }
 .deck-wrap { height: 100%; overflow-y: auto; scroll-snap-type: y mandatory; padding: 14px 18px; display: flex; flex-direction: column; gap: 14px; }
@@ -477,9 +477,9 @@ html.nova-preview #device { width: 390px !important; height: 844px !important; m
 @keyframes spin { to { transform: rotate(360deg); } }
 .folder-close { width: 100%; background: var(--surface); border: none; border-radius: 12px; padding: 12px; color: var(--text); cursor: pointer; }
 .app-icon .glyph {
-  width: 58px; height: 58px; border-radius: var(--icon-radius, 28%);
+  width: 48px; height: 48px; border-radius: var(--icon-radius, 28%);
   display: flex; align-items: center; justify-content: center;
-  font-size:calc(27px*var(--fscale,1)); color: #fff;
+  font-size:calc(23px*var(--fscale,1)); color: #fff;
   box-shadow: 0 6px 16px rgba(0,0,0,.35);
 }
 .app-icon .label { font-size:calc(11.5px*var(--fscale,1)); color: var(--text); max-width: 74px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
