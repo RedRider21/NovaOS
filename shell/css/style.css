@@ -782,6 +782,9 @@ body[data-theme="light"] .pin-key { background: rgba(0,0,0,.06); }
 
 /* accessibilità */
 .a11y-bold, .a11y-bold * { font-weight: 700 !important; }
+/* tipografia del tema (gestita dal Theme Studio): spessore testi globale */
+body.tf-medium, body.tf-medium * { font-weight: 500 !important; }
+body.tf-bold, body.tf-bold * { font-weight: 700 !important; }
 /* contrasto elevato: forte e ben visibile (specificità alta per battere il tema) */
 body.a11y-contrast { --text: #ffffff; --text-dim: #e6ebf5; --bg: #000000; --surface: #000000; --surface-2: #1c1c1c; }
 body.a11y-contrast[data-theme="light"] { --text: #000000; --text-dim: #1a1a1a; --bg: #ffffff; --surface: #ffffff; --surface-2: #ededed; }

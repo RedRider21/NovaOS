@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.45** (build 46). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.46** (build 48). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -208,6 +208,19 @@ Fatto:
 - Bridge nativo `NovaNative` (chiamate/SMS/vibrazione/batteria) e permesso camera per `getUserMedia`.
 - **NovaOS impostato e testato come Home predefinita** dell'emulatore.
 - Validazione JS rapida via Chrome headless (`google-chrome --headless --dump-dom`).
+- **Tipografia del tema** — il `.novatheme/2` ora applica anche `typography.font`
+  (`system`/`serif`/`mono`) e `typography.weight` (`normal`/`medium`/`bold`, classi
+  `tf-medium`/`tf-bold` sul `body`, stesse dell'accessibilità): font e spessore testi
+  gestibili dal Theme Studio valgono per tutta l'interfaccia.
+- **Suonerie personalizzate dal tema** — un tema può portare `sounds.{ringtone,notif,alarm}`
+  come `{type:"sequence", value:[[freqHz,durSec],…]}` (composto col mini-sequencer dello
+  Studio): la shell le registra (`Sounds.setCustom`) e le usa al posto dei suoni builtin.
+- **Icone vettoriali dai temi** — un `.novatheme` può portare icone **SVG** per-app
+  (`icons.map` con `{type:"svg"}`): la shell le applica convertendole in **data-URL immagine**
+  (mai HTML raw → nessuna iniezione anche da temi non fidati) e le mostra in home e in **tutti**
+  i launcher. Il Theme Studio include il pack **«NovaOS»**: 16 icone disegnate ad hoc stile
+  suite Google (badge con gradiente per-app + simbolo bianco; la Galleria ha la **girandola**,
+  il Meteo sole+nube, il Telefono la cornetta…).
 
 Prossimi passi: rifinire il launcher (evitare il re-boot quando si preme Home,
 gestione InCallService per la telefonia nativa), poi la build ROM (`system/`).

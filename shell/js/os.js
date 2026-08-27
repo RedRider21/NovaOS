@@ -64,6 +64,7 @@ const OS = (() => {
     theme: "dark", wifi: true, bt: false, dnd: false, vibrate: true,
     battery: 82, saver: false, volume: 60,
     brightness: 100, textScale: 100, wallpaper: 0,
+    uiFont: "system", uiWeight: "normal",   // tipografia del tema (font + spessore testi)
     lockType: "swipe",   // "none" | "swipe" | "pin"
     pin: "",             // PIN salvato (demo: in chiaro; in un SO reale sarebbe hash)
     autolock: 30,        // secondi (informativo)
@@ -143,6 +144,14 @@ const OS = (() => {
   // capaci di uscire dal contesto HTML/attributo (< > " ' `). Emoji, data-URI SVG
   // percent-encoded, immagini base64 e URL https non ne contengono → restano validi.
   function safeIcon(v) { v = String(v == null ? "" : v); return /[<>"'`]/.test(v) ? "" : v; }
+  // icone VETTORIALI dai temi ({type:"svg"}): accettiamo solo SVG ben formati senza
+  // script e li convertiamo in data-URL immagine → la shell li renderizza come <img>,
+  // mai come HTML raw (niente iniezione anche da un .novatheme non fidato).
+  function isSvgLike(s){ return /^\s*<svg[\s>]/i.test(s) && /<\/svg>\s*$/i.test(s) && !/<script/i.test(s); }
+  function svgData(s){   // come data-URL immagine l'SVG standalone richiede xmlns esplicito
+    if (!/xmlns/i.test(s)) s = s.replace(/<svg([\s>])/i, '<svg xmlns="http://www.w3.org/2000/svg"$1');
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(s);
+  }
   function appIcon(a) {
     const ov = safeIcon(a && state.iconMap && state.iconMap[a.id]);
     return ov || safeIcon(a && a.icon) || "";
@@ -192,6 +201,13 @@ const OS = (() => {
     });
   }
   function applyDisplay() {
+    // tipografia del tema: famiglia font e spessore testi (gestiti dal Theme Studio)
+    const UIFONTS = { system:'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+                      serif:'Georgia, "Times New Roman", serif',
+                      mono:'ui-monospace, "Cascadia Mono", Menlo, monospace' };
+    document.body.style.fontFamily = UIFONTS[state.uiFont] || UIFONTS.system;
+    document.body.classList.toggle("tf-medium", state.uiWeight === "medium");
+    document.body.classList.toggle("tf-bold", state.uiWeight === "bold");
     // dimensione testo: moltiplicatore globale usato da OGNI font-size via calc(...*--fscale)
     document.documentElement.style.setProperty("--fscale", String(state.textScale/100));
     // luminosità effettiva: risparmio energetico limita il massimo; la luminosità
@@ -1125,9 +1141,9 @@ const OS = (() => {
       ov.innerHTML = `<div class="folder-card">
         <input class="folder-name" value="${escH(f.name)}" ${editing?'':'readonly'}>
         <div class="folder-grid">${f.items.map(id => { const a = appById(id); if(!a) return "";
-          const isImg = /^(https?:|data:)/.test(a.icon||"");
+          const ic = appIcon(a); const isImg = /^(https?:|data:)/.test(ic||"");
           return `<div class="app-icon" data-fid="${id}">${editing?`<button class="icon-rm" data-pop="${id}">✕</button>`:''}
-            <div class="glyph" style="background:${a.color}${isImg?';padding:0;overflow:hidden':''}">${isImg?`<img src="${a.icon}" style="width:100%;height:100%;object-fit:cover">`:a.icon}</div>
+            <div class="glyph" style="background:${a.color}${isImg?';padding:0;overflow:hidden':''}">${isImg?`<img src="${ic}" style="width:100%;height:100%;object-fit:cover">`:ic}</div>
             <div class="label">${a.name}</div></div>`;}).join("")}</div>
         ${editing?`<div class="folder-hint">Tocca ✕ per riportare un'app sulla home. Sotto le 2 app la cartella si scioglie.</div>`:''}
         <button class="folder-close">${editing?'Fine':'Chiudi'}</button></div>`;
@@ -1368,6 +1384,8 @@ const OS = (() => {
       "Mattino": [[880,.15],[1108,.15],[1319,.2],[0,.22]],
     };
     let stopFn = null;
+    const custom = { ring:{}, notif:{}, alarm:{} };    // sequenze personalizzate dal tema
+    const lists = { ring: Object.keys(RING), notif: Object.keys(NOTIF), alarm: Object.keys(ALARM) };
     function stop() { if (stopFn) stopFn(); }
     function playSeq(notes, vol, loop) {
       stop();
@@ -1387,11 +1405,12 @@ const OS = (() => {
         setTimeout(() => { if (stopFn) { try{ctx.close();}catch{} stopFn=null; } }, total*1000+250); }
     }
     return {
-      lists: { ring: Object.keys(RING), notif: Object.keys(NOTIF), alarm: Object.keys(ALARM) },
-      notif: (name, vol) => playSeq(NOTIF[name]||NOTIF.Goccia, vol, false),
-      ring:  (name, vol) => playSeq(RING[name]||RING.Nova, vol, true),
-      alarm: (name, vol) => playSeq(ALARM[name]||ALARM.Radar, vol, true),
-      preview: (cat, name, vol=0.35) => { const map = cat==="ring"?RING:cat==="alarm"?ALARM:NOTIF; playSeq(map[name]||Object.values(map)[0], vol, false); },
+      lists,
+      setCustom: (cat, name, seq) => { custom[cat][name] = seq; if (!lists[cat].includes(name)) lists[cat].push(name); },
+      notif: (name, vol) => playSeq(NOTIF[name]||custom.notif[name]||NOTIF.Goccia, vol, false),
+      ring:  (name, vol) => playSeq(RING[name]||custom.ring[name]||RING.Nova, vol, true),
+      alarm: (name, vol) => playSeq(ALARM[name]||custom.alarm[name]||ALARM.Radar, vol, true),
+      preview: (cat, name, vol=0.35) => { const map = cat==="ring"?RING:cat==="alarm"?ALARM:NOTIF; playSeq(map[name]||custom[cat][name]||Object.values(map)[0], vol, false); },
       stop,
     };
   })();
@@ -1782,7 +1801,7 @@ const OS = (() => {
   // ============================================================
   function set(k, v) { state[k] = v; store.set(k, v);
     if (k==="theme" || k==="themePalette") { applyTheme(); applyDisplay(); }
-    if (["brightness","textScale","wallpaper","wallImage","wallGradient","wallFit","wallZoom","wallPosX","wallPosY","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","iconShape","accentColor","saver","adaptiveBright","eyeComfort"].includes(k)) applyDisplay();
+    if (["brightness","textScale","uiFont","uiWeight","wallpaper","wallImage","wallGradient","wallFit","wallZoom","wallPosX","wallPosY","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","iconShape","accentColor","saver","adaptiveBright","eyeComfort"].includes(k)) applyDisplay();
     if (["iconStyle","deskColor","iconColor","iconShape","launcher","iconMap"].includes(k) && screens.home.classList.contains("active")) renderHome();
     if (k==="notifLock") renderLockNotifs();
     renderStatusbars();
@@ -2078,6 +2097,22 @@ const OS = (() => {
     if (!t || typeof t !== "object") return false;
     if (t.format !== "novatheme/1" && t.format !== "novatheme/2") return false;
     if (t.meta && t.meta.base) set("theme", t.meta.base);
+    // override icone per-app PRIMA del launcher: quando set("launcher") ri-renderizza
+    // la home, iconMap è già aggiornato (altrimenti le icone nuove comparivano solo
+    // al render successivo).
+    if (t.icons && t.icons.map) {
+      const m = {};
+      Object.entries(t.icons.map).forEach(([id, o]) => {
+        let v = (o && typeof o === "object") ? o.value : o;
+        v = String(v == null ? "" : v).trim(); if (!v) return;
+        if (isSvgLike(v)) { m[id] = svgData(v); return; }               // SVG → data-URL immagine (mai raw nel DOM)
+        if (/[<>"'`]/.test(v)) return;                                  // possibile iniezione: scarta
+        const isImg = /^data:image\//i.test(v) || /^https:\/\//i.test(v);
+        const isText = !/^data:|^https?:|^javascript:/i.test(v) && v.length <= 8;  // emoji/simbolo breve
+        if (isImg || isText) m[id] = v;                                 // altrimenti scartato
+      });
+      set("iconMap", m);
+    } else set("iconMap", {});
     // layout: template a blocchi del tema (launcher "custom") oppure launcher predefinito
     if (t.layout && t.layout.engine === "blocks" && Array.isArray(t.layout.blocks)) applyThemeLayout(t.layout);
     else if (t.layout && t.layout.id && launcherList().some(l => l.id === t.layout.id)) set("launcher", t.layout.id);
@@ -2093,7 +2128,11 @@ const OS = (() => {
       if (t.shape.iconStyle) set("iconStyle", t.shape.iconStyle);
       if (t.shape.iconShape) set("iconShape", t.shape.iconShape);
     }
-    if (t.typography && t.typography.textScale) set("textScale", +t.typography.textScale);
+    if (t.typography && typeof t.typography === "object") {
+      if (t.typography.textScale) set("textScale", +t.typography.textScale);
+      if (t.typography.font) set("uiFont", ["system","serif","mono"].includes(t.typography.font) ? t.typography.font : "system");
+      if (t.typography.weight) set("uiWeight", ["normal","medium","bold"].includes(t.typography.weight) ? t.typography.weight : "normal");
+    }
     if (t.wallpaper) {
       if (t.wallpaper.type === "solid") { set("deskColor", t.wallpaper.value); set("wallImage", ""); set("wallGradient", ""); }
       else if (t.wallpaper.type === "image") { set("wallImage", t.wallpaper.value); set("deskColor", ""); set("wallGradient", "");
@@ -2102,26 +2141,20 @@ const OS = (() => {
       else if (t.wallpaper.type === "gradient") { set("deskColor", ""); set("wallImage", ""); set("wallGradient", typeof t.wallpaper.value === "string" && t.wallpaper.value ? t.wallpaper.value : ""); }
       else { set("deskColor", ""); set("wallImage", ""); set("wallGradient", ""); }
     }
-    // override icone per-app (icons.map: id → {type:"emoji",value} oppure stringa).
-    // Solo emoji/testo brevi senza caratteri HTML pericolosi, oppure URL data:image//https.
-    if (t.icons && t.icons.map) {
-      const m = {};
-      Object.entries(t.icons.map).forEach(([id, o]) => {
-        let v = (o && typeof o === "object") ? o.value : o;
-        v = String(v == null ? "" : v).trim(); if (!v) return;
-        if (/[<>"'`]/.test(v)) return;                                  // possibile iniezione: scarta
-        const isImg = /^data:image\//i.test(v) || /^https:\/\//i.test(v);
-        const isText = !/^data:|^https?:|^javascript:/i.test(v) && v.length <= 8;  // emoji/simbolo breve
-        if (isImg || isText) m[id] = v;                                 // altrimenti scartato
-      });
-      set("iconMap", m);
-    } else set("iconMap", {});
-    // suoni (solo nomi validi per categoria)
+    // suoni (nomi validi per categoria, oppure sequenza personalizzata [[freq,dur],...])
     if (t.sounds) { const L = Sounds.lists || { ring: [], notif: [], alarm: [] };
       const sv = s => (s && typeof s === "object") ? s.value : s;
-      if (L.ring.includes(sv(t.sounds.ringtone))) set("ringtone", sv(t.sounds.ringtone));
-      if (L.notif.includes(sv(t.sounds.notif)))   set("notifSound", sv(t.sounds.notif));
-      if (L.alarm.includes(sv(t.sounds.alarm)))   set("alarmSound", sv(t.sounds.alarm));
+      const apply = (k, cat) => {
+        const s = t.sounds[k]; if (!s) return;
+        if (s.type === "sequence" && Array.isArray(s.value) && s.value.length) {
+          const name = " Sequenza personalizzata";
+          Sounds.setCustom(cat, name, s.value);
+          set(cat === "ring" ? "ringtone" : cat === "alarm" ? "alarmSound" : "notifSound", name);
+        } else if (L[cat].includes(sv(s))) {
+          set(cat === "ring" ? "ringtone" : cat === "alarm" ? "alarmSound" : "notifSound", sv(s));
+        }
+      };
+      apply("ringtone", "ring"); apply("notif", "notif"); apply("alarm", "alarm");
     }
     // disposizione app (springboard + ordine lista)
     if (t.layout && Array.isArray(t.layout.order) && t.layout.order.length) applyLayoutOrder(t.layout.order);

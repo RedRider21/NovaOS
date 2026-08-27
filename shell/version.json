@@ -1,9 +1,9 @@
 {
-  "version": "0.1.45",
-  "build": 47,
+  "version": "0.1.46",
+  "build": 48,
   "minNative": 12,
   "date": "2026-08-27",
-  "notes": "Galleria: il Cestino conserva gli elementi 30 giorni dal momento della cancellazione (anche le foto demo vecchie si ripristinano). Theme Studio: i launcher alternativi (drawer/tiles/dash/radial/cover/custom) nascondono la widget orologio di sistema in alto e i testi/numeri dei launcher hanno lo stesso grassetto del modello (700/700/500/400) — reale e modello coincidono. Anteprima tema sul dispositivo: feed /theme/current con CORS; la shell polla e applica il tema dal vivo da ?preview=1&themeFeed=… (APK incluso).",
+  "notes": "Icon-pack «NovaOS» nel Theme Studio: 16 icone vettoriali SVG per le app di base (badge gradiente + simbolo bianco, stile suite Google; la Galleria ha la girandola) — la shell applica gli SVG dei temi come data-URL immagine, in home e in tutti i launcher. Tipografia del tema (font system/serif/mono + spessore normal/medium/bold) applicata a tutta l'interfaccia. Suonerie/notifiche/sveglie personalizzate composte col mini-sequencer dello Studio. Studio: annulla/rifai, autosalvataggio e miniatura del tema.",
   "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",
