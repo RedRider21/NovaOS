@@ -2291,10 +2291,13 @@ window.NovaCall = (() => {
   const initials = n => n.split(" ").map(w => w[0]).slice(0,2).join("").toUpperCase();
   const colorOf = n => `hsl(${[...n].reduce((s,c)=>s+c.charCodeAt(0),0)%360} 55% 45%)`;
 
+  // demo = niente bridge nativo (browser/preview): i pulsanti agiscono solo
+  // sull'interfaccia, così la schermata di chiamata si prova anche senza ROM.
+  const demo = () => !N().callAnswer && !N().callHangup;
   function build() {
     ov = document.createElement("div");
     ov.className = "call-ov";
-    const keys = ["1","2","3","4","5","6","7","8","9","*","0","#"];
+    const keys = [["1",""],["2","ABC"],["3","DEF"],["4","GHI"],["5","JKL"],["6","MNO"],["7","PQRS"],["8","TUV"],["9","WXYZ"],["*",""],["0","+"],["#",""]];
     ov.innerHTML = `
       <div class="call-top">
         <div class="call-avatar" id="call-av">👤</div>
@@ -2303,7 +2306,7 @@ window.NovaCall = (() => {
       </div>
       <div class="call-dtmf" id="call-dtmf">
         <div class="call-dtmf-disp" id="call-dtmf-disp"></div>
-        <div class="call-dtmf-keys">${keys.map(k=>`<button data-dtmf="${k}">${k}</button>`).join("")}</div>
+        <div class="call-dtmf-keys">${keys.map(([k,s])=>`<button data-dtmf="${k}">${k}${s?`<small>${s}</small>`:""}</button>`).join("")}</div>
         <button class="call-dtmf-close" id="call-dtmf-close">Nascondi tastierino</button>
       </div>
       <div class="call-controls">
@@ -2312,14 +2315,14 @@ window.NovaCall = (() => {
         <button class="call-c" data-c="speaker"><span>🔊</span>Vivavoce</button>
       </div>
       <div class="call-actions">
-        <button class="call-answer" data-c="answer">📞</button>
-        <button class="call-hangup" data-c="hangup">📞</button>
+        <button class="call-answer" data-c="answer">📞<i>Rispondi</i></button>
+        <button class="call-hangup" data-c="hangup">📞<i>Rifiuta</i></button>
       </div>`;
     (document.querySelector("#device") || document.body).appendChild(ov);
-    ov.querySelector('[data-c="answer"]').onclick  = () => N().callAnswer && N().callAnswer();
+    ov.querySelector('[data-c="answer"]').onclick  = () => { if (N().callAnswer) N().callAnswer(); else if (demo()) update("active", ov.dataset.num || ""); };
     ov.querySelector('[data-c="hangup"]').onclick  = () => { if (N().callHangup) N().callHangup(); else close(); };
-    ov.querySelector('[data-c="mute"]').onclick    = e => { muted=!muted; e.currentTarget.classList.toggle("on",muted); N().callMute && N().callMute(muted); };
-    ov.querySelector('[data-c="speaker"]').onclick = e => { spk=!spk; e.currentTarget.classList.toggle("on",spk); N().callSpeaker && N().callSpeaker(spk); };
+    ov.querySelector('[data-c="mute"]').onclick    = e => { muted=!muted; e.currentTarget.classList.toggle("on",muted); if (N().callMute) N().callMute(muted); };
+    ov.querySelector('[data-c="speaker"]').onclick = e => { spk=!spk; e.currentTarget.classList.toggle("on",spk); if (N().callSpeaker) N().callSpeaker(spk); };
     ov.querySelector('[data-c="keypad"]').onclick  = () => ov.classList.toggle("dtmf-open");
     ov.querySelector('#call-dtmf-close').onclick   = () => ov.classList.remove("dtmf-open");
     const disp = ov.querySelector("#call-dtmf-disp");
@@ -2331,6 +2334,7 @@ window.NovaCall = (() => {
   }
   function setContact(number, name) {
     const info = name ? { name, photo:null, number } : resolve(number);
+    ov.dataset.num = info.number;
     const avEl = ov.querySelector("#call-av");
     if (info.photo) { avEl.textContent = ""; avEl.style.background = `#232c3d center/cover url('${info.photo}')`; }
     else if (info.name) { avEl.textContent = initials(info.name); avEl.style.background = colorOf(info.name); }
@@ -2349,13 +2353,43 @@ window.NovaCall = (() => {
     if (!ov) build();
     ov.dataset.state = state;
     setContact(number, name);
+    const hg = ov.querySelector('[data-c="hangup"] i');
+    if (hg) hg.textContent = state === "incoming" ? "Rifiuta" : "Termina";
     const st = ov.querySelector(".call-state");
     if (state === "incoming") { st.textContent = "Chiamata in arrivo…";
       // suoneria scelta in Impostazioni, in loop, finché non si risponde/termina
       try { const S = OS.api.state; if (!S.dnd) OS.api.sounds.ring(S.ringtone, (S.volRing==null?70:S.volRing)/100*0.5); } catch {}
     }
     else if (state === "dialing")  { stopRing(); st.textContent = "Chiamata in corso…"; }
-    else if (state === "active")   { stopRing(); startTimer(); }
+    else if (state === "active")   { stopRing(); st.textContent = "00:00"; startTimer(); }
   }
   return { update };
+})();
+
+/* NovaDial — apertura del compositore con numero precompilato.
+   Riceve gli ACTION_DIAL / link tel: quando NovaOS è il telefono predefinito:
+   apre l'app Telefono e scrive il numero nel campo. */
+window.NovaDial = (num) => {
+  try { OS.api.openApp("phone"); } catch (_) {}
+  setTimeout(() => {
+    try { if (window.__dialSet) window.__dialSet(String(num || "").replace(/^tel:/, "")); } catch (_) {}
+  }, 400);
+};
+
+/* Catch-up dello stato chiamata: se una chiamata è arrivata prima che la WebView
+   fosse pronta (es. avvio da InCallService), la schermata la recupera al boot. */
+(() => {
+  const N = () => window.NovaNative || {};
+  let tries = 0;
+  const t = setInterval(() => {
+    tries++;
+    if (!window.NovaNative) { clearInterval(t); return; }
+    if (N().currentCallState) {
+      clearInterval(t);
+      try {
+        const s = JSON.parse(N().currentCallState());
+        if (s && s.state !== "ended") NovaCall.update(s.state, s.number || "", s.name || "");
+      } catch (_) {}
+    } else if (tries > 15) clearInterval(t);
+  }, 400);
 })();

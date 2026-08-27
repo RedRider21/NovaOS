@@ -45,6 +45,12 @@ const NovaApps = (() => {
         log = log.slice(0, 50); saveLog();
         os.vibrate(30);
         if (native && window.NovaNative.call) window.NovaNative.call(num);
+        else if (window.NovaCall) {
+          // demo (browser/preview, senza ROM): mostra la schermata di chiamata
+          // simulata — dialing poi attiva — così la UI si prova anche qui.
+          NovaCall.update("dialing", num);
+          setTimeout(() => NovaCall.update("active", num), 1600);
+        }
         else window.location.href = "tel:" + encodeURIComponent(num);
         os.notify({ app:"phone", title:"Chiamata", text:"Composizione " + (nameOf(num)||num) + "…" });
       };
@@ -233,6 +239,9 @@ const NovaApps = (() => {
           nm.textContent = c ? c.name : "";
           drawSugg(v);
         };
+        // hook per precompilare il numero dall'esterno (link tel: / ACTION_DIAL
+        // ricevuti quando NovaOS è il telefono predefinito — vedi os.js NovaDial)
+        window.__dialSet = v => { out.textContent = v || ""; sync(); };
         const type = ch => { out.textContent += ch; os.vibrate(15); sync(); };
         root.querySelectorAll(".dial-k").forEach(b => {
           const k = b.dataset.k;
@@ -3153,6 +3162,7 @@ const NovaApps = (() => {
           <div class="group">
             ${row("net","📶","#0a84ff","Rete e Internet", S.airplane?"Modalità aereo":(S.wifi?("Wi-Fi · "+S.wifiName):"Wi-Fi disattivato"))}
             ${row("connected","🔗","#0a84ff","Dispositivi connessi", (S.bt?"Bluetooth attivo":"Bluetooth off")+(S.nfc?" · NFC":""))}
+            ${row("tel","📞","#30d158","Telefono predefinito", (NN.isDialer&&NN.isDialer()) ? "NovaOS è il telefono predefinito" : "Non impostato")}
           </div>
 
           <div class="section-label">Personalizzazione</div>
@@ -3287,6 +3297,27 @@ const NovaApps = (() => {
           const sws = sec.querySelectorAll(".switch");
           sws[0].onclick = () => { os.toggle("bt"); sections.connected(); };
           sws[1].onclick = () => { os.toggle("nfc"); sections.connected(); };
+        }),
+
+        // ---------------- Telefono predefinito ----------------
+        tel: () => nav("Telefono predefinito", sec => {
+          const active = !!(NN.isDialer && NN.isDialer());
+          sec.innerHTML = `
+            <div class="group" style="padding:14px 16px;font-size:calc(13px*var(--fscale,1));line-height:1.55;color:${active?'var(--ok)':'var(--text-dim)'}">
+              ${active ? "✓ NovaOS è il telefono predefinito: le chiamate in arrivo si aprono nella schermata di NovaOS (InCallService)."
+                       : "NovaOS non è ancora il telefono predefinito: per ricevere le chiamate con la schermata NovaOS serve impostarlo come app di telefonia."}
+            </div>
+            <div class="group">
+              <div class="item" data-dialer="1"><div class="i-ico" style="background:#30d158">📞</div>
+                <div class="i-body"><div class="i-title">${active ? "Telefono predefinito" : "Imposta come telefono predefinito"}</div>
+                <div class="i-sub">${active ? "NovaOS" : "Apre il pannello di sistema del ruolo"}</div></div><div class="chev"></div></div>
+            </div>
+            <div style="padding:0 16px 20px;font-size:calc(11px*var(--fscale,1));color:var(--text-dim)">Con la ROM il ruolo è concesso di sistema. La schermata di chiamata si prova comunque dal Telefono (tasto verde) anche senza: in preview simula la chiamata.</div>`;
+          sec.querySelector("[data-dialer]").onclick = () => {
+            if (active) { os.notify({ app:"settings", title:"Telefono predefinito", text:"NovaOS è già il telefono predefinito." }); return; }
+            if (NN.requestDialerRole) { try { NN.requestDialerRole(); } catch (e) {} }
+            else os.notify({ app:"settings", title:"Telefono predefinito", text:"Disponibile solo nell'app NovaOS su Android." });
+          };
         }),
 
         // ---------------- Display ----------------

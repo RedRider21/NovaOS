@@ -739,36 +739,43 @@ body[data-theme="light"] .pin-key { background: rgba(0,0,0,.06); }
 /* app web di terze parti a schermo intero */
 .web-frame { width: 100%; height: 100%; border: none; background: #fff; }
 
-/* schermata di chiamata (InCallService) */
+/* schermata di chiamata (InCallService) — stile dialer Android (Google Phone) */
 .call-ov {
   position: absolute; inset: 0; z-index: 80;
-  background: linear-gradient(180deg, #0d1830, #0b0f17);
-  display: flex; flex-direction: column; align-items: center; justify-content: space-between;
-  padding: 70px 24px 46px; animation: fade-up .3s both;
+  background: radial-gradient(120% 90% at 50% 0%, #101c36 0%, #06080f 62%);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 52px 20px 34px; animation: fade-up .3s both;
 }
-.call-top { text-align: center; }
-.call-avatar { width: 108px; height: 108px; border-radius: 50%; background: #232c3d; display: flex; align-items: center; justify-content: center; font-size:calc(50px*var(--fscale,1)); margin: 0 auto 22px; }
-.call-num { font-size:calc(27px*var(--fscale,1)); font-weight: 600; color: #fff; }
-.call-state { font-size:calc(16px*var(--fscale,1)); color: #9aa4b8; margin-top: 8px; font-variant-numeric: tabular-nums; }
-.call-controls { display: flex; gap: 44px; }
-.call-c { background: none; border: none; color: #cfd6e6; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size:calc(12px*var(--fscale,1)); cursor: pointer; }
-.call-c span { width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,.12); display: flex; align-items: center; justify-content: center; font-size:calc(24px*var(--fscale,1)); }
-.call-c.on span { background: #fff; }
-.call-actions { display: flex; gap: 66px; align-items: center; }
-.call-answer, .call-hangup { width: 70px; height: 70px; border-radius: 50%; border: none; font-size:calc(30px*var(--fscale,1)); cursor: pointer; }
-.call-answer { background: #35c759; color: #fff; }
-.call-hangup { background: #ff3b30; color: #fff; transform: rotate(135deg); }
+.call-top { text-align: center; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; }
+.call-avatar { width: 128px; height: 128px; border-radius: 50%; background: #20293d; display: flex; align-items: center; justify-content: center; font-size:calc(58px*var(--fscale,1)); margin-bottom: 16px; box-shadow: 0 0 0 6px rgba(255,255,255,.04), 0 18px 44px rgba(0,0,0,.45); }
+.call-num { font-size:calc(31px*var(--fscale,1)); font-weight: 600; color: #fff; letter-spacing: .2px; }
+.call-state { font-size:calc(15px*var(--fscale,1)); color: #8f9ab1; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.call-ov[data-state="active"] .call-state { color: #35c759; }
+.call-controls { display: flex; gap: 34px; margin: 4px 0 20px; }
+.call-c { background: none; border: none; color: #d5dae6; display: flex; flex-direction: column; align-items: center; gap: 7px; font-size:calc(12px*var(--fscale,1)); cursor: pointer; min-width: 64px; }
+.call-c span { width: 62px; height: 62px; border-radius: 50%; background: #1d2739; border: 1px solid rgba(255,255,255,.07); display: flex; align-items: center; justify-content: center; font-size:calc(24px*var(--fscale,1)); }
+.call-c:active span { background: #2c3a55; }
+.call-c.on span { box-shadow: inset 0 0 0 2px #35c759; }
+.call-c.on { color: #7ee2a0; }
+.call-actions { display: flex; justify-content: center; align-items: flex-end; gap: 56px; min-height: 96px; }
+.call-answer, .call-hangup { width: 74px; height: 74px; border-radius: 50%; border: none; font-size:calc(32px*var(--fscale,1)); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+.call-answer i, .call-hangup i { position: absolute; bottom: -24px; left: 0; right: 0; font-style: normal; font-size:calc(12px*var(--fscale,1)); color: #aeb6c8; font-weight: 500; }
+.call-answer { background: #30d158; color: #fff; box-shadow: 0 10px 26px rgba(48,209,88,.35); }
+.call-hangup { background: #ff453a; color: #fff; transform: rotate(135deg); box-shadow: 0 10px 26px rgba(255,69,58,.35); }
+.call-hangup i { transform: rotate(-135deg); }
+.call-answer:hover, .call-hangup:hover { filter: brightness(1.08); }
 .call-ov:not([data-state="incoming"]) .call-answer { display: none; }
 .call-ov[data-state="incoming"] .call-controls { visibility: hidden; }
-/* tastierino DTMF in chiamata */
-.call-dtmf { display: none; flex-direction: column; align-items: center; gap: 14px; }
+/* tastierino DTMF in chiamata (si apre dal basso, il Termina resta sotto) */
+.call-dtmf { display: none; flex-direction: column; align-items: center; gap: 10px; margin: 4px 0 18px; }
 .call-ov.dtmf-open .call-dtmf { display: flex; }
-.call-ov.dtmf-open .call-avatar, .call-ov.dtmf-open .call-controls { display: none; }
-.call-dtmf-disp { min-height: 30px; font-size:calc(26px*var(--fscale,1)); letter-spacing: 4px; color: #fff; font-variant-numeric: tabular-nums; }
-.call-dtmf-keys { display: grid; grid-template-columns: repeat(3, 68px); gap: 14px; }
-.call-dtmf-keys button { width: 68px; height: 68px; border-radius: 50%; border: none; background: rgba(255,255,255,.1); color: #fff; font-size:calc(26px*var(--fscale,1)); cursor: pointer; }
-.call-dtmf-keys button:active { background: rgba(255,255,255,.28); }
-.call-dtmf-close { background: none; border: none; color: #9aa4b8; cursor: pointer; font-size:calc(14px*var(--fscale,1)); }
+.call-ov.dtmf-open .call-top, .call-ov.dtmf-open .call-controls { display: none; }
+.call-dtmf-disp { min-height: 34px; font-size:calc(30px*var(--fscale,1)); letter-spacing: 5px; color: #fff; font-variant-numeric: tabular-nums; }
+.call-dtmf-keys { display: grid; grid-template-columns: repeat(3, 76px); gap: 14px 16px; }
+.call-dtmf-keys button { width: 76px; height: 76px; border-radius: 50%; border: none; background: #1d2739; color: #fff; font-size:calc(27px*var(--fscale,1)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; }
+.call-dtmf-keys button small { font-size:calc(10px*var(--fscale,1)); color: #8f9ab1; letter-spacing: 1px; }
+.call-dtmf-keys button:active { background: rgba(255,255,255,.22); }
+.call-dtmf-close { background: none; border: none; color: #8f9ab1; cursor: pointer; font-size:calc(14px*var(--fscale,1)); margin-top: 6px; }
 
 /* overlay sveglia che suona */
 .alarm-ring {

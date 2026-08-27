@@ -1,10 +1,10 @@
 {
-  "version": "0.1.50",
-  "build": 52,
+  "version": "0.1.51",
+  "build": 53,
   "minNative": 12,
   "date": "2026-08-27",
-  "notes": "FIX ICONE DRAWER: le 4 app fisse del Drawer (telefono, messaggi, fotocamera, browser) non riempiono piu la cella ma restano a 48px come la griglia: elimina le icone enormi nel Drawer e nella simulazione del reale dello Studio (il modello resta invariato).",
-  "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1.50/NovaOS-0.1.50.apk",
+  "notes": "TELEFONIA: UI chiamata ridisegnata stile dialer Android (avatar grande, Rispondi/Rifiuta, Termina, tastierino con lettere) e provabile in demo dal Telefono anche senza ROM; InCallService abilitato — intent-filter dialer (eleggibilità ruolo), composizione via TelecomManager, link tel:/ACTION_DIAL precompilano il compositore, recupero chiamata al boot, voce Impostazioni per impostare NovaOS come telefono predefinito.",
+  "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1.51/NovaOS-0.1.51.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "js/version.js",    "manifest.webmanifest",    "sw.js",
     "version.json"

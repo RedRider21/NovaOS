@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.50** (build 52). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.51** (build 53). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -156,7 +156,8 @@ la schermata di sistema. Serve che NovaOS sia il **telefono predefinito**:
 - la shell mostra la **schermata di chiamata** (`window.NovaCall`) con rispondi /
   riaggancia / muto / vivavoce, che richiamano `window.NovaNative.call*`.
 
-All'avvio il launcher chiede il ruolo di telefono predefinito. Impostarlo a mano:
+Il ruolo si imposta da **Impostazioni → Rete → Telefono predefinito** (apre il pannello
+del sistema) oppure a mano:
 ```bash
 adb shell cmd telecom set-default-dialer os.nova.launcher   # o: cmd role add-role-holder android.app.role.DIALER os.nova.launcher
 ```
@@ -237,14 +238,34 @@ Fatto:
   (come la griglia), così non appaiono più enormi né nel Drawer reale né nella simulazione
   del reale dello Studio (il modello in scala resta invariato).
 
+Ultime novità (0.1.51) — telefonia:
+- **UI di chiamata ridisegnata in stile dialer Android** — schermata in arrivo con avatar
+  grande, nome e numero, e i pulsanti **Rispondi** (verde) / **Rifiuta** (rosso) con etichette;
+  in chiamata il grande pulsante **Termina**, i controlli Muto/Tastierino/Vivavoce e il
+  **tastierino DTMF** con le lettere sotto i numeri. Si prova anche senza ROM: dal Telefono
+  il tasto verde avvia una **chiamata simulata** in browser/preview.
+- **InCallService abilitato** — aggiunti gli intent-filter di telefono (`ACTION_DIAL`,
+  `tel:`, `ACTION_CALL`) che rendono NovaOS **eleggibile** come telefono predefinito su
+  Android 10+ (prima il sistema non offriva il ruolo e l'InCallService non veniva mai
+  attivato). La composizione quando si è telefono predefinito passa da
+  `TelecomManager.placeCall` (con ACTION_CALL finirebbe in loop su NovaOS stesso).
+- **Link tel:/ACTION_DIAL precompilano il compositore** — toccando un numero in un'altra
+  app, NovaOS apre il Telefono col numero già scritto (`NovaDial`).
+- **Recupero della chiamata al boot** — se una chiamata arriva mentre la WebView non è
+  ancora pronta, la schermata la recupera all'avvio (`currentCallState`).
+- **Impostazioni → Rete → Telefono predefinito** — voce dedicata: mostra se NovaOS è il
+  telefono predefinito e apre il pannello del ruolo per impostarlo (niente più richiesta
+  automatica a ogni avvio).
+
 Ultime novità (0.1.49):
 - **Dock compatto come il modello** — le 4 app fisse in basso (Telefono, Messaggi, Fotocamera,
   Browser) hanno le icone a **42px** (`.dock .app-icon .glyph`), come nel modello dello Studio
   (`.p-dock .p-ic`): prima, con le icone vettoriali NovaOS, le tessere a 58px del dock
   apparivano enormi rispetto al modello (le emoji precedenti stavano a ~27px).
 
-Prossimi passi: rifinire il launcher (evitare il re-boot quando si preme Home,
-gestione InCallService per la telefonia nativa), poi la build ROM (`system/`).
+Prossimi passi: rifinire il launcher (evitare il re-boot quando si preme Home — fix
+applicato in 0.1.49), poi la build ROM (`system/`), dove NovaOS come priv-app potrà
+concedere il ruolo di telefono predefinito e la telefonia nativa si attiva da sola.
 
 ### Ricompilare l'APK
 ```bash

@@ -261,12 +261,52 @@ public class MainActivity extends Activity {
         }
         if (!need.isEmpty()) requestPermissions(need.toArray(new String[0]), 1);
 
-        // collega la schermata di chiamata e chiede di diventare telefono predefinito
+        // collega la schermata di chiamata; il ruolo di telefono predefinito lo
+        // chiede l'UTENTE dalle Impostazioni (voce dedicata), non ad ogni avvio.
         CallHub.setActivity(this);
-        requestDefaultDialer();
 
         immersive();
         web.loadUrl(resolveShellUrl());   // shell interna (aggiornata OTA) o quella dell'APK
+        handleDialIntent(getIntent());    // se avviato da un link tel:/ACTION_DIAL
+    }
+
+    /** Quando NovaOS è il telefono predefinito riceve ACTION_DIAL / VIEW tel: / CALL:
+     *  apre il compositore di NovaOS col numero precompilato invece di una nuova istanza. */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleDialIntent(intent);
+    }
+
+    private void handleDialIntent(Intent intent) {
+        if (intent == null || web == null) return;
+        Uri data = intent.getData();
+        if (data == null) return;
+        String action = intent.getAction();
+        boolean dial = Intent.ACTION_DIAL.equals(action) || Intent.ACTION_VIEW.equals(action) || Intent.ACTION_CALL.equals(action);
+        if (!dial) return;
+        String num = "tel".equalsIgnoreCase(data.getScheme()) ? data.getSchemeSpecificPart() : data.toString();
+        if (num == null || num.isEmpty()) return;
+        final String safe = num.replace("\\", "\\\\").replace("'", "\\'");
+        // la shell potrebbe non essere ancora pronta: ritenta un paio di volte
+        for (int i = 0; i < 4; i++) {
+            final int delay = 400 + i * 500;
+            web.postDelayed(() -> web.evaluateJavascript(
+                "(window.NovaDial?NovaDial('" + safe + "'):'')", null), delay);
+        }
+    }
+
+    /** NovaOS è il telefono predefinito (ROLE_DIALER)? Vero solo se l'utente lo ha
+     *  impostato: da lì l'InCallService riceve le chiamate reali. */
+    public boolean isDialer() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            RoleManager rm = getSystemService(RoleManager.class);
+            return rm != null && rm.isRoleHeld(RoleManager.ROLE_DIALER);
+        }
+        TelecomManager tm = (TelecomManager) getSystemService(TELECOM_SERVICE);
+        String def = tm != null ? tm.getDefaultDialerPackage() : null;
+        return getPackageName().equals(def);
     }
 
     /** Chiede a NovaOS di diventare l'app telefono predefinita (serve per l'InCallService). */
@@ -320,6 +360,16 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void call(String number) {
             Uri uri = Uri.parse("tel:" + number);
+            // se NovaOS è il telefono predefinito compone via telecom framework:
+            // la chiamata esce e il nostro InCallService mostra la schermata NovaOS.
+            // (Con ACTION_CALL la richiesta ricadrebbe su NovaOS stesso → loop.)
+            if (isDialer() && checkSelfPermission(android.Manifest.permission.CALL_PHONE)
+                    == PackageManager.PERMISSION_GRANTED) {
+                TelecomManager tm = (TelecomManager) getSystemService(TELECOM_SERVICE);
+                if (tm != null) {
+                    try { tm.placeCall(uri, null); return; } catch (Exception ignored) {}
+                }
+            }
             boolean canCall = checkSelfPermission(android.Manifest.permission.CALL_PHONE)
                     == PackageManager.PERMISSION_GRANTED;
             Intent i = new Intent(canCall ? Intent.ACTION_CALL : Intent.ACTION_DIAL, uri);
@@ -383,6 +433,27 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void callMute(boolean m)   { CallHub.mute(m); }
         @JavascriptInterface public void callSpeaker(boolean s){ CallHub.speaker(s); }
         @JavascriptInterface public void callDtmf(String s)    { CallHub.dtmf(s); }
+
+        // NovaOS è il telefono predefinito? (per la voce nelle Impostazioni)
+        @JavascriptInterface public boolean isDialer()         { return MainActivity.this.isDialer(); }
+        // chiede all'utente di impostare NovaOS come telefono predefinito
+        @JavascriptInterface public void requestDialerRole()   { runOnUiThread(() -> requestDefaultDialer()); }
+        // stato chiamata corrente (JSON) per il recupero della schermata al boot
+        @JavascriptInterface public String currentCallState() {
+            Call c = CallHub.call;
+            if (c == null) return "{\"state\":\"ended\"}";
+            String num = "";
+            try { num = c.getDetails().getHandle().getSchemeSpecificPart(); } catch (Exception e) {}
+            String state;
+            switch (c.getState()) {
+                case Call.STATE_RINGING: state = "incoming"; break;
+                case Call.STATE_DIALING:
+                case Call.STATE_CONNECTING: state = "dialing"; break;
+                case Call.STATE_DISCONNECTED: state = "ended"; break;
+                default: state = "active";
+            }
+            return "{\"state\":\"" + state + "\",\"number\":\"" + num.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+        }
 
         // microfono: la Fotocamera lo richiede a runtime prima di registrare un video,
         // così l'audio è già concesso quando parte la registrazione (video con suono).
