@@ -1,7 +1,7 @@
 /* NovaOS — service worker: offline con strategia network-first.
    Network-first tiene la shell aggiornata durante lo sviluppo e mantiene
    il funzionamento offline (fallback su cache quando la rete non risponde). */
-const CACHE = "novaos-v45";
+const CACHE = "novaos-v46";
 const ASSETS = [
   "index.html",
   "css/style.css",

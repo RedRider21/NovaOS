@@ -489,7 +489,7 @@ const OS = (() => {
         <button class="lcd-burger" data-burger aria-label="Apri menu"><span></span><span></span><span></span></button>
         <div class="lc-clock lcd-clock"></div>
         <div class="lc-date lcd-date"></div>
-        <div class="lcd-quick">${quick.map(a => { const ic = appIcon(a); const isImg = /^(https?:|data:)/.test(ic || ""); return `<div class="lcd-qc" data-app="${a.id}">${isImg ? `<img src="${ic}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:9px">` : ic}<small>${escH(a.name)}</small></div>`; }).join("")}</div>
+        <div class="lcd-quick">${quick.map(a => { const ic = appIcon(a); const isImg = /^(https?:|data:)/.test(ic || ""); return `<div class="lcd-qc" data-app="${a.id}">${isImg ? `<img src="${ic}" alt="" style="width:48px;height:48px;border-radius:14px;object-fit:cover">` : ic}<small>${escH(a.name)}</small></div>`; }).join("")}</div>
       </div>
       <div class="lc-scrim" data-scrim></div>
       <div class="lc-panel no-sb">
@@ -1247,7 +1247,16 @@ const OS = (() => {
     show("app");
     renderStatusbars();
   }
-  function goHome() { clearIntervals(); cleanupApp(); currentApp = null; editing = false; show("home"); renderHome(); renderClocks(); renderStatusbars(); }
+  function goHome() {
+    // Se la home è già a schermo, NON la rigenera: ricostruirla rifarebbe
+    // l'animazione di ingresso delle icone e sembrerebbe un "riavvio" a ogni
+    // pressione di Home. La rigenerazione avviene solo quando si arriva alla
+    // home (da un'app, dallo sblocco, dal boot).
+    const alreadyHome = screens.home.classList.contains("active");
+    clearIntervals(); cleanupApp(); currentApp = null; editing = false; show("home");
+    if (!alreadyHome) renderHome();
+    renderClocks(); renderStatusbars();
+  }
   function goBack() { if (screens.app.classList.contains("active")) goHome(); }
 
   function interval(root, fn, ms) { const id = setInterval(fn, ms); activeIntervals.add(id); return id; }
