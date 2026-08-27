@@ -153,8 +153,14 @@ const OS = (() => {
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(s);
   }
   function appIcon(a) {
+    const def = safeIcon(a && a.icon);
     const ov = safeIcon(a && state.iconMap && state.iconMap[a.id]);
-    return ov || safeIcon(a && a.icon) || "";
+    const nova = window.NovaDefaultIcons && window.NovaDefaultIcons[a.id];
+    // icone vettoriali «NovaOS» per le app di sistema: sono il default (anche dentro un
+    // tema). Il tema le sostituisce SOLO con un'icona che non sia il mero glifo emoji di
+    // default (cioè con una scelta vera: emoji diversa, SVG, immagine).
+    if (nova && (!ov || ov === def)) return nova;
+    return ov || nova || def || "";
   }
   function appById(id) {
     return NovaApps.byId[id] || userApps().map(u=>({...u,web:true})).find(a => a.id === id);

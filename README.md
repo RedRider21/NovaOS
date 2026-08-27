@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.46** (build 48). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.47** (build 49). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -221,6 +221,11 @@ Fatto:
   i launcher. Il Theme Studio include il pack **«NovaOS»**: 16 icone disegnate ad hoc stile
   suite Google (badge con gradiente per-app + simbolo bianco; la Galleria ha la **girandola**,
   il Meteo sole+nube, il Telefono la cornetta…).
+- **Icone di sistema NovaOS** — le stesse 16 icone del pack sono ora le icone **di default**
+  delle app di sistema: ogni app di base (Telefono, Galleria, Meteo, Impostazioni,
+  Registratore…) ha il suo badge con gradiente + simbolo bianco, mostrato in home e in
+  **tutti** i launcher senza dover applicare nessun tema. Un tema importato le sostituisce
+  comunque con le proprie.
 
 Prossimi passi: rifinire il launcher (evitare il re-boot quando si preme Home,
 gestione InCallService per la telefonia nativa), poi la build ROM (`system/`).
