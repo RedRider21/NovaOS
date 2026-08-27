@@ -4,7 +4,7 @@
   "minNative": 12,
   "date": "2026-08-27",
   "notes": "Icon-pack «NovaOS» nel Theme Studio: 16 icone vettoriali SVG per le app di base (badge gradiente + simbolo bianco, stile suite Google; la Galleria ha la girandola) — la shell applica gli SVG dei temi come data-URL immagine, in home e in tutti i launcher. Tipografia del tema (font system/serif/mono + spessore normal/medium/bold) applicata a tutta l'interfaccia. Suonerie/notifiche/sveglie personalizzate composte col mini-sequencer dello Studio. Studio: annulla/rifai, autosalvataggio e miniatura del tema.",
-  "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
+  "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1.46/NovaOS-0.1.46.apk",
   "files": [
     "css/style.css",
     "icon.svg",
