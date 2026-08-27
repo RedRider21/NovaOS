@@ -3,7 +3,7 @@
   "build": 47,
   "minNative": 12,
   "date": "2026-08-27",
-  "notes": "Galleria: il Cestino conserva gli elementi 30 giorni dal momento della cancellazione (anche le foto demo vecchie si ripristinano). Theme Studio: i launcher alternativi (drawer/tiles/dash/radial/cover/custom) nascondono la widget orologio di sistema in alto — il reale ora coincide col modello. Anteprima tema sul dispositivo: feed /theme/current con CORS; la shell polla e applica il tema dal vivo da ?preview=1&themeFeed=… (APK incluso).",
+  "notes": "Galleria: il Cestino conserva gli elementi 30 giorni dal momento della cancellazione (anche le foto demo vecchie si ripristinano). Theme Studio: i launcher alternativi (drawer/tiles/dash/radial/cover/custom) nascondono la widget orologio di sistema in alto e i testi/numeri dei launcher hanno lo stesso grassetto del modello (700/700/500/400) — reale e modello coincidono. Anteprima tema sul dispositivo: feed /theme/current con CORS; la shell polla e applica il tema dal vivo da ?preview=1&themeFeed=… (APK incluso).",
   "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",

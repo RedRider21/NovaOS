@@ -81,7 +81,9 @@ editabile** con **posizionamento libero delle icone** (slot fissi 4×4: ogni ico
 resta dove la metti, anche con spazi vuoti), drag tra desktop, cartelle, swipe con flick.
 I **launcher alternativi** (drawer, elenco, tessere, dash, radiale, cover, layout custom
 dei temi) sostituiscono la home classica e **nascondono la widget orologio di sistema**
-in alto (portano il proprio orologio); la springboard classica la mantiene.
+in alto (portano il proprio orologio); la springboard classica la mantiene. Nomi e
+cifre dei launcher hanno lo **stesso spessore del modello** dello Studio
+(nomi tessere/cover 700, elenco 500, categorie 400).
 Sul dispositivo molte voci aprono i **pannelli di sistema reali** (Wi-Fi, Bluetooth,
 data/ora, lingua, permessi app).
 
