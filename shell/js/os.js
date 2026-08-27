@@ -489,7 +489,7 @@ const OS = (() => {
         <button class="lcd-burger" data-burger aria-label="Apri menu"><span></span><span></span><span></span></button>
         <div class="lc-clock lcd-clock"></div>
         <div class="lc-date lcd-date"></div>
-        <div class="lcd-quick">${quick.map(a => `<div class="lcd-qc" data-app="${a.id}">${appIcon(a)}<small>${escH(a.name)}</small></div>`).join("")}</div>
+        <div class="lcd-quick">${quick.map(a => { const ic = appIcon(a); const isImg = /^(https?:|data:)/.test(ic || ""); return `<div class="lcd-qc" data-app="${a.id}">${isImg ? `<img src="${ic}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:9px">` : ic}<small>${escH(a.name)}</small></div>`; }).join("")}</div>
       </div>
       <div class="lc-scrim" data-scrim></div>
       <div class="lc-panel no-sb">

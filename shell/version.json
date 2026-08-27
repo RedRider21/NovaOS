@@ -1,9 +1,9 @@
 {
-  "version": "0.1.47",
-  "build": 49,
+  "version": "0.1.48",
+  "build": 50,
   "minNative": 12,
   "date": "2026-08-27",
-  "notes": "ICONE «NovaOS» DI DEFAULT: le 16 icone vettoriali stile suite Google (badge gradiente + simbolo bianco; la Galleria ha la girandola, il Meteo sole+nube, il Telefono la cornetta) ora sono le icone delle app di sistema in home e in tutti i launcher, senza dover applicare un tema. Icon-pack «NovaOS» nel Theme Studio (stesse icone) + applicazione degli SVG dei temi come data-URL immagine. Tipografia del tema (font/spessore) applicata a tutta l'interfaccia. Suonerie/notifiche/sveglie personalizzate col mini-sequencer dello Studio. Studio: annulla/rifai, autosalvataggio e miniatura del tema.",
+  "notes": "GALLERIA — RACCOLTE: nella scheda Raccolte puoi creare una nuova raccolta e cancellare quelle esistenti (le foto restano nella Galleria). Selezionando più foto le aggiungi a una raccolta già creata o ne crei una al volo. Corretto il bottone ← che non tornava a Foto da Cerca e Raccolte. Launcher Drawer riallineato al modello dello Studio (icone a tutta cella).",
   "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1.46/NovaOS-0.1.46.apk",
   "files": [
     "css/style.css",

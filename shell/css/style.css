@@ -921,6 +921,11 @@ body.a11y-contrast[data-theme="light"] { --text: #000000; --text-dim: #1a1a1a; -
 .alb-th { background-size:cover; background-position:center; }
 .alb-name { display:flex; align-items:center; gap:6px; padding:8px 2px 0; font-weight:600; font-size:calc(14px*var(--fscale,1)); }
 .alb-count { margin-left:auto; color:var(--text-dim); font-weight:600; font-size:calc(13px*var(--fscale,1)); }
+.alb-grid-empty { display:flex; align-items:center; justify-content:center; color:var(--text-dim); }
+.alb-new { border:1.5px dashed color-mix(in srgb, var(--text-dim) 42%, transparent); border-radius:16px; }
+.alb-new:active { background:var(--surface-2); }
+.alb-del { margin-left:2px; width:24px; height:24px; border:0; border-radius:50%; display:flex; align-items:center; justify-content:center; background:transparent; color:var(--text-dim); cursor:pointer; flex:none; }
+.alb-del:hover { background:color-mix(in srgb, var(--danger) 16%, var(--surface-2)); color:var(--danger); }
 .gp-util { padding:10px 16px; }
 .gp-searchbar { display:flex; align-items:center; gap:8px; margin:10px 16px 4px; padding:10px 12px; background:var(--surface); border-radius:14px; color:var(--text-dim); }
 .gp-searchbar input { flex:1; background:none; border:none; color:var(--text); font-size:calc(15px*var(--fscale,1)); outline:none; }

@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.47** (build 49). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.48** (build 50). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -59,7 +59,7 @@ web-phone-os/
 | Mail | client email **reale** (SMTP/IMAP via bridge nativo JavaMail): schermata account con **selettore provider** (Gmail/Outlook/Yahoo/iCloud/Libero/Aruba/PEC/GMX/TIM che precompilano host e porte) **o configurazione manuale**, invio SMTP e sincronizzazione IMAP, **password cifrata nell'Android Keystore** (mai in chiaro). In assenza del bridge (browser) resta simulazione locale. Inoltre: cartelle (arrivo/inviati/bozze/cestino), **ricerca**, stella, **bozze reali**, **rispondi con citazione**, **inoltra**, **allegati** con anteprima, destinatari dai contatti, firma |
 | Browser | cronologia + preferiti; sul device apre i siti in **WebView nativa a schermo intero** (BrowserActivity) → nessun limite iframe (banche, Google, ecc.). **Vista desktop** (pulsante 🖥) attiva in automatico per **WhatsApp/Telegram Web** così compare il **QR** di accesso (con UA mobile reindirizzerebbero all'app). In shell web resta l'anteprima iframe |
 | Fotocamera | anteprima live `getUserMedia`, scatto salvato in Galleria, import da file |
-| Galleria | **clone di Google Foto**: tab **Foto · Cerca · Raccolte**, **Ricordi** (striscia + per mese), giorni (Oggi/Ieri/data), **selezione multipla** (pressione lunga) con azioni (preferito/condividi/cestino), **preferiti**, **cestino** con ripristino (30 giorni) e **svuota**, **archivio**, ricerca per nome/album/data, **viewer** con swipe, zoom doppio-tap, **info scatto** e menu azioni (ruota, imposta come sfondo, sposta nel cestino), **editor** (filtri + luminosità/contrasto/saturazione + rotazione, salvataggio come nuova foto). Gli **esempi di primo avvio sono foto reali** (canvas JPEG) salvate nello store: si eliminano davvero e non ricompaiono. Il cestino tiene traccia del **momento della cancellazione** (non dello scatto): anche una foto vecchia resta 30 giorni nel cestino e si può ripristinare |
+| Galleria | **clone di Google Foto**: tab **Foto · Cerca · Raccolte** (le raccolte si **creano** e si **eliminano** — l'eliminazione non tocca le foto — e le foto selezionate si aggiungono a una raccolta esistente o creata al volo), **Ricordi** (striscia + per mese), giorni (Oggi/Ieri/data), **selezione multipla** (pressione lunga) con azioni (preferito/condividi/cestino), **preferiti**, **cestino** con ripristino (30 giorni) e **svuota**, **archivio**, ricerca per nome/album/data, **viewer** con swipe, zoom doppio-tap, **info scatto** e menu azioni (ruota, imposta come sfondo, sposta nel cestino), **editor** (filtri + luminosità/contrasto/saturazione + rotazione, salvataggio come nuova foto). Gli **esempi di primo avvio sono foto reali** (canvas JPEG) salvate nello store: si eliminano davvero e non ricompaiono. Il cestino tiene traccia del **momento della cancellazione** (non dello scatto): anche una foto vecchia resta 30 giorni nel cestino e si può ripristinare |
 | Orologio | orologio, **sveglie** (picker integrato), **cronometro**, **fusi orari CRUD** (copertura mondiale) |
 | Calendario | vista mese, eventi per giorno (aggiungi/elimina), navigazione mesi |
 | Meteo | **previsioni reali** via open-meteo (geocoding città + 7 giorni, percepita/umidità/vento) |
@@ -226,6 +226,12 @@ Fatto:
   Registratore…) ha il suo badge con gradiente + simbolo bianco, mostrato in home e in
   **tutti** i launcher senza dover applicare nessun tema. Un tema importato le sostituisce
   comunque con le proprie.
+- **Galleria — gestione raccolte** — nella scheda Raccolte si **creano** nuove raccolte e si
+  **eliminano** quelle esistenti (l'eliminazione non tocca le foto, che restano in Galleria);
+  selezionando più foto le si aggiunge a una raccolta già creata o se ne crea una **al volo**.
+  Corretto anche il bottone **←** per tornare a Foto da Cerca e Raccolte.
+- **Drawer riallineato al modello dello Studio** — le icone delle Quick action del launcher
+  Drawer riempiono la cella come nel modello (niente più testo `data:` a video).
 
 Prossimi passi: rifinire il launcher (evitare il re-boot quando si preme Home,
 gestione InCallService per la telefonia nativa), poi la build ROM (`system/`).

@@ -1010,14 +1010,14 @@ const NovaApps = (() => {
       </nav>`;
 
       // ---- header (normale / selezione / barra con back) ----
-      const ACTS = { heart:["heart-fill"], share:["share-fill"], trash:["trash-fill"], restore:["arrow-repeat"], del:["trash-fill"] };
+      const ACTS = { album:["folder2-open"], heart:["heart-fill"], share:["share-fill"], trash:["trash-fill"], restore:["arrow-repeat"], del:["trash-fill"] };
       const selHeader = (keys) => `<div class="gp-top sel">
         <button class="gp-close" data-sel="x">${ICO("x-lg","width:20px;height:20px")}</button>
         <div class="gp-count" id="sel-count"></div>
         <div class="gp-acts">${keys.map(k => `<button class="gp-act" data-sel="${k}">${ICO(ACTS[k][0],"width:20px;height:20px")}</button>`).join("")}</div></div>`;
       const barHeader = (title, right = "") => `<div class="gp-top back"><button class="back-btn" id="g-back"></button><h1>${title}</h1><div class="gp-acts">${right}</div></div>`;
       const fotoHeader = () => selMode
-        ? selHeader(["heart", "share", "trash"])
+        ? selHeader(["album", "heart", "share", "trash"])
         : `<div class="gp-top"><h1>Foto</h1><div class="gp-acts">
             <input id="g-import" type="file" accept="image/*" multiple hidden>
             <button class="gp-act" id="g-search" title="Cerca">${ICO("search","width:21px;height:21px")}</button>
@@ -1060,13 +1060,103 @@ const NovaApps = (() => {
           draw();
         });
       };
+      // ---- raccolte utente: nomi creabili/eliminabili (Paesaggi/Città/Natura di default).
+      // Eliminare una raccolta SGANCA le foto (album="") senza cancellarle: tornano in
+      // Fotocamera, come Google Foto.
+      const DEF_ALBUMS = ["Paesaggi", "Città", "Natura"];
+      const gallAlbums = () => { try { const a = os.store.get("gallAlbums", null); return Array.isArray(a) && a.length ? a.filter(Boolean) : DEF_ALBUMS.slice(); } catch (e) { return DEF_ALBUMS.slice(); } };
+      const saveGallAlbums = a => os.store.set("gallAlbums", a);
+      const escH = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+      const pickAlbumName = (title, ph) => new Promise(resolve => {
+        const ov = document.createElement("div"); ov.className = "nc-ov";
+        const card = document.createElement("div"); card.className = "nc-card";
+        const h = document.createElement("div"); h.className = "nc-title"; h.textContent = title || "Nuova raccolta"; card.appendChild(h);
+        const m = document.createElement("div"); m.className = "nc-msg";
+        const inp = document.createElement("input"); inp.type = "text"; inp.placeholder = ph || "Nome raccolta"; inp.maxLength = 24;
+        inp.style.width = "100%"; inp.style.padding = "8px 10px"; inp.style.border = "1px solid var(--bd,#e2e6ee)"; inp.style.borderRadius = "10px";
+        inp.style.background = "var(--surface-2,#f2f4fa)"; inp.style.color = "var(--text,#141a24)"; inp.style.fontSize = "15px"; inp.style.outline = "none";
+        m.appendChild(inp); card.appendChild(m);
+        const act = document.createElement("div"); act.className = "nc-actions";
+        const bc = document.createElement("button"); bc.className = "nc-btn nc-cancel"; bc.textContent = "Annulla";
+        const bo = document.createElement("button"); bo.className = "nc-btn nc-ok"; bo.textContent = "Crea";
+        act.appendChild(bc); act.appendChild(bo); card.appendChild(act); ov.appendChild(card);
+        let done = false;
+        const close = v => { if (done) return; done = true; ov.classList.remove("show"); setTimeout(() => ov.remove(), 180); resolve(v); };
+        ov.addEventListener("click", e => { if (e.target === ov) close(null); });
+        bc.onclick = () => close(null);
+        bo.onclick = () => { const n = inp.value.trim(); if (n) close(n); };
+        inp.addEventListener("keydown", e => { if (e.key === "Enter") { const n = inp.value.trim(); if (n) close(n); } });
+        document.body.appendChild(ov); requestAnimationFrame(() => ov.classList.add("show")); setTimeout(() => inp.focus(), 60);
+      });
+      const pickAlbumTarget = () => new Promise(resolve => {
+        const list = gallAlbums();
+        const ov = document.createElement("div"); ov.className = "nc-ov";
+        const card = document.createElement("div"); card.className = "nc-card";
+        const h = document.createElement("div"); h.className = "nc-title"; h.textContent = "Aggiungi a raccolta"; card.appendChild(h);
+        const m = document.createElement("div"); m.className = "nc-msg"; m.style.maxHeight = "44vh"; m.style.overflowY = "auto";
+        list.forEach(n => {
+          const b = document.createElement("button"); b.className = "nc-btn nc-cancel"; b.textContent = n;
+          b.style.display = "block"; b.style.width = "100%"; b.style.textAlign = "left"; b.style.margin = "3px 0";
+          b.onclick = () => close(n);
+          m.appendChild(b);
+        });
+        card.appendChild(m);
+        const act = document.createElement("div"); act.className = "nc-actions";
+        const bn = document.createElement("button"); bn.className = "nc-btn nc-cancel"; bn.textContent = "+ Nuova raccolta…";
+        const bc = document.createElement("button"); bc.className = "nc-btn nc-ok"; bc.textContent = "Annulla";
+        act.appendChild(bn); act.appendChild(bc); card.appendChild(act); ov.appendChild(card);
+        let done = false;
+        const close = v => { if (done) return; done = true; ov.classList.remove("show"); setTimeout(() => ov.remove(), 180); resolve(v); };
+        ov.addEventListener("click", e => { if (e.target === ov) close(null); });
+        bc.onclick = () => close(null);
+        bn.onclick = () => close("__new__");
+        document.body.appendChild(ov); requestAnimationFrame(() => ov.classList.add("show"));
+      });
+      const selAlbum = async () => {
+        const cur = sel.filter(id => items.find(p => p.id === id));
+        if (!cur.length) { exitSel(); return; }
+        let name = await pickAlbumTarget();
+        if (!name) return;
+        if (name === "__new__") {
+          name = await pickAlbumName("Nuova raccolta", "Nome raccolta");
+          if (!name) return;
+          const list = gallAlbums();
+          if (!list.includes(name)) { list.push(name); saveGallAlbums(list); }
+        }
+        for (const id of cur) await os.photos.patch(id, { album: name });
+        os.notify({ app:"gallery", title:"Galleria", text: cur.length === 1 ? "Foto aggiunta a “" + name + "”." : cur.length + " foto aggiunte a “" + name + "”." });
+        exitSel();
+      };
+      const deleteAlbum = async (nome) => {
+        if (!await os.confirm({ title:"Eliminare la raccolta?", message:"La raccolta “" + nome + "” verrà eliminata ma le sue foto resteranno nella Galleria.", okText:"Elimina raccolta" })) return;
+        const all = await os.photos.all();
+        for (const p of all) if (p.album === nome) await os.photos.patch(p.id, { album:"" });
+        saveGallAlbums(gallAlbums().filter(n => n !== nome));
+        os.notify({ app:"gallery", title:"Galleria", text:"Raccolta “" + nome + "” eliminata: le foto sono al sicuro." });
+        draw();
+      };
       const renderRaccolte = (shown, trash, archived, active) => {
         const cam = shown.filter(p => !p.video && !p.album);
         const vids = shown.filter(p => p.video);
         const shots = shown.filter(p => p.album === "Schermate");
-        const albums = [["Fotocamera", cam, "camera-fill"], ...(vids.length ? [["Video", vids, "camera-reels-fill"]] : []), ...(shots.length ? [["Schermate", shots, "phone-vibrate-fill"]] : []), ...(["Paesaggi","Città","Natura"].map(a => [a, shown.filter(p => p.album === a), a === "Paesaggi" ? "tree-fill" : a === "Città" ? "building" : "flower1"]))].filter(([, arr]) => arr.length);
+        const my = gallAlbums();
+        const seen = new Set(my);
+        shown.forEach(p => { if (p.album && p.album !== "Schermate" && !p.video && !seen.has(p.album)) { seen.add(p.album); my.push(p.album); } });
+        const sysAlbums = [["Fotocamera", cam, "camera-fill", false], ...(vids.length ? [["Video", vids, "camera-reels-fill", false]] : []), ...(shots.length ? [["Schermate", shots, "phone-vibrate-fill", false]] : [])];
+        const userAlbums = my.map(n => [n, shown.filter(p => p.album === n), n === "Paesaggi" ? "tree-fill" : n === "Città" ? "building" : n === "Natura" ? "flower1" : "folder2-fill", true]);
+        const albums = [...sysAlbums, ...userAlbums];
         albumCache = albums;
-        const body = `${albums.length ? `<div class="sec-label">Raccolte</div><div class="gp-albums">${albums.map(([nome, arr, ic], ai) => `<div class="alb" data-alb="${ai}"><div class="alb-grid">${arr.slice(0,4).map(p => `<div class="alb-th" style="background-image:url('${p.poster || p.data}')"></div>`).join("")}</div><div class="alb-name">${ICO(ic,"width:15px;height:15px")}${nome}<span class="alb-count">${arr.length}</span></div></div>`).join("")}</div>` : ""}
+        const tile = (x, ai) => {
+          const [nome, arr, ic, del] = x;
+          const grid = arr.length
+            ? `<div class="alb-grid">${arr.slice(0,4).map(p => `<div class="alb-th" style="background-image:url('${p.poster || p.data}')"></div>`).join("")}</div>`
+            : `<div class="alb-grid alb-grid-empty">${ICO(ic, "width:22px;height:22px")}</div>`;
+          return `<div class="alb" data-alb="${ai}">${grid}<div class="alb-name">${ICO(ic,"width:15px;height:15px")}${escH(nome)}<span class="alb-count">${arr.length}</span>${del ? `<button class="alb-del" data-delb="${escH(nome)}" title="Elimina raccolta">${ICO("x-lg","width:12px;height:12px")}</button>` : ""}</div></div>`;
+        };
+        const body = `<div class="sec-label">Raccolte</div><div class="gp-albums">
+            <div class="alb alb-new" data-newalb="1"><div class="alb-grid alb-grid-empty">${ICO("plus","width:24px;height:24px")}</div><div class="alb-name" style="justify-content:center">Nuova raccolta</div></div>
+            ${albums.map((x, ai) => tile(x, ai)).join("")}
+          </div>
           <div class="sec-label">Utilità</div>
           <div class="group" style="margin:0 12px">
             <div class="item gp-util" data-util="fav" style="cursor:pointer"><div class="i-ico" style="background:#ff453a;color:#fff">${ICO("star-fill","width:20px;height:20px")}</div><div class="i-body"><div class="i-title">Preferiti</div><div class="i-sub">${active.filter(p => p.fav).length} elementi</div></div><div style="color:var(--text-dim)">›</div></div>
@@ -1075,12 +1165,20 @@ const NovaApps = (() => {
           </div>`;
         frame(barHeader("Raccolte"), body);
         bindTop(); bindCells(root);
-        root.querySelectorAll("[data-alb]").forEach(el => el.onclick = () => { const [nome, arr] = albumCache[+el.dataset.alb]; cat = { kind:"album", title: nome, filter: () => arr }; draw(); });
+        root.querySelectorAll("[data-newalb]").forEach(el => el.onclick = async () => {
+          const name = await pickAlbumName("Nuova raccolta", "Nome raccolta");
+          if (!name) return;
+          const list = gallAlbums();
+          if (!list.includes(name)) { list.push(name); saveGallAlbums(list); }
+          draw();
+        });
+        root.querySelectorAll("[data-delb]").forEach(b => b.onclick = e => { e.stopPropagation(); deleteAlbum(b.dataset.delb); });
+        root.querySelectorAll("[data-alb]").forEach(el => el.onclick = () => { const x = albumCache[+el.dataset.alb]; cat = { kind:"album", title: x[0], filter: () => x[1] }; draw(); });
         root.querySelectorAll("[data-util]").forEach(el => el.onclick = () => { const k = el.dataset.util;
           cat = k === "trash" ? { kind:"trash", title:"Cestino" } : k === "arch" ? { kind:"archive", title:"Archivio" } : { kind:"fav", title:"Preferiti" }; draw(); });
       };
       const renderCatGrid = (title, arr) => {
-        const top = selMode ? selHeader(["heart", "share", "trash"]) : barHeader(title);
+        const top = selMode ? selHeader(["album", "heart", "share", "trash"]) : barHeader(title);
         const body = arr.length ? gridHtml(arr) : `<div class="gp-empty"><p>Nessun elemento qui.</p></div>`;
         frame(top, body);
         bindTop(); bindCells(root);
@@ -1188,6 +1286,7 @@ const NovaApps = (() => {
         root.querySelectorAll("[data-sel]").forEach(b => b.onclick = () => {
           const a = b.dataset.sel;
           if (a === "x") exitSel();
+          else if (a === "album") selAlbum();
           else if (a === "heart") selFav();
           else if (a === "share") selShare();
           else if (a === "trash") selTrash();
@@ -1197,7 +1296,7 @@ const NovaApps = (() => {
       };
       const bindTop = () => {
         root.querySelectorAll("#gal-nav [data-tab]").forEach(b => b.onclick = () => { cat = null; q = ""; viewTab = b.dataset.tab; selMode = false; sel = []; draw(); });
-        const gb = root.querySelector("#g-back"); if (gb) gb.onclick = () => { cat = null; q = ""; draw(); };
+        const gb = root.querySelector("#g-back"); if (gb) gb.onclick = () => { q = ""; selMode = false; sel = []; if (!cat) viewTab = "foto"; cat = null; draw(); };
         const gs = root.querySelector("#g-search"); if (gs) gs.onclick = () => { cat = null; viewTab = "search"; draw(); };
         const gm = root.querySelector("#g-menu"); if (gm) gm.onclick = openFotoMenu;
         const imp = root.querySelector("#g-import"); if (imp) imp.onchange = e => importFiles(e.target.files);
