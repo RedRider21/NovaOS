@@ -1,0 +1,18 @@
+{
+  "format": "novatheme/2",
+  "meta": { "id": "radiale", "name": "Radiale", "author": "NovaOS Themes", "version": "1.0.0", "base": "dark" },
+  "layout": { "id": "radial", "params": {}, "order": [] },
+  "colors": {
+    "bg": "#0b0f17", "surface": "#1a2130", "surface-2": "#232c3d",
+    "text": "#e8ecf4", "text-dim": "#9aa4b8", "accent": "#a663ff", "accent-2": "#d17bff"
+  },
+  "shape": { "radius": 22, "radiusSm": 14, "iconStyle": "filled", "iconShape": "circle" },
+  "icons": { "pack": "default", "shape": "circle", "map": {} },
+  "wallpaper": { "type": "gradient", "value": "radial-gradient(120% 80% at 50% 0%, rgba(166,99,255,.35) 0%, transparent 60%)" },
+  "sounds": {
+    "ringtone": { "type": "builtin", "value": "Nova" },
+    "notif": { "type": "builtin", "value": "Goccia" },
+    "alarm": { "type": "builtin", "value": "Radar" }
+  },
+  "typography": { "textScale": 100 }
+}

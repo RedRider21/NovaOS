@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.41** (build 42). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.45** (build 46). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -53,13 +53,13 @@ web-phone-os/
 
 | App | Funzioni |
 |-----|----------|
-| Telefono | tastierino, **cronologia chiamate** (recenti + richiamo), chiamata reale via dialer nativo (`tel:` / bridge `NovaNative.call`) |
+| Telefono | dialer completo stile Android: **Preferiti, Recenti** (con ricerca), **Contatti dalla rubrica** (chiama / SMS / email / stella preferito / apri Rubrica), **tastierino con suggerimenti contatti** mentre digiti, cronologia con richiamo e aggiunta a contatti, chiamata reale (`tel:` / bridge `NovaNative.call`) e **schermata di chiamata in corso** (muto, vivavoce, tastierino DTMF) |
 | Rubrica | contatti CRUD (nome/telefono/email), chiama/SMS/email dal contatto |
 | Messaggi | nuova conversazione dai contatti, elimina, orari per messaggio, risposte contestuali, avatar |
 | Mail | client email **reale** (SMTP/IMAP via bridge nativo JavaMail): schermata account con **selettore provider** (Gmail/Outlook/Yahoo/iCloud/Libero/Aruba/PEC/GMX/TIM che precompilano host e porte) **o configurazione manuale**, invio SMTP e sincronizzazione IMAP, **password cifrata nell'Android Keystore** (mai in chiaro). In assenza del bridge (browser) resta simulazione locale. Inoltre: cartelle (arrivo/inviati/bozze/cestino), **ricerca**, stella, **bozze reali**, **rispondi con citazione**, **inoltra**, **allegati** con anteprima, destinatari dai contatti, firma |
 | Browser | cronologia + preferiti; sul device apre i siti in **WebView nativa a schermo intero** (BrowserActivity) → nessun limite iframe (banche, Google, ecc.). **Vista desktop** (pulsante 🖥) attiva in automatico per **WhatsApp/Telegram Web** così compare il **QR** di accesso (con UA mobile reindirizzerebbero all'app). In shell web resta l'anteprima iframe |
 | Fotocamera | anteprima live `getUserMedia`, scatto salvato in Galleria, import da file |
-| Galleria | foto reali (IndexedDB) + demo, **album**, visualizzatore con **swipe**, **zoom doppio-tap**, **info scatto** (data/dimensioni/peso), **condivisione** (share nativo), **presentazione**; **editor** (filtri + luminosità/contrasto/saturazione + **rotazione**, salvataggio) |
+| Galleria | **clone di Google Foto**: tab **Foto · Cerca · Raccolte**, **Ricordi** (striscia + per mese), giorni (Oggi/Ieri/data), **selezione multipla** (pressione lunga) con azioni (preferito/condividi/cestino), **preferiti**, **cestino** con ripristino (30 giorni) e **svuota**, **archivio**, ricerca per nome/album/data, **viewer** con swipe, zoom doppio-tap, **info scatto** e menu azioni (ruota, imposta come sfondo, sposta nel cestino), **editor** (filtri + luminosità/contrasto/saturazione + rotazione, salvataggio come nuova foto). Gli **esempi di primo avvio sono foto reali** (canvas JPEG) salvate nello store: si eliminano davvero e non ricompaiono |
 | Orologio | orologio, **sveglie** (picker integrato), **cronometro**, **fusi orari CRUD** (copertura mondiale) |
 | Calendario | vista mese, eventi per giorno (aggiungi/elimina), navigazione mesi |
 | Meteo | **previsioni reali** via open-meteo (geocoding città + 7 giorni, percepita/umidità/vento) |

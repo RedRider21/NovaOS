@@ -1,0 +1,43 @@
+{
+  "name": "NovaOS Themes",
+  "updated": "2026-08-27",
+  "baseUrl": "https://raw.githubusercontent.com/RedRider21/NovaOS/main/themes/",
+  "themes": [
+    {
+      "id": "radiale",
+      "name": "Radiale",
+      "author": "NovaOS Themes",
+      "desc": "App in orbita attorno all'hub, accento viola e icone tonde.",
+      "launcher": "radial",
+      "base": "dark",
+      "file": "radiale.novatheme.json"
+    },
+    {
+      "id": "indice",
+      "name": "Indice A-Z",
+      "author": "NovaOS Themes",
+      "desc": "Elenco alfabetico con scorrimento rapido, accento verde.",
+      "launcher": "index",
+      "base": "dark",
+      "file": "indice.novatheme.json"
+    },
+    {
+      "id": "tiles",
+      "name": "Tiles",
+      "author": "NovaOS Themes",
+      "desc": "Riquadri Metro colorati, icone quadrate, accento blu.",
+      "launcher": "tiles",
+      "base": "dark",
+      "file": "tiles.novatheme.json"
+    },
+    {
+      "id": "bolle",
+      "name": "Bolle",
+      "author": "NovaOS Themes",
+      "desc": "Home a blocchi: orologio grande, meteo, bolle per categoria e dock.",
+      "launcher": "custom",
+      "base": "dark",
+      "file": "bolle.novatheme.json"
+    }
+  ]
+}

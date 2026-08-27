@@ -1,0 +1,18 @@
+{
+  "format": "novatheme/2",
+  "meta": { "id": "indice", "name": "Indice A-Z", "author": "NovaOS Themes", "version": "1.0.0", "base": "dark" },
+  "layout": { "id": "index", "params": {}, "order": [] },
+  "colors": {
+    "bg": "#0b0f17", "surface": "#1a2130", "surface-2": "#232c3d",
+    "text": "#e8ecf4", "text-dim": "#9aa4b8", "accent": "#34c759", "accent-2": "#30d158"
+  },
+  "shape": { "radius": 22, "radiusSm": 14, "iconStyle": "filled", "iconShape": "squircle" },
+  "icons": { "pack": "default", "shape": "squircle", "map": {} },
+  "wallpaper": { "type": "gradient", "value": "radial-gradient(120% 80% at 50% 0%, rgba(53,199,89,.30) 0%, transparent 60%)" },
+  "sounds": {
+    "ringtone": { "type": "builtin", "value": "Nova" },
+    "notif": { "type": "builtin", "value": "Goccia" },
+    "alarm": { "type": "builtin", "value": "Radar" }
+  },
+  "typography": { "textScale": 100 }
+}

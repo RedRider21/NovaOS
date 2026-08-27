@@ -5,6 +5,11 @@
    status bar · centro notifiche · impostazioni di sistema · storage.
    ============================================================ */
 
+// Anteprima Theme Studio (?preview=1 o #preview): la shell entra in modalità
+// anteprima — niente boot animato né blocco automatico, parte direttamente dalla
+// home; riceve il tema dallo Studio via postMessage e lo applica in tempo reale.
+const IS_PREVIEW = /[?&]preview=1(\b|&|$)/.test(location.search) || location.hash.slice(1) === "preview";
+
 const OS = (() => {
 
   const $ = s => document.querySelector(s);
@@ -83,10 +88,15 @@ const OS = (() => {
     launcher: "springboard",
     // immagine di sfondo (data URL JPEG ridimensionato). Vuoto = usa il gradiente/tinta.
     wallImage: "",
+    // gradiente personalizzato (dal tema .novatheme): valore CSS. Vuoto = gradiente predefinito.
+    wallGradient: "",
     // inquadratura dello sfondo: adattamento + zoom (%) + posizione (% orizz./vert.)
     wallFit: "cover", wallZoom: 100, wallPosX: 50, wallPosY: 50,
     // override icone per-app (id → emoji) applicato dai temi (.novatheme icons.map)
     iconMap: {},
+    // tema importato (.novatheme): palette colori completa (mappa 1:1 le variabili CSS)
+    // + lista dei "temi installati" (per ri-applicarli/eliminarli dalle Impostazioni).
+    themePalette: null, themeStore: [], activeThemeId: null,
     // torcia (flash) e protezione occhi (filtro luce blu)
     torch: false, eyeComfort: false,
   };
@@ -166,9 +176,18 @@ const OS = (() => {
     $("#navbar").classList.toggle("show", name === "home" || name === "app");
   }
 
+  // palette di un tema importato (.novatheme colors): i 10 slot mappano 1:1 le
+  // variabili CSS di NovaOS. Ogni colore viene sovrascritto a livello :root.
+  const THEME_PALETTE_KEYS = ["bg","bg-2","surface","surface-2","text","text-dim","accent","accent-2","danger","ok"];
   function applyTheme() {
     document.body.dataset.theme = state.theme;
-    $('meta[name="theme-color"]').setAttribute("content", state.theme==="dark" ? "#0b0f17" : "#eef1f7");
+    const p = state.themePalette;
+    $('meta[name="theme-color"]').setAttribute("content", (p && p.bg) ? p.bg : (state.theme==="dark" ? "#0b0f17" : "#eef1f7"));
+    const rootStyle = document.documentElement.style;
+    THEME_PALETTE_KEYS.forEach(k => {
+      if (p && p[k]) rootStyle.setProperty("--"+k, p[k]);
+      else rootStyle.removeProperty("--"+k);   // nessun tema attivo → default di style.css
+    });
   }
   function applyDisplay() {
     // dimensione testo: moltiplicatore globale usato da OGNI font-size via calc(...*--fscale)
@@ -198,6 +217,11 @@ const OS = (() => {
         : "cover";
       screens.home.style.backgroundPosition = `${state.wallPosX}% ${state.wallPosY}%`;
       screens.home.style.backgroundRepeat = "no-repeat";
+    } else if (state.wallGradient) {
+      // gradiente portato dal tema importato (.novatheme wallpaper)
+      screens.home.style.backgroundImage = state.wallGradient;
+      screens.home.style.backgroundSize = "";
+      screens.home.style.backgroundPosition = "";
     } else {
       screens.home.style.backgroundImage = w;
       screens.home.style.backgroundSize = "";
@@ -206,13 +230,15 @@ const OS = (() => {
     // aspetto icone: stile e colori personalizzati (usati dal CSS via variabili)
     document.body.classList.toggle("icons-outline", state.iconStyle === "outline");
     const rootStyle = document.documentElement.style;
-    rootStyle.setProperty("--icon-color", state.iconColor || (state.theme==="dark" ? "#e8ecf4" : "#141a24"));
+    const iconDef = (state.themePalette && state.themePalette.text) ? state.themePalette.text : (state.theme==="dark" ? "#e8ecf4" : "#141a24");
+    rootStyle.setProperty("--icon-color", state.iconColor || iconDef);
     rootStyle.setProperty("--icon-bg", state.deskColor || "var(--bg)");
     // forma delle tessere icona
     rootStyle.setProperty("--icon-radius", { circle:"50%", squircle:"28%", square:"12%" }[state.iconShape] || "28%");
-    // colore di risalto (accento/bordo): se personalizzato sovrascrive il --accent del tema
+    // colore di risalto (accento/bordo): l'override esplicito dell'utente vince; altrimenti
+    // resta quello del tema importato (applicato in applyTheme) o il default CSS del tema.
     if (state.accentColor) rootStyle.setProperty("--accent", state.accentColor);
-    else rootStyle.removeProperty("--accent");
+    else if (!(state.themePalette && state.themePalette.accent)) rootStyle.removeProperty("--accent");
     document.body.classList.toggle("a11y-bold", !!state.boldText);
     document.body.classList.toggle("a11y-contrast", !!state.highContrast);
     // riduci animazioni: attivo anche col risparmio energetico
@@ -1500,7 +1526,7 @@ const OS = (() => {
   //   · su web/PWA: svuota le cache e ricarica (la shell è servita via rete)
   // ============================================================
   const Updater = (() => {
-    const RAW = "https://raw.githubusercontent.com/dPlusOS21/NovaOS/main/shell/version.json";
+    const RAW = "https://raw.githubusercontent.com/RedRider21/NovaOS/main/shell/version.json";
     const appInfo = () => { try { return JSON.parse(NN().appVersion()); } catch { return null; } };
     let last = null;   // ultimo esito del controllo
 
@@ -1563,7 +1589,7 @@ const OS = (() => {
       const CH = 0x8000; for (let i=0;i<bytes.length;i+=CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i+CH));
       return btoa(bin);
     }
-    const RAWBASE = "https://raw.githubusercontent.com/dPlusOS21/NovaOS/main/shell/";
+    const RAWBASE = "https://raw.githubusercontent.com/RedRider21/NovaOS/main/shell/";
     // scarica i file della nuova shell nella staging nativa; true se tutti scritti
     async function downloadShell(files) {
       try { NN().shellStageBegin(); } catch { return false; }
@@ -1750,8 +1776,8 @@ const OS = (() => {
   //  API stato (usata dalle app, es. Impostazioni)
   // ============================================================
   function set(k, v) { state[k] = v; store.set(k, v);
-    if (k==="theme") { applyTheme(); applyDisplay(); }
-    if (["brightness","textScale","wallpaper","wallImage","wallFit","wallZoom","wallPosX","wallPosY","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","iconShape","accentColor","saver","adaptiveBright","eyeComfort"].includes(k)) applyDisplay();
+    if (k==="theme" || k==="themePalette") { applyTheme(); applyDisplay(); }
+    if (["brightness","textScale","wallpaper","wallImage","wallGradient","wallFit","wallZoom","wallPosX","wallPosY","boldText","highContrast","reduceMotion","iconStyle","deskColor","iconColor","iconShape","accentColor","saver","adaptiveBright","eyeComfort"].includes(k)) applyDisplay();
     if (["iconStyle","deskColor","iconColor","iconShape","launcher","iconMap"].includes(k) && screens.home.classList.contains("active")) renderHome();
     if (k==="notifLock") renderLockNotifs();
     renderStatusbars();
@@ -1879,12 +1905,31 @@ const OS = (() => {
     applyTheme(); applyDisplay();
     // cronologia notifiche disattivata → non conservare le notifiche tra i riavvii
     if (!state.notifHistory && notifs.length) { notifs.length = 0; saveNotifs(); }
-    show("boot");
     renderStatusbars(); renderClocks(); renderNotifs(); renderQuick();
     initBattery(); initAlarms();
     // niente notifiche fittizie: la tendina mostra solo eventi reali (posta, sveglie,
     // conferme delle app) e le notifiche persistono finché non le scarti.
     setInterval(() => { renderClocks(); renderStatusbars(); }, 1000);
+    if (IS_PREVIEW) {
+      // Anteprima dello Studio (?preview=1): niente boot animato né blocco —
+      // si apre subito sulla home, come un telefono già sbloccato.
+      document.documentElement.classList.add("nova-preview");
+      // Il telefono è disegnato a 390×844 CSS px. Dentro l'iframe dello Studio
+      // (più piccolo) lo si riduce in proporzione: icone e layout restano quelli
+      // reali, senza barre di scorrimento.
+      const fitPreview = () => {
+        const k = Math.min(innerWidth / 390, innerHeight / 844);
+        const dev = $("#device");
+        dev.style.transform = k < 1 ? "scale(" + k + ")" : "";
+        dev.style.transformOrigin = "0 0";
+        document.body.style.width = (390 * k) + "px";
+        document.body.style.height = (844 * k) + "px";
+      };
+      fitPreview(); addEventListener("resize", fitPreview);
+      show("home"); renderHome(); noteActivity();
+      return;
+    }
+    show("boot");
     initAutolock();
     // Ricezione screenshot dal nativo: lo aggiunge alla Galleria di NovaOS (album Schermate)
     window.__novaShot = (dataURI) => {
@@ -1961,6 +2006,23 @@ const OS = (() => {
           t.onerror = () => rej(t.error);
         });
       },
+      // aggiorna uno o più campi di una foto (es. preferiti, archivio, cestino)
+      async patch(id, fields) {
+        const db = await open();
+        return new Promise((res, rej) => {
+          const t = db.transaction("ph", "readwrite");
+          const req = t.objectStore("ph").get(id);
+          req.onsuccess = () => {
+            const it = req.result;
+            if (!it) { res(null); return; }
+            Object.assign(it, fields);
+            t.objectStore("ph").put(it);
+            t.oncomplete = () => res(it);
+            t.onerror = () => rej(t.error);
+          };
+          req.onerror = () => rej(req.error);
+        });
+      },
     };
   })();
 
@@ -2000,10 +2062,99 @@ const OS = (() => {
   function backupGet(id) { const b = store.get("backups", []).find(x => x.id === id); return b ? b.json : null; }
   function backupRemove(id) { store.set("backups", store.get("backups", []).filter(x => x.id !== id)); }
 
+  // ============================================================
+  //  Temi .novatheme: applicazione completa + gestione installati
+  // ============================================================
+  // Applica un tema .novatheme/1 o /2 (dal Theme Studio, dal negozio o da file).
+  // SICUREZZA: i temi sono file esterni non fidati → ogni valore è validato.
+  // opts.save === false ri-applica senza toccare la lista "temi installati".
+  function applyThemeFile(t, opts) {
+    opts = opts || {};
+    if (!t || typeof t !== "object") return false;
+    if (t.format !== "novatheme/1" && t.format !== "novatheme/2") return false;
+    if (t.meta && t.meta.base) set("theme", t.meta.base);
+    // layout: template a blocchi del tema (launcher "custom") oppure launcher predefinito
+    if (t.layout && t.layout.engine === "blocks" && Array.isArray(t.layout.blocks)) applyThemeLayout(t.layout);
+    else if (t.layout && t.layout.id && launcherList().some(l => l.id === t.layout.id)) set("launcher", t.layout.id);
+    // palette colori completa (10 slot → variabili CSS). L'override esplicito dell'utente
+    // sull'accento viene azzerato: il tema decide l'accento (salvo nuovo override).
+    if (t.colors && typeof t.colors === "object") {
+      const pal = {};
+      THEME_PALETTE_KEYS.forEach(k => { const v = t.colors[k]; if (typeof v === "string" && /^#[0-9a-fA-F]{3,8}$/.test(v.trim())) pal[k] = v.trim(); });
+      if (Object.keys(pal).length) { set("themePalette", pal); if ("accent" in t.colors) set("accentColor", ""); }
+      if ("icon" in t.colors) set("iconColor", String(t.colors.icon || "").trim() || "");
+    }
+    if (t.shape) {
+      if (t.shape.iconStyle) set("iconStyle", t.shape.iconStyle);
+      if (t.shape.iconShape) set("iconShape", t.shape.iconShape);
+    }
+    if (t.typography && t.typography.textScale) set("textScale", +t.typography.textScale);
+    if (t.wallpaper) {
+      if (t.wallpaper.type === "solid") { set("deskColor", t.wallpaper.value); set("wallImage", ""); set("wallGradient", ""); }
+      else if (t.wallpaper.type === "image") { set("wallImage", t.wallpaper.value); set("deskColor", ""); set("wallGradient", "");
+        set("wallFit", t.wallpaper.fit || "cover"); set("wallZoom", t.wallpaper.zoom || 100);
+        set("wallPosX", t.wallpaper.posX ?? 50); set("wallPosY", t.wallpaper.posY ?? 50); }
+      else if (t.wallpaper.type === "gradient") { set("deskColor", ""); set("wallImage", ""); set("wallGradient", typeof t.wallpaper.value === "string" && t.wallpaper.value ? t.wallpaper.value : ""); }
+      else { set("deskColor", ""); set("wallImage", ""); set("wallGradient", ""); }
+    }
+    // override icone per-app (icons.map: id → {type:"emoji",value} oppure stringa).
+    // Solo emoji/testo brevi senza caratteri HTML pericolosi, oppure URL data:image//https.
+    if (t.icons && t.icons.map) {
+      const m = {};
+      Object.entries(t.icons.map).forEach(([id, o]) => {
+        let v = (o && typeof o === "object") ? o.value : o;
+        v = String(v == null ? "" : v).trim(); if (!v) return;
+        if (/[<>"'`]/.test(v)) return;                                  // possibile iniezione: scarta
+        const isImg = /^data:image\//i.test(v) || /^https:\/\//i.test(v);
+        const isText = !/^data:|^https?:|^javascript:/i.test(v) && v.length <= 8;  // emoji/simbolo breve
+        if (isImg || isText) m[id] = v;                                 // altrimenti scartato
+      });
+      set("iconMap", m);
+    } else set("iconMap", {});
+    // suoni (solo nomi validi per categoria)
+    if (t.sounds) { const L = Sounds.lists || { ring: [], notif: [], alarm: [] };
+      const sv = s => (s && typeof s === "object") ? s.value : s;
+      if (L.ring.includes(sv(t.sounds.ringtone))) set("ringtone", sv(t.sounds.ringtone));
+      if (L.notif.includes(sv(t.sounds.notif)))   set("notifSound", sv(t.sounds.notif));
+      if (L.alarm.includes(sv(t.sounds.alarm)))   set("alarmSound", sv(t.sounds.alarm));
+    }
+    // disposizione app (springboard + ordine lista)
+    if (t.layout && Array.isArray(t.layout.order) && t.layout.order.length) applyLayoutOrder(t.layout.order);
+    if (opts.save !== false) saveThemeToList(t);
+    return true;
+  }
+  // salva il tema nella lista "installati" (aggiorna per id, tiene gli ultimi 12)
+  function saveThemeToList(t) {
+    const arr = store.get("themeStore", []);
+    const id = (t.meta && t.meta.id) ? t.meta.id : ("tema-" + Date.now());
+    const entry = { id, name: (t.meta && t.meta.name) || "Tema", author: (t.meta && t.meta.author) || "",
+      base: (t.meta && t.meta.base) || state.theme, data: t, ts: Date.now() };
+    store.set("themeStore", [entry, ...arr.filter(x => x.id !== id)].slice(0, 12));
+    store.set("activeThemeId", id);
+  }
+  // metadati dei temi installati (senza il JSON completo, per la lista Impostazioni)
+  function themeList() { return store.get("themeStore", []).map(x => ({ id: x.id, name: x.name, author: x.author, base: x.base, ts: x.ts })); }
+  function themeGet(id) { return store.get("themeStore", []).find(x => x.id === id); }
+  function themeDelete(id) {
+    store.set("themeStore", store.get("themeStore", []).filter(x => x.id !== id));
+    if (store.get("activeThemeId") === id) store.set("activeThemeId", null);
+  }
+  function themeActive() { return store.get("activeThemeId", null); }
+  // ripristina l'aspetto di sistema: toglie palette, override e launcher del tema
+  // (i temi installati restano in lista per poter essere ri-applicati).
+  function resetTheme() {
+    set("themePalette", null); set("accentColor", ""); set("iconColor", "");
+    set("iconMap", {}); set("deskColor", ""); set("wallImage", ""); set("wallGradient", ""); set("wallpaper", 0);
+    set("iconStyle", "filled"); set("iconShape", "squircle"); set("textScale", 100);
+    set("launcher", "springboard"); store.del("customLayout"); store.set("activeThemeId", null);
+  }
+
   // API esposta alle app
   const api = {
     state, store, notify, share, confirm: confirmDialog, toggle, set, interval, openApp, goHome, lockDevice, factoryReset,
-    launchers: launcherList, renderHome, applyLayoutOrder, applyThemeLayout, backup: backupData, restore: restoreData,
+    launchers: launcherList, renderHome, applyLayoutOrder, applyThemeLayout,
+    applyTheme: applyThemeFile, themes: themeList, themeGet, themeDelete, themeActive, resetTheme,
+    backup: backupData, restore: restoreData,
     backupList, backupSaveInternal, backupGet, backupRemove,
     WALLS, photos, vibrate, sounds: Sounds, updater: Updater,
     openSettings, takeSettingsSection,
@@ -2020,7 +2171,21 @@ const OS = (() => {
 window.addEventListener("DOMContentLoaded", () => {
   OS.bindGestures();
   OS.boot();
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+  // in anteprima niente service worker: la shell ricarica sempre i file freschi.
+  if (!IS_PREVIEW && "serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+});
+
+// Anteprima Theme Studio: riceve il tema corrente via postMessage e lo applica
+// senza toccare la lista "temi installati" (stessa strada dell'import da file).
+// Accetta solo messaggi dallo Studio (localhost) o in test locale (file://).
+window.addEventListener("message", (ev) => {
+  const d = ev.data;
+  if (!d || d.source !== "nova-studio") return;
+  const originOk = !ev.origin || ev.origin === "null" || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(ev.origin);
+  if (!originOk) return;
+  if (d.type === "theme" && d.theme) OS.api.applyTheme(d.theme, { save: false });
+  else if (d.type === "reset") OS.api.resetTheme();
+  else if (d.type === "navigate" && d.to) { try { OS.api.openApp(String(d.to)); } catch (_) {} }
 });
 
 /* ============================================================

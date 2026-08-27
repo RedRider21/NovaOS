@@ -1,12 +1,20 @@
 {
-  "version": "0.1.41",
-  "build": 42,
+  "version": "0.1.45",
+  "build": 46,
   "minNative": 12,
-  "date": "2026-08-24",
-  "notes": "Galleria: barra del visualizzatore ridisegnata con icone flat e pulsante Condividi. Condivisione ovunque utile: Note, Rubrica, Registratore (file audio), e foto — via pannello di condivisione Android. Fotocamera aggiunta al dock. Tema Drawer ora con 4 icone come nel Theme Studio.",
-  "apk": "https://github.com/dPlusOS21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
+  "date": "2026-08-27",
+  "notes": "App Telefono completa: tab Preferiti/Recenti/Contatti con rubrica integrata, suggerimenti contatti mentre digiti, ricerca nelle chiamate e pannello azioni contatto. Anteprima Theme Studio: device scalato in proporzione nell'iframe.",
+  "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
-    "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "js/version.js",    "manifest.webmanifest",    "sw.js",
+    "css/style.css",
+    "icon.svg",
+    "index.html",
+    "js/apps.js",
+    "js/icons.js",
+    "js/os.js",
+    "js/version.js",
+    "manifest.webmanifest",
+    "sw.js",
     "version.json"
   ]
 }

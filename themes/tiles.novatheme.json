@@ -1,0 +1,18 @@
+{
+  "format": "novatheme/2",
+  "meta": { "id": "tiles", "name": "Tiles", "author": "NovaOS Themes", "version": "1.0.0", "base": "dark" },
+  "layout": { "id": "tiles", "params": {}, "order": [] },
+  "colors": {
+    "bg": "#0b0f17", "surface": "#1a2130", "surface-2": "#232c3d",
+    "text": "#e8ecf4", "text-dim": "#9aa4b8", "accent": "#0a84ff", "accent-2": "#5ac8fa"
+  },
+  "shape": { "radius": 22, "radiusSm": 14, "iconStyle": "filled", "iconShape": "square" },
+  "icons": { "pack": "default", "shape": "square", "map": {} },
+  "wallpaper": { "type": "gradient", "value": "radial-gradient(130% 80% at 50% 0%, rgba(60,95,165,.55) 0%, transparent 58%)" },
+  "sounds": {
+    "ringtone": { "type": "builtin", "value": "Nova" },
+    "notif": { "type": "builtin", "value": "Goccia" },
+    "alarm": { "type": "builtin", "value": "Radar" }
+  },
+  "typography": { "textScale": 100 }
+}

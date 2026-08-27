@@ -1,0 +1,27 @@
+{
+  "format": "novatheme/2",
+  "meta": { "id": "bolle", "name": "Bolle", "author": "NovaOS Themes", "version": "1.0.0", "base": "dark" },
+  "layout": {
+    "engine": "blocks",
+    "name": "Bolle",
+    "blocks": [
+      { "type": "clock", "params": { "size": "large" } },
+      { "type": "weather", "params": {} },
+      { "type": "bubbles", "params": {} },
+      { "type": "dock", "params": {} }
+    ]
+  },
+  "colors": {
+    "bg": "#0b0f17", "surface": "#1a2130", "surface-2": "#232c3d",
+    "text": "#e8ecf4", "text-dim": "#9aa4b8", "accent": "#3aa0ff", "accent-2": "#64d2ff"
+  },
+  "shape": { "radius": 22, "radiusSm": 14, "iconStyle": "filled", "iconShape": "squircle" },
+  "icons": { "pack": "default", "shape": "squircle", "map": {} },
+  "wallpaper": { "type": "gradient", "value": "radial-gradient(120% 80% at 50% 0%, rgba(58,160,255,.35) 0%, transparent 60%)" },
+  "sounds": {
+    "ringtone": { "type": "builtin", "value": "Nova" },
+    "notif": { "type": "builtin", "value": "Goccia" },
+    "alarm": { "type": "builtin", "value": "Radar" }
+  },
+  "typography": { "textScale": 100 }
+}

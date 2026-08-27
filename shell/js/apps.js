@@ -15,23 +15,33 @@ const NovaApps = (() => {
     return `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="width:1em;height:1em;vertical-align:-.125em;${css||''}">${inner}</svg>`;
   };
 
-  /* ---------- Telefono (tastierino + recenti + chiamata reale) ---------- */
+  // Rubrica di esempio, condivisa tra Rubrica e Telefono (default al primo avvio).
+  const CONTACTS_SEED = [
+    { id:1, name:"Anna Rossi", phone:"+39 340 1234567", email:"anna@example.com", fav:true },
+    { id:2, name:"Papà", phone:"+39 333 9988776", email:"" },
+    { id:3, name:"Luca Bianchi", phone:"+39 348 5551212", email:"luca@example.com" },
+  ];
+
+  /* ---------- Telefono (tastierino + preferiti + recenti + contatti + chiamata reale) ---------- */
   const phone = app({ id:"phone", name:"Telefono", icon:"📞", color:"#35c759", dock:true,
     render(root, os) {
       const native = typeof window.NovaNative !== "undefined";
       let log = os.store.get("callLog", []);
       const saveLog = () => os.store.set("callLog", log);
+      const contacts = () => os.store.get("contacts", CONTACTS_SEED);
       const norm = s => (s||"").replace(/[\s\-()]/g,"");
-      const contactFor = num => { const n = norm(num); return os.store.get("contacts", []).find(x=>norm(x.phone)===n) || null; };
+      const contactFor = num => { const n = norm(num); return contacts().find(x=>norm(x.phone)===n) || null; };
       const nameOf = num => { const c = contactFor(num); return c ? c.name : null; };
       const H = s => [...(s||"?")].reduce((a,c)=>a+c.charCodeAt(0),0);
       const grad = n => { const h=H(n)%360; return `linear-gradient(135deg,hsl(${h} 62% 52%),hsl(${(h+40)%360} 62% 44%))`; };
       const initials = n => (n||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
+      const avatarStyle = c => c.photo ? `#232c3d center/cover no-repeat url('${c.photo}')` : grad(c.name||"?");
+      const avatarTxt = c => c.photo ? "" : initials(c.name||"?");
       let tab = "keypad";
 
-      const placeCall = (num) => {
+      const placeCall = (num, name) => {
         num = (num||"").trim(); if (!num) return;
-        log.unshift({ num, name:nameOf(num), time:Date.now(), dir:"out" });
+        log.unshift({ num, name:name || nameOf(num), time:Date.now(), dir:"out" });
         log = log.slice(0, 50); saveLog();
         os.vibrate(30);
         if (native && window.NovaNative.call) window.NovaNative.call(num);
@@ -49,17 +59,137 @@ const NovaApps = (() => {
         missed: { ico:"↙", label:"Persa",   col:"#ff453a", txt:"#ff453a" },
       };
 
+      const smsNum = num => { const n = norm(num);
+        if (window.NovaNative && window.NovaNative.sms) window.NovaNative.sms(n, "");
+        else window.location.href = "sms:" + n; };
+
       const shell = (body) => {
         root.innerHTML = `
           <div class="hero"><div class="hero-l"><h1>Telefono</h1>
             <div class="hero-sub">${native ? "Modem nativo collegato" : "Dialer di sistema (tel:)"}</div></div></div>
           <div class="seg" style="margin:6px 16px 12px">
-            <button data-t="keypad" class="${tab==='keypad'?'on':''}">Tastierino</button>
-            <button data-t="recents" class="${tab==='recents'?'on':''}">Recenti</button></div>
+            ${[["favs","Preferiti"],["recents","Recenti"],["contacts","Contatti"],["keypad","Tastierino"]].map(([t,l]) =>
+              `<button data-t="${t}" class="${tab===t?'on':''}" style="font-size:calc(12.5px*var(--fscale,1));padding:9px 2px">${l}</button>`).join("")}
+          </div>
           <div id="ph-body">${body}</div>`;
         root.querySelectorAll("[data-t]").forEach(b => b.onclick = () => { tab=b.dataset.t; render(); });
       };
 
+      /* ---------- Preferiti ---------- */
+      const favs = () => {
+        const list = contacts().filter(c => c.fav);
+        shell(list.length ? `<div class="list" style="padding-top:2px">${list.map(c=>`
+          <div class="card tappable" data-call="${c.phone}"><div class="c-ico av" style="background:${avatarStyle(c)}">${avatarTxt(c)}</div>
+            <div class="c-body"><div class="c-title">${c.name}</div><div class="c-sub">${c.phone}</div></div>
+            <button data-rmfav="${c.id}" title="Rimuovi dai preferiti" style="background:none;border:none;font-size:calc(20px*var(--fscale,1));cursor:pointer;color:#ffcf3f;margin-right:4px">★</button>
+            <button class="round-act small" data-call="${c.phone}" style="background:linear-gradient(135deg,#3ad06a,#25b257)">📞</button></div>`).join("")}</div><div style="height:90px"></div>`
+          : `<div style="text-align:center;color:var(--text-dim);padding:52px 28px;line-height:1.9"><div style="font-size:calc(34px*var(--fscale,1));margin-bottom:8px">☆</div>Nessun preferito<br><span style="font-size:calc(13px*var(--fscale,1))">Apri un contatto e tocca la stella per aggiungerlo qui.</span></div>`);
+        root.querySelectorAll("[data-call]").forEach(b => b.onclick = (e) => { e.stopPropagation(); placeCall(b.dataset.call); });
+        root.querySelectorAll("[data-rmfav]").forEach(b => b.onclick = (e) => {
+          e.stopPropagation();
+          const cs = contacts(); const c = cs.find(x => x.id === +b.dataset.rmfav);
+          if (c) { c.fav = false; os.store.set("contacts", cs); favs(); }
+        });
+      };
+
+      /* ---------- Recenti (con ricerca) ---------- */
+      const recents = () => {
+        shell(`
+          <div class="searchbar"><span class="sb-i">🔍</span><input id="rq" placeholder="Cerca per nome o numero"></div>
+          <div id="rlist"></div>
+          ${log.length ? `<button class="btn ghost" id="clear" style="margin:12px 16px;color:var(--danger)">Cancella cronologia</button>` : ""}
+          <div style="height:80px"></div>`);
+        const box = root.querySelector("#rlist");
+        const draw = (filter="") => {
+          const f = filter.trim().toLowerCase().replace(/\s/g,"");
+          const rows = [];
+          log.forEach((c, idx) => {
+            if (!f || (c.name||"").toLowerCase().includes(f) || norm(c.num).includes(f)) rows.push({ c, idx });
+          });
+          box.innerHTML = rows.length ? rows.map(({c, idx})=>{
+            const D=DIR[c.dir]||DIR.out; const known=!!c.name; const nm=c.name||c.num;
+            return `<div class="card tappable" data-i="${idx}"><div class="c-ico av" style="background:${grad(nm)}">${initials(nm)}</div>
+              <div class="c-body"><div class="c-title" style="color:${D.txt}">${nm}</div>
+                <div class="c-sub"><span style="color:${D.col}">${D.ico}</span> ${D.label}${known?" · "+c.num:""} · ${ago(c.time)}</div></div>
+              ${known?"":`<button data-add="${c.num}" title="Aggiungi a contatti" style="background:none;border:none;font-size:calc(19px*var(--fscale,1));cursor:pointer;color:var(--accent)">＋</button>`}
+              <button data-call="${c.num}" class="round-act small" style="background:linear-gradient(135deg,#3ad06a,#25b257)">📞</button></div>`;}).join("")
+            : `<div style="text-align:center;color:var(--text-dim);padding:44px">${f?'Nessuna chiamata trovata':'Nessuna chiamata recente'}</div>`;
+          box.querySelectorAll("[data-call]").forEach(b => b.onclick = (e) => { e.stopPropagation(); placeCall(b.dataset.call); });
+          box.querySelectorAll("[data-add]").forEach(b => b.onclick = (e) => {
+            e.stopPropagation();
+            const cs = contacts();
+            cs.push({ id:Date.now(), name:b.dataset.add, phone:b.dataset.add, email:"" });
+            os.store.set("contacts", cs);
+            os.notify({ app:"contacts", title:"Contatto creato", text:"Apri la Rubrica per aggiungere nome e foto." });
+            os.openApp("contacts");
+          });
+          box.querySelectorAll("[data-i]").forEach(el => el.onclick = () => placeCall(log[+el.dataset.i].num));
+        };
+        draw();
+        root.querySelector("#rq").oninput = e => draw(e.target.value);
+        const clr = root.querySelector("#clear"); if (clr) clr.onclick = () => { log=[]; saveLog(); recents(); };
+      };
+
+      /* ---------- Contatti (dalla rubrica, con chiamata rapida) ---------- */
+      const contactsTab = () => {
+        const contRow = c => `<div class="item" data-more="${c.id}"><div class="i-ico av" style="background:${avatarStyle(c)}">${avatarTxt(c)}</div>
+          <div class="i-body"><div class="i-title">${c.name}${c.fav?' <span style="color:#ffcf3f">★</span>':''}</div><div class="i-sub">${c.phone}</div></div>
+          <button data-sms="${c.phone}" title="Messaggio" style="background:none;border:none;font-size:calc(18px*var(--fscale,1));cursor:pointer;color:var(--accent)">💬</button>
+          <button class="round-act small" data-call="${c.phone}" style="background:linear-gradient(135deg,#3ad06a,#25b257)">📞</button></div>
+          <div class="more-panel" data-morepanel="${c.id}"></div>`;
+        const toggleMore = (id) => {
+          const c = contacts().find(x => x.id === id);
+          const panel = root.querySelector(`[data-morepanel="${id}"]`);
+          if (!c || !panel) return;
+          if (panel.classList.contains("open")) { panel.classList.remove("open"); panel.innerHTML = ""; return; }
+          root.querySelectorAll(".more-panel.open").forEach(p => { p.classList.remove("open"); p.innerHTML=""; });
+          panel.classList.add("open");
+          panel.innerHTML = `<div class="chips" style="padding:4px 16px 12px">
+            <button class="chip" data-mcall="${c.phone}">📞 Chiama</button>
+            <button class="chip" data-msms="${c.phone}">💬 SMS</button>
+            ${c.email?`<button class="chip" data-mmail="${c.email}">✉️ Email</button>`:""}
+            <button class="chip" data-mfav="${c.id}">${c.fav?"★ Rimuovi pref.":"☆ Aggiungi pref."}</button>
+            <button class="chip" data-mrub="1">👤 Rubrica</button></div>`;
+          panel.querySelectorAll("[data-mcall]").forEach(b => b.onclick = (e) => { e.stopPropagation(); placeCall(b.dataset.mcall); });
+          panel.querySelectorAll("[data-msms]").forEach(b => b.onclick = (e) => { e.stopPropagation(); smsNum(b.dataset.msms); });
+          panel.querySelectorAll("[data-mmail]").forEach(b => b.onclick = (e) => { e.stopPropagation(); window.location.href = "mailto:" + b.dataset.mmail; });
+          panel.querySelectorAll("[data-mfav]").forEach(b => b.onclick = (e) => {
+            e.stopPropagation();
+            const cs = contacts(); const cc = cs.find(x => x.id === id);
+            if (cc) { cc.fav = !cc.fav; os.store.set("contacts", cs); contactsTab(); }
+          });
+          panel.querySelectorAll("[data-mrub]").forEach(b => b.onclick = (e) => { e.stopPropagation(); os.openApp("contacts"); });
+        };
+        shell(`
+          <div class="searchbar"><span class="sb-i">🔍</span><input id="cq" placeholder="Cerca contatti"></div>
+          <div id="clist"></div><div style="height:90px"></div>`);
+        const box = root.querySelector("#clist");
+        const draw = (filter="") => {
+          const f = filter.trim().toLowerCase().replace(/\s/g,"");
+          const all = [...contacts()].sort((a,b)=>a.name.localeCompare(b.name,"it"))
+            .filter(c => !f || c.name.toLowerCase().includes(f) || norm(c.phone).includes(f));
+          if (!all.length) { box.innerHTML = `<div class="group"><div class="item"><div class="i-sub" style="padding:6px">${f?"Nessun contatto trovato":"Nessun contatto"}</div></div></div>`; return; }
+          let html = ""; let cur = null;
+          if (!f) {
+            const fv = all.filter(c => c.fav);
+            if (fv.length) html += `<div class="section-label">Preferiti</div><div class="group">${fv.map(contRow).join("")}</div>`;
+          }
+          all.forEach(c => {
+            const L = (c.name[0]||"#").toUpperCase();
+            if (L !== cur) { if (cur !== null) html += `</div>`; html += `<div class="section-label">${L}</div><div class="group">`; cur = L; }
+            html += contRow(c);
+          });
+          if (cur !== null) html += `</div>`;
+          box.innerHTML = html;
+          box.querySelectorAll("[data-call]").forEach(b => b.onclick = (e) => { e.stopPropagation(); placeCall(b.dataset.call); });
+          box.querySelectorAll("[data-sms]").forEach(b => b.onclick = (e) => { e.stopPropagation(); smsNum(b.dataset.sms); });
+          box.querySelectorAll("[data-more]").forEach(b => b.onclick = () => toggleMore(+b.dataset.more));
+        };
+        draw();
+        root.querySelector("#cq").oninput = e => draw(e.target.value);
+      };
+
+      /* ---------- Tastierino (con suggerimenti contatti) ---------- */
       const keypad = () => {
         const keys = [["1",""],["2","ABC"],["3","DEF"],["4","GHI"],["5","JKL"],["6","MNO"],
                       ["7","PQRS"],["8","TUV"],["9","WXYZ"],["*",""],["0","+"],["#",""]];
@@ -68,23 +198,40 @@ const NovaApps = (() => {
             <div id="dial-num" style="font-size:calc(34px*var(--fscale,1));letter-spacing:2px;line-height:38px;min-height:38px;font-weight:500"></div>
             <div id="dial-name" style="font-size:calc(14px*var(--fscale,1));color:var(--accent);min-height:18px"></div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:12px 44px">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:8px 44px 4px">
             ${keys.map(([k,sub])=>`<button class="dial-k" data-k="${k}" style="aspect-ratio:1;border-radius:50%;border:none;background:var(--surface);color:var(--text);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1">
               <span style="font-size:calc(27px*var(--fscale,1));font-weight:500">${k}</span><span style="font-size:calc(9px*var(--fscale,1));letter-spacing:2px;color:var(--text-dim);height:10px">${sub}</span></button>`).join("")}
           </div>
-          <div style="display:flex;justify-content:center;align-items:center;gap:26px;padding-top:6px">
+          <div style="display:flex;justify-content:center;align-items:center;gap:26px;padding-top:4px">
             <span style="width:52px"></span>
             <button id="call" style="width:72px;height:72px;border-radius:50%;border:none;background:linear-gradient(135deg,#3ad06a,#25b257);color:#fff;font-size:calc(28px*var(--fscale,1));cursor:pointer;box-shadow:0 8px 22px rgba(53,199,89,.4)">📞</button>
             <button id="del" style="width:52px;height:52px;border-radius:50%;border:none;background:var(--surface);color:var(--text);font-size:calc(20px*var(--fscale,1));cursor:pointer;display:none">⌫</button>
-          </div>`);
+          </div>
+          <div id="sugg" style="padding:0 16px"></div>`);
         const out = root.querySelector("#dial-num");
         const nm  = root.querySelector("#dial-name");
         const del = root.querySelector("#del");
+        const drawSugg = (v) => {
+          const box = root.querySelector("#sugg"); if (!box) return;
+          const f = norm(v);
+          if (!f || f.length < 2) { box.innerHTML = ""; return; }
+          const q = f.toLowerCase();
+          const hits = contacts().filter(c => {
+            const n = norm(c.phone);
+            return (c.name||"").toLowerCase().includes(q) || n.includes(q) || n.includes("+" + q);
+          }).slice(0, 3);
+          box.innerHTML = hits.length ? `<div class="section-label">Contatti</div>` + hits.map(c => `
+            <div class="item" data-scall="${c.phone}"><div class="i-ico av" style="width:38px;height:38px;background:${avatarStyle(c)}">${avatarTxt(c)}</div>
+              <div class="i-body"><div class="i-title">${c.name}</div><div class="i-sub">${c.phone}</div></div>
+              <button class="round-act small" data-scall="${c.phone}" style="background:linear-gradient(135deg,#3ad06a,#25b257)">📞</button></div>`).join("") : "";
+          box.querySelectorAll("[data-scall]").forEach(b => b.onclick = (e) => { e.stopPropagation(); placeCall(b.dataset.scall); });
+        };
         const sync = () => {
           const v = out.textContent;
           del.style.display = v ? "" : "none";
           const c = contactFor(v);
           nm.textContent = c ? c.name : "";
+          drawSugg(v);
         };
         const type = ch => { out.textContent += ch; os.vibrate(15); sync(); };
         root.querySelectorAll(".dial-k").forEach(b => {
@@ -104,29 +251,14 @@ const NovaApps = (() => {
         sync();
       };
 
-      const recents = () => {
-        shell(log.length ? `<div class="list" style="padding-top:2px">${log.map((c,i)=>{const D=DIR[c.dir]||DIR.out; const known=!!c.name; const nm=c.name||c.num;return `
-          <div class="card tappable" data-i="${i}"><div class="c-ico av" style="background:${grad(nm)}">${initials(nm)}</div>
-            <div class="c-body"><div class="c-title" style="color:${D.txt}">${nm}</div>
-              <div class="c-sub"><span style="color:${D.col}">${D.ico}</span> ${D.label}${known?" · "+c.num:""} · ${ago(c.time)}</div></div>
-            ${known?"":`<button data-add="${c.num}" title="Aggiungi a contatti" style="background:none;border:none;font-size:calc(19px*var(--fscale,1));cursor:pointer;color:var(--accent)">＋</button>`}
-            <button data-call="${c.num}" class="round-act small" style="background:linear-gradient(135deg,#3ad06a,#25b257)">📞</button></div>`;}).join("")}
-          <button class="btn ghost" id="clear" style="margin:12px 16px;color:var(--danger)">Cancella cronologia</button><div style="height:80px"></div></div>`
-          : `<div style="text-align:center;color:var(--text-dim);padding:48px">Nessuna chiamata recente</div>`);
-        root.querySelectorAll("[data-call]").forEach(b => b.onclick = (e) => { e.stopPropagation(); placeCall(b.dataset.call); });
-        root.querySelectorAll("[data-add]").forEach(b => b.onclick = (e) => {
-          e.stopPropagation();
-          const cs = os.store.get("contacts", []);
-          cs.push({ id:Date.now(), name:b.dataset.add, phone:b.dataset.add, email:"" });
-          os.store.set("contacts", cs);
-          os.notify({ app:"contacts", title:"Contatto creato", text:"Apri la Rubrica per aggiungere nome e foto." });
-          os.openApp("contacts");
-        });
-        root.querySelectorAll("[data-i]").forEach(el => el.onclick = () => placeCall(log[+el.dataset.i].num));
-        const clr = root.querySelector("#clear"); if (clr) clr.onclick = () => { log=[]; saveLog(); recents(); };
+      const render = () => {
+        switch (tab) {
+          case "favs": favs(); break;
+          case "recents": recents(); break;
+          case "contacts": contactsTab(); break;
+          default: keypad();
+        }
       };
-
-      const render = () => tab==="keypad" ? keypad() : recents();
       render();
     }});
 
@@ -526,12 +658,7 @@ const NovaApps = (() => {
   /* ---------- Rubrica (contatti completi) ---------- */
   const contacts = app({ id:"contacts", name:"Rubrica", icon:"👤", color:"#5e5ce6",
     render(root, os) {
-      const seed = [
-        { id:1, name:"Anna Rossi", phone:"+39 340 1234567", email:"anna@example.com" },
-        { id:2, name:"Papà", phone:"+39 333 9988776", email:"" },
-        { id:3, name:"Luca Bianchi", phone:"+39 348 5551212", email:"luca@example.com" },
-      ];
-      let list = os.store.get("contacts", seed);
+      let list = os.store.get("contacts", CONTACTS_SEED);
       const save = () => os.store.set("contacts", list);
       const sorted = () => [...list].sort((a,b)=>a.name.localeCompare(b.name,"it"));
       const H = s => [...(s||"?")].reduce((a,c)=>a+c.charCodeAt(0),0);
@@ -791,221 +918,457 @@ const NovaApps = (() => {
     }});
 
   /* ---------- Galleria (foto, album, visualizzatore, modifica) ---------- */
+  /* ============================================================
+     Galleria — clone di Google Foto.
+     Tab Foto | Cerca | Raccolte; selezione multipla (pressione
+     lunga); preferiti, archivio, cestino con ripristino; ricordi;
+     viewer con zoom/swipe; editor filtri. Gli esempi di primo
+     avvio sono foto reali (JPEG) nello store: si eliminano davvero.
+     ============================================================ */
   const gallery = app({ id:"gallery", name:"Galleria", icon:"🖼️", color:"#af52de",
     render(root, os) {
-      const subjects = [
-        ["🏔️","Montagna","Paesaggi"],["🌊","Mare","Paesaggi"],["🌅","Alba","Paesaggi"],["🌲","Bosco","Paesaggi"],["🏜️","Deserto","Paesaggi"],["🏝️","Isola","Paesaggi"],
-        ["🌆","Città","Città"],["🌌","Notte","Città"],["🚗","Viaggio","Città"],["☕","Caffè","Città"],
-        ["🌸","Fiori","Natura"],["🦋","Farfalla","Natura"],["🍂","Autunno","Natura"],["❄️","Neve","Natura"],["🌈","Arcobaleno","Natura"],["🌻","Girasole","Natura"],["🐦","Uccello","Natura"],["🌋","Vulcano","Natura"],
+      // ---- demo di primo avvio: generate una sola volta come foto reali ----
+      const DEMO = [
+        ["🏔️","Montagna","Paesaggi",.05], ["🌊","Mare","Paesaggi",.3], ["🌅","Alba","Paesaggi",.7],
+        ["🌲","Bosco","Paesaggi",1.2], ["🌸","Fiori","Natura",1.8],
+        ["🌆","Città","Città",14.3], ["☕","Caffè","Città",14.8],
+        ["🚗","Viaggio","Città",45.2], ["🌌","Notte","Città",45.7],
+        ["🦋","Farfalla","Natura",92.3], ["🌻","Girasole","Natura",92.7],
+        ["🍂","Autunno","Natura",150.3], ["❄️","Neve","Natura",150.7],
+        ["🌈","Arcobaleno","Natura",300.2], ["🌋","Vulcano","Natura",300.6],
+        ["🐦","Uccello","Natura",500.3], ["🏜️","Deserto","Paesaggi",700.3], ["🏝️","Isola","Paesaggi",700.7],
       ];
-      const grad = i => `linear-gradient(${i*47%360}deg, hsl(${i*57%360} 70% 55%), hsl(${(i*57+130)%360} 65% 40%))`;
-      const demo = subjects.map(([e,n,al],i) => ({ id:"demo"+i, emoji:e, name:n, album:al, bg:grad(i) }));
-      let hidden = os.store.get("galHidden", []);
-      const FILTERS = [["Originale","none"],["B/N","grayscale(1)"],["Seppia","sepia(.8)"],["Vivido","saturate(1.7) contrast(1.08)"],["Freddo","saturate(1.2) hue-rotate(-15deg) brightness(1.05)"],["Caldo","sepia(.35) saturate(1.4)"]];
-
-      let items = [], tab = "foto";
-      const playBadge = `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none"><div style="width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:calc(15px*var(--fscale,1))">▶</div></div>`;
-      const cell = (p,i) => p.real
-        ? `<div class="ph" data-i="${i}" style="position:relative;aspect-ratio:1;border-radius:6px;background-image:url('${p.poster||p.data}');background-size:cover;background-position:center;cursor:pointer">${p.video?playBadge:''}</div>`
-        : `<div class="ph" data-i="${i}" style="aspect-ratio:1;background:${p.bg};border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:calc(30px*var(--fscale,1));cursor:pointer">${p.emoji}</div>`;
-
-      let scat = "Tutte";
-      const heroBar = (real) => `<div class="hero"><div class="hero-l"><h1>${tab==='album'?'Raccolta':tab==='search'?'Cerca':'Foto'}</h1><div class="hero-sub">${real} elementi · ${demo.length} demo</div></div>
-          <div style="display:flex;gap:8px">
-            <button class="round-act small" id="cam" style="background:var(--surface);color:var(--text)">${ICO("camera-fill","width:18px;height:18px")}</button>
-            <label class="round-act small" style="background:var(--surface);color:var(--text);cursor:pointer">${ICO("plus-circle-fill","width:18px;height:18px")}<input id="imp" type="file" accept="image/*" multiple hidden></label>
-          </div></div>`;
-      const tabbar = () => `<nav class="tabbar" id="gal-nav">
-          <button data-tab="foto" class="${tab==='foto'?'on':''}"><span class="tb-pill">${ICO("images","width:20px;height:20px")}</span>Foto</button>
-          <button data-tab="search" class="${tab==='search'?'on':''}"><span class="tb-pill">${ICO("search","width:20px;height:20px")}</span>Cerca</button>
-          <button data-tab="album" class="${tab==='album'?'on':''}"><span class="tb-pill">${ICO("folder2-open","width:20px;height:20px")}</span>Raccolta</button>
-        </nav>`;
-      const wrap = (content) => root.innerHTML = `<div style="height:100%;display:flex;flex-direction:column">
-          <div style="flex:1;overflow-y:auto">${heroBar(itemsReal)}${content}<div style="height:16px"></div></div>${tabbar()}</div>`;
-
-      const bindTop = () => {
-        root.querySelectorAll("#gal-nav [data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;draw();});
-        const cam = root.querySelector("#cam"); if (cam) cam.onclick = () => os.openApp("camera");
-        const imp = root.querySelector("#imp"); if (imp) imp.onchange = (e) => { const files=[...e.target.files]; let done=0;
-          files.forEach(f=>{const r=new FileReader();r.onload=async()=>{await os.photos.add(r.result);if(++done===files.length)draw();};r.readAsDataURL(f);}); };
+      const demoPhoto = (e, n) => {
+        const W = 640, H = 853, cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+        const c = cv.getContext("2d");
+        const h = ([...e].reduce((a, x) => a + x.codePointAt(0), 0) + n.length * 47) % 360;
+        const g = c.createLinearGradient(0, 0, W * .25, H);
+        g.addColorStop(0, `hsl(${h} 62% 58%)`); g.addColorStop(1, `hsl(${(h + 120) % 360} 52% 38%)`);
+        c.fillStyle = g; c.fillRect(0, 0, W, H);
+        c.font = `${Math.round(W * .3)}px "Segoe UI Emoji","Noto Color Emoji","Apple Color Emoji",sans-serif`;
+        c.textAlign = "center"; c.textBaseline = "middle";
+        c.fillText([...e][0], W / 2, H * .45);
+        c.font = `600 ${Math.round(W * .056)}px -apple-system,"Segoe UI",Roboto,sans-serif`;
+        c.fillStyle = "rgba(255,255,255,.95)"; c.fillText(n, W / 2, H * .76);
+        return cv.toDataURL("image/jpeg", .88);
       };
-
-      const gridHtml = (arr, pad="0 4px 20px") => `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:${pad}">${arr.map((p)=>cell(p,items.indexOf(p))).join("")}</div>`;
-
-      // raggruppa gli elementi reali per giorno (Oggi / Ieri / data)
-      const dayLabel = ts => { const d=new Date(ts||Date.now()), t=new Date();
-        const strip=x=>new Date(x.getFullYear(),x.getMonth(),x.getDate()).getTime();
-        const diff=(strip(t)-strip(d))/86400000;
-        if(diff===0) return "Oggi"; if(diff===1) return "Ieri";
-        return d.toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long",...(d.getFullYear()!==t.getFullYear()?{year:"numeric"}:{})}); };
-
-      let itemsReal = 0;
-      const draw = async () => {
-        const real = (await os.photos.all()).map(p => ({ real:true, id:p.id, data:p.data, ts:p.ts, album:p.album, video:!!p.video, poster:p.poster, dur:p.dur, audioTrack:p.audioTrack, name:p.video?"Video":(p.album||"Foto") }));
-        items = [...real, ...demo.filter(d => !hidden.includes(d.id))];
-        itemsReal = real.length;
-
-        if (tab === "foto") {
-          // sezioni per data (reali) + raccolta dimostrativa
-          let html = "";
-          if (real.length) {
-            let curLbl = null;
-            real.forEach(p => { const l = dayLabel(p.ts); if (l!==curLbl) { if(curLbl!==null) html+="</div>"; html+=`<div class="date-head" style="text-transform:capitalize">${l}</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:0 4px 8px">`; curLbl=l; } html+=cell(p, items.indexOf(p)); });
-            if (curLbl!==null) html+="</div>";
-          } else {
-            html += `<div style="text-align:center;color:var(--text-dim);padding:24px">Nessuna tua foto. Scatta con la Fotocamera.</div>`;
-          }
-          const dm = demo.filter(d => !hidden.includes(d.id));
-          if (dm.length) html += `<div class="date-head">Raccolta dimostrativa</div>` + gridHtml(dm);
-          wrap(html);
-        } else if (tab === "search") {
-          const CATS = ["Tutte","Foto","Video","Schermate","Paesaggi","Città","Natura"];
-          const match = p => scat==="Tutte" ? true
-            : scat==="Foto" ? (p.real && !p.video)
-            : scat==="Video" ? p.video
-            : p.album===scat;
-          const arr = items.filter(match);
-          const chips = `<div style="display:flex;gap:8px;overflow-x:auto;padding:2px 16px 12px">${CATS.map(c=>`<button class="chip ${scat===c?'on':''}" data-sc="${c}">${c}</button>`).join("")}</div>`;
-          wrap(chips + (arr.length?gridHtml(arr):`<div style="text-align:center;color:var(--text-dim);padding:24px">Nessun elemento</div>`));
-          root.querySelectorAll("[data-sc]").forEach(b=>b.onclick=()=>{ scat=b.dataset.sc; draw(); });
-        } else {
-          const shots = real.filter(p=>p.album==="Schermate");
-          const vids = real.filter(p=>p.video);
-          const cam = real.filter(p=>p.album!=="Schermate" && !p.video);
-          const albums = [["Fotocamera", cam, "camera-fill"], ...(vids.length?[["Video", vids, "camera-reels-fill"]]:[]), ...(shots.length?[["Schermate", shots, "phone-vibrate-fill"]]:[]), ["Paesaggi", demo.filter(d=>d.album==="Paesaggi"), "tree-fill"], ["Città", demo.filter(d=>d.album==="Città"), "building"], ["Natura", demo.filter(d=>d.album==="Natura"), "flower1"]];
-          const content = `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:2px 16px 12px">${albums.map(([nome,arr,ic],ai)=>`
-            <div class="alb" data-alb="${ai}" style="cursor:pointer">
-              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:3px;border-radius:16px;overflow:hidden;aspect-ratio:1">
-                ${(arr.length?arr:[0,1,2,3]).slice(0,4).map(p=>p&&p.real?`<div style="background-image:url('${p.poster||p.data}');background-size:cover;background-position:center"></div>`:p&&p.emoji?`<div style="background:${p.bg};display:flex;align-items:center;justify-content:center;font-size:calc(24px*var(--fscale,1))">${p.emoji}</div>`:`<div style="background:var(--surface)"></div>`).join("")}
-              </div><div style="padding:8px 2px 0"><div style="font-weight:600;display:flex;align-items:center;gap:6px">${ICO(ic,"width:15px;height:15px")}${nome}</div><div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1))">${arr.length}</div></div></div>`).join("")}</div>`;
-          wrap(content);
-          root.querySelectorAll("[data-alb]").forEach(el=>el.onclick=()=>{const a=albums[+el.dataset.alb];openAlbum(a[0],a[1]);});
+      const seed = async () => {
+        if (os.store.get("galSeeded")) return;
+        const oldHidden = os.store.get("galHidden", []);
+        for (let i = 0; i < DEMO.length; i++) {
+          const [e, n, a, d] = DEMO[i];
+          const id = "demo" + i;
+          if (oldHidden.includes(id)) continue;
+          const ts = Date.now() - Math.round(d * 86400000) - Math.floor(Math.random() * 5 * 3600000);
+          try { await os.photos.add(demoPhoto(e, n), { id, album: a, name: n, ts, seed: true }); } catch (err) {}
         }
-        bindTop();
-        root.querySelectorAll(".ph").forEach(el => el.onclick = () => openViewer(+el.dataset.i));
+        os.store.del("galHidden"); os.store.set("galSeeded", 1);
       };
 
-      const openAlbum = (nome, arr) => {
-        root.innerHTML = `<div class="back-bar"><button class="back-btn"></button><div class="back-title">${nome}</div></div>${arr.length?gridHtml(arr):'<div style="text-align:center;color:var(--text-dim);padding:40px">Album vuoto</div>'}`;
-        root.querySelector(".back-btn").onclick = draw;
-        root.querySelectorAll(".ph").forEach(el => el.onclick = () => openViewer(+el.dataset.i));
+      // ---- stato ----
+      let items = [], viewTab = "foto", cat = null, sel = [], selMode = false, q = "";
+      let lpFired = false, lastMems = [], albumCache = [];
+
+      const isVid = p => !!p.video;
+      const fmtShort = ts => ts ? new Date(ts).toLocaleString("it-IT", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" }) : "—";
+      const fmtDate = ts => ts ? new Date(ts).toLocaleString("it-IT", { weekday:"long", day:"numeric", month:"long", year:"numeric", hour:"2-digit", minute:"2-digit" }) : "—";
+      const dayLabel = ts => { const d = new Date(ts || Date.now()), t = new Date();
+        const strip = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+        const diff = (strip(t) - strip(d)) / 86400000;
+        if (diff === 0) return "Oggi"; if (diff === 1) return "Ieri";
+        return d.toLocaleDateString("it-IT", { weekday:"long", day:"numeric", month:"long", ...(d.getFullYear() !== t.getFullYear() ? { year:"numeric" } : {}) }); };
+      const sizeOf = data => { try { const b = atob((data || "").split(",")[1] || ""); return (b.length / 1024).toFixed(0) + " KB"; } catch { return "—"; } };
+
+      const groupByDate = arr => { const out = []; let last = null;
+        arr.forEach(p => { const l = dayLabel(p.ts); if (l !== last) { out.push({ label: l, items: [], count: 0 }); last = l; } out[out.length - 1].items.push(p); out[out.length - 1].count++; });
+        return out; };
+      const memories = arr => { const CUT = 30 * 86400000, map = {};
+        arr.filter(p => (Date.now() - p.ts) > CUT).forEach(p => { const d = new Date(p.ts); const k = d.getFullYear() + "-" + d.getMonth(); (map[k] = map[k] || []).push(p); });
+        return Object.keys(map).sort().reverse().map(k => { const [y, m] = k.split("-").map(Number);
+          const yrs = new Date().getFullYear() - y;
+          return { label: new Date(y, m, 1).toLocaleDateString("it-IT", { month:"long", year:"numeric" }) + " · " + (yrs > 1 ? yrs + " anni fa" : yrs === 1 ? "1 anno fa" : "qualche mese fa"), items: map[k] }; }).slice(0, 8); };
+
+      const playBadge = `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none"><div style="width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;font-size:calc(13px*var(--fscale,1))">▶</div></div>`;
+      const cell = (p, i) => {
+        const checked = selMode && sel.includes(p.id);
+        const media = p.video
+          ? `<div class="gp-media" style="background-image:url('${p.poster || p.data}')">${playBadge}</div>`
+          : `<div class="gp-media" style="background-image:url('${p.data}')"></div>`;
+        return `<div class="gp-cell ${checked ? 'sel' : ''}" data-i="${i}">${media}
+          ${p.fav ? `<span class="gp-fav">${ICO("heart-fill")}</span>` : ""}
+          ${selMode ? `<span class="gp-check">${checked ? "✓" : ""}</span>` : ""}</div>`;
+      };
+      const gridHtml = (arr, pad = "4px 2px 0") => `<div class="gp-grid" style="padding:${pad}">${arr.map((p, i) => cell(p, i)).join("")}</div>`;
+
+      const frame = (top, body) => root.innerHTML = `<div style="height:100%;display:flex;flex-direction:column">${top}
+        <div style="flex:1;overflow-y:auto" class="gp-body">${body}<div style="height:14px"></div></div>${tabbar()}</div>`;
+
+      const tabbar = () => `<nav class="tabbar" id="gal-nav">
+        <button data-tab="foto" class="${viewTab === 'foto' ? 'on' : ''}"><span class="tb-pill">${ICO("images","width:20px;height:20px")}</span>Foto</button>
+        <button data-tab="search" class="${viewTab === 'search' ? 'on' : ''}"><span class="tb-pill">${ICO("search","width:20px;height:20px")}</span>Cerca</button>
+        <button data-tab="raccolte" class="${viewTab === 'raccolte' ? 'on' : ''}"><span class="tb-pill">${ICO("folder2-open","width:20px;height:20px")}</span>Raccolte</button>
+      </nav>`;
+
+      // ---- header (normale / selezione / barra con back) ----
+      const ACTS = { heart:["heart-fill"], share:["share-fill"], trash:["trash-fill"], restore:["arrow-repeat"], del:["trash-fill"] };
+      const selHeader = (keys) => `<div class="gp-top sel">
+        <button class="gp-close" data-sel="x">${ICO("x-lg","width:20px;height:20px")}</button>
+        <div class="gp-count" id="sel-count"></div>
+        <div class="gp-acts">${keys.map(k => `<button class="gp-act" data-sel="${k}">${ICO(ACTS[k][0],"width:20px;height:20px")}</button>`).join("")}</div></div>`;
+      const barHeader = (title, right = "") => `<div class="gp-top back"><button class="back-btn" id="g-back"></button><h1>${title}</h1><div class="gp-acts">${right}</div></div>`;
+      const fotoHeader = () => selMode
+        ? selHeader(["heart", "share", "trash"])
+        : `<div class="gp-top"><h1>Foto</h1><div class="gp-acts">
+            <input id="g-import" type="file" accept="image/*" multiple hidden>
+            <button class="gp-act" id="g-search" title="Cerca">${ICO("search","width:21px;height:21px")}</button>
+            <button class="gp-act" id="g-menu" title="Altre opzioni">${ICO("three-dots","width:21px;height:21px")}</button></div></div>`;
+
+      // ---- viste ----
+      const memCard = (mm, i) => `<div class="mem" data-mem="${i}"><div class="mem-cols">${mm.items.slice(0, 3).map(p => `<div style="background-image:url('${p.poster || p.data}')"></div>`).join("")}</div><div class="mem-title">${mm.label}</div></div>`;
+      const renderFoto = (shown) => {
+        lastMems = memories(shown);
+        let body = "";
+        if (lastMems.length) body += `<div class="mem-wrap"><div class="mem-head">Ricordi</div><div class="mem-strip">${lastMems.map((mm, i) => memCard(mm, i)).join("")}</div></div>`;
+        if (shown.length) groupByDate(shown).forEach(s => body += `<div class="date-head">${s.label}${s.count > 1 ? ` <span class="date-count">${s.count}</span>` : ""}</div>` + gridHtml(s.items));
+        else body += `<div class="gp-empty">${ICO("images","width:44px;height:44px")}<p>Nessuna foto.<br>Scatta con la Fotocamera o importa immagini.</p></div>`;
+        frame(fotoHeader(), body);
+        bindTop(); bindCells(root);
+      };
+      const renderSearch = (shown) => {
+        const CATS = [["Fotocamera","camera-fill","#0a84ff"],["Video","camera-reels-fill","#ff9f0a"],["Schermate","phone-vibrate-fill","#bf5af2"],["Preferiti","star-fill","#ff453a"],["Paesaggi","tree-fill","#34c759"],["Città","building","#ff9f0a"],["Natura","flower1","#30d158"]];
+        const counts = { Fotocamera:shown.filter(p=>!p.video&&!p.album).length, Video:shown.filter(p=>p.video).length, Schermate:shown.filter(p=>p.album==="Schermate").length, Preferiti:shown.filter(p=>p.fav).length, Paesaggi:shown.filter(p=>p.album==="Paesaggi").length, Città:shown.filter(p=>p.album==="Città").length, Natura:shown.filter(p=>p.album==="Natura").length };
+        lastMems = memories(shown);
+        let body = `<div class="gp-searchbar">${ICO("search","width:18px;height:18px")}<input id="g-search-input" placeholder="Cerca" value="${q}"></div>`;
+        if (q) {
+          const needle = q.toLowerCase();
+          const res = shown.filter(p => !needle || p.name.toLowerCase().includes(needle) || (p.album || "").toLowerCase().includes(needle) || dayLabel(p.ts).toLowerCase().includes(needle));
+          items = res;
+          body += res.length ? groupByDate(res).map(s => `<div class="date-head">${s.label}</div>` + gridHtml(s.items)).join("") : `<div class="gp-empty"><p>Nessun risultato per “${q}”.</p></div>`;
+        } else {
+          items = shown;
+          body += `<div class="sec-label">Categorie</div>`;
+          body += CATS.map(([n, ic, col], i) => `<div class="gp-catrow" data-scat="${i}"><div class="i-ico" style="background:${col}">${ICO(ic,"width:20px;height:20px")}</div><div class="i-body"><div class="i-title">${n}</div><div class="i-sub">${counts[n]}</div></div><div style="color:var(--text-dim)">›</div></div>`).join("");
+          if (lastMems.length) body += `<div class="mem-wrap"><div class="mem-head">Ricordi</div><div class="mem-strip">${lastMems.map((mm, i) => memCard(mm, i)).join("")}</div></div>`;
+        }
+        frame(barHeader("Cerca"), body);
+        bindTop(); bindCells(root);
+        const inp = root.querySelector("#g-search-input");
+        if (inp) inp.oninput = () => { q = inp.value.trim(); draw(); };
+        root.querySelectorAll("[data-scat]").forEach(el => el.onclick = () => {
+          const n = CATS[+el.dataset.scat][0];
+          cat = { kind:"cat", title: n, filter: arr => arr.filter(p => n === "Fotocamera" ? (!p.video && !p.album) : n === "Video" ? p.video : n === "Schermate" ? p.album === "Schermate" : n === "Preferiti" ? p.fav : p.album === n) };
+          draw();
+        });
+      };
+      const renderRaccolte = (shown, trash, archived, active) => {
+        const cam = shown.filter(p => !p.video && !p.album);
+        const vids = shown.filter(p => p.video);
+        const shots = shown.filter(p => p.album === "Schermate");
+        const albums = [["Fotocamera", cam, "camera-fill"], ...(vids.length ? [["Video", vids, "camera-reels-fill"]] : []), ...(shots.length ? [["Schermate", shots, "phone-vibrate-fill"]] : []), ...(["Paesaggi","Città","Natura"].map(a => [a, shown.filter(p => p.album === a), a === "Paesaggi" ? "tree-fill" : a === "Città" ? "building" : "flower1"]))].filter(([, arr]) => arr.length);
+        albumCache = albums;
+        const body = `${albums.length ? `<div class="sec-label">Raccolte</div><div class="gp-albums">${albums.map(([nome, arr, ic], ai) => `<div class="alb" data-alb="${ai}"><div class="alb-grid">${arr.slice(0,4).map(p => `<div class="alb-th" style="background-image:url('${p.poster || p.data}')"></div>`).join("")}</div><div class="alb-name">${ICO(ic,"width:15px;height:15px")}${nome}<span class="alb-count">${arr.length}</span></div></div>`).join("")}</div>` : ""}
+          <div class="sec-label">Utilità</div>
+          <div class="group" style="margin:0 12px">
+            <div class="item gp-util" data-util="fav" style="cursor:pointer"><div class="i-ico" style="background:#ff453a;color:#fff">${ICO("star-fill","width:20px;height:20px")}</div><div class="i-body"><div class="i-title">Preferiti</div><div class="i-sub">${active.filter(p => p.fav).length} elementi</div></div><div style="color:var(--text-dim)">›</div></div>
+            <div class="item gp-util" data-util="arch" style="cursor:pointer"><div class="i-ico" style="background:#0a84ff;color:#fff">${ICO("archive-fill","width:20px;height:20px")}</div><div class="i-body"><div class="i-title">Archivio</div><div class="i-sub">${archived.length} elementi</div></div><div style="color:var(--text-dim)">›</div></div>
+            <div class="item gp-util" data-util="trash" style="cursor:pointer"><div class="i-ico" style="background:#8e8e93;color:#fff">${ICO("trash-fill","width:20px;height:20px")}</div><div class="i-body"><div class="i-title">Cestino</div><div class="i-sub">${trash.length} elementi</div></div><div style="color:var(--text-dim)">›</div></div>
+          </div>`;
+        frame(barHeader("Raccolte"), body);
+        bindTop(); bindCells(root);
+        root.querySelectorAll("[data-alb]").forEach(el => el.onclick = () => { const [nome, arr] = albumCache[+el.dataset.alb]; cat = { kind:"album", title: nome, filter: () => arr }; draw(); });
+        root.querySelectorAll("[data-util]").forEach(el => el.onclick = () => { const k = el.dataset.util;
+          cat = k === "trash" ? { kind:"trash", title:"Cestino" } : k === "arch" ? { kind:"archive", title:"Archivio" } : { kind:"fav", title:"Preferiti" }; draw(); });
+      };
+      const renderCatGrid = (title, arr) => {
+        const top = selMode ? selHeader(["heart", "share", "trash"]) : barHeader(title);
+        const body = arr.length ? gridHtml(arr) : `<div class="gp-empty"><p>Nessun elemento qui.</p></div>`;
+        frame(top, body);
+        bindTop(); bindCells(root);
+      };
+      const renderTrash = () => {
+        const top = selMode ? selHeader(["restore", "del"]) : barHeader("Cestino", `<button class="gp-text-btn danger" id="empty-trash">Svuota</button>`);
+        const body = `<div class="trash-note">Gli elementi nel Cestino vengono eliminati definitivamente dopo 30 giorni.</div>` + (items.length ? gridHtml(items) : `<div class="gp-empty">${ICO("trash-fill","width:44px;height:44px")}<p>Il Cestino è vuoto.</p></div>`);
+        frame(top, body);
+        bindTop(); bindCells(root);
       };
 
-      let slideTimer = null;
-      const stopSlide = () => { if (slideTimer) { clearInterval(slideTimer); slideTimer = null; } };
-      const fmtDate = ts => ts ? new Date(ts).toLocaleString("it-IT",{weekday:"long",day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—";
-      const sizeOf = data => { try { const b=atob((data||"").split(",")[1]||""); return (b.length/1024).toFixed(0)+" KB"; } catch { return "—"; } };
+      // ---- dati + dispatch ----
+      const draw = async () => {
+        await seed();
+        let all = await os.photos.all();
+        const now = Date.now();
+        const tooOld = all.filter(p => p.trash && (now - (p.ts || now)) > 30 * 86400000);
+        if (tooOld.length) { for (const p of tooOld) await os.photos.remove(p.id); all = all.filter(p => !tooOld.includes(p)); }
+        const mapItem = p => ({ real:true, id:p.id, data:p.data, ts:p.ts, album:p.album, video:!!p.video, poster:p.poster, dur:p.dur, audioTrack:p.audioTrack, name:p.name || (p.video ? "Video" : (p.album || "Foto")), fav:!!p.fav, arch:!!p.arch, trash:!!p.trash });
+        all = all.map(mapItem);
+        const trash = all.filter(p => p.trash).sort((a, b) => b.ts - a.ts);
+        const active = all.filter(p => !p.trash);
+        const archived = active.filter(p => p.arch);
+        const shown = active.filter(p => !p.arch).sort((a, b) => b.ts - a.ts);
 
+        if (cat) {
+          if (cat.kind === "trash") { items = trash; renderTrash(); return; }
+          if (cat.kind === "archive") { items = archived; renderCatGrid("Archivio", items); return; }
+          if (cat.kind === "fav") { items = active.filter(p => p.fav); renderCatGrid("Preferiti", items); return; }
+          if (cat.kind === "mem") { items = cat.filter(); renderCatGrid(cat.title, items); return; }
+          items = cat.filter(shown); renderCatGrid(cat.title, items); return;
+        }
+        items = shown;
+        if (viewTab === "foto") renderFoto(shown);
+        else if (viewTab === "search") renderSearch(shown);
+        else renderRaccolte(shown, trash, archived, active);
+      };
+
+      // ---- interazioni griglia ----
+      const exitSel = () => { selMode = false; sel = []; draw(); };
+      const toggleSel = id => { const k = sel.indexOf(id); if (k >= 0) sel.splice(k, 1); else sel.push(id); draw(); };
+      const enterSel = (id) => { selMode = true; sel = id ? [id] : []; draw(); };
+      const bindCells = (container) => {
+        container.querySelectorAll(".gp-cell").forEach(el => {
+          const id = items[+el.dataset.i].id;
+          el.addEventListener("click", () => {
+            if (lpFired) { lpFired = false; return; }
+            if (selMode) toggleSel(id); else openViewer(+el.dataset.i);
+          });
+          let t = null, mt = null;
+          const fire = () => { if (selMode) return; lpFired = true; enterSel(id); };
+          const clear = () => { clearTimeout(t); clearTimeout(mt); };
+          el.addEventListener("touchstart", () => { t = setTimeout(fire, 420); }, { passive:true });
+          el.addEventListener("touchmove", clear, { passive:true });
+          el.addEventListener("touchend", clear, { passive:true });
+          el.addEventListener("mousedown", () => { if (!selMode) mt = setTimeout(fire, 420); });
+          el.addEventListener("mouseup", clear);
+          el.addEventListener("mouseleave", clear);
+          el.addEventListener("contextmenu", e => { e.preventDefault(); if (!selMode) enterSel(id); });
+        });
+      };
+
+      // ---- azioni di selezione ----
+      const selFav = async () => {
+        const cur = sel.filter(id => items.find(p => p.id === id));
+        const allFav = cur.length && cur.every(id => items.find(p => p.id === id).fav);
+        for (const id of cur) await os.photos.patch(id, { fav: !allFav });
+        exitSel();
+      };
+      const selShare = async () => {
+        const p = items.find(x => sel.includes(x.id));
+        if (p) await os.share({ app:"gallery", image: p.data, filename:"novaos-foto", title:"Foto da NovaOS" });
+        exitSel();
+      };
+      const selTrash = async () => {
+        const n = sel.length;
+        if (!await os.confirm({ title:"Spostare nel Cestino?", message: n === 1 ? "L'elemento verrà spostato nel Cestino." : n + " elementi verranno spostati nel Cestino.", okText:"Sposta" })) return;
+        for (const id of sel) await os.photos.patch(id, { trash:true, arch:false, fav:false });
+        exitSel();
+      };
+      const selRestore = async () => { for (const id of sel) await os.photos.patch(id, { trash:false }); exitSel(); };
+      const selDel = async () => {
+        const n = sel.length;
+        if (!await os.confirm({ title:"Eliminare definitivamente?", message: "Questi elementi verranno rimossi per sempre.", okText:"Elimina" })) return;
+        for (const id of sel) await os.photos.remove(id);
+        exitSel();
+      };
+      const emptyTrash = async () => {
+        if (!await os.confirm({ title:"Svuotare il Cestino?", message:"Tutti gli elementi verranno eliminati definitivamente.", okText:"Svuota" })) return;
+        const tr = (await os.photos.all()).filter(p => p.trash);
+        for (const p of tr) await os.photos.remove(p.id);
+        draw();
+      };
+      const importFiles = async (files) => {
+        for (const f of files) {
+          const r = new FileReader();
+          await new Promise(res => { r.onload = res; r.readAsDataURL(f); });
+          await os.photos.add(r.result, { album:"" });
+        }
+        draw();
+      };
+      const bindSelHeader = () => {
+        const cnt = root.querySelector("#sel-count");
+        if (cnt) cnt.textContent = sel.length === 1 ? "1 elemento" : sel.length + " elementi";
+        root.querySelectorAll("[data-sel]").forEach(b => b.onclick = () => {
+          const a = b.dataset.sel;
+          if (a === "x") exitSel();
+          else if (a === "heart") selFav();
+          else if (a === "share") selShare();
+          else if (a === "trash") selTrash();
+          else if (a === "restore") selRestore();
+          else if (a === "del") selDel();
+        });
+      };
+      const bindTop = () => {
+        root.querySelectorAll("#gal-nav [data-tab]").forEach(b => b.onclick = () => { cat = null; q = ""; viewTab = b.dataset.tab; selMode = false; sel = []; draw(); });
+        const gb = root.querySelector("#g-back"); if (gb) gb.onclick = () => { cat = null; q = ""; draw(); };
+        const gs = root.querySelector("#g-search"); if (gs) gs.onclick = () => { cat = null; viewTab = "search"; draw(); };
+        const gm = root.querySelector("#g-menu"); if (gm) gm.onclick = openFotoMenu;
+        const imp = root.querySelector("#g-import"); if (imp) imp.onchange = e => importFiles(e.target.files);
+        const et = root.querySelector("#empty-trash"); if (et) et.onclick = emptyTrash;
+        bindSelHeader();
+        root.querySelectorAll("[data-mem]").forEach(el => el.onclick = () => { const mm = lastMems[+el.dataset.mem]; cat = { kind:"mem", title: mm.label, filter: () => mm.items }; draw(); });
+      };
+      const openFotoMenu = () => {
+        const sheet = document.createElement("div"); sheet.className = "sheet-ov";
+        sheet.innerHTML = `<div class="sheet">
+          <button class="sheet-item" data-fm="sel">${ICO("check-circle-fill","width:22px;height:22px")}<span>Seleziona</span></button>
+          <button class="sheet-item" data-fm="import">${ICO("plus-circle-fill","width:22px;height:22px")}<span>Importa foto</span></button>
+          <button class="sheet-item" data-fm="cam">${ICO("camera-fill","width:22px;height:22px")}<span>Apri Fotocamera</span></button>
+          <div class="sheet-sep"></div>
+          <button class="sheet-item" data-fm="x"><span>Annulla</span></button></div>`;
+        document.body.appendChild(sheet);
+        const close = () => sheet.remove();
+        sheet.querySelectorAll("[data-fm]").forEach(b => b.onclick = () => { const k = b.dataset.fm; close();
+          if (k === "sel") enterSel();
+          else if (k === "import") { const inp = root.querySelector("#g-import"); if (inp) inp.click(); }
+          else if (k === "cam") os.openApp("camera"); });
+        sheet.addEventListener("click", e => { if (e.target === sheet) close(); });
+      };
+
+      // ---- viewer ----
+      const infoHtml = p => `<div><b>${p.name || (p.video ? "Video" : "Foto")}</b></div>
+        <div style="opacity:.85;text-transform:capitalize">${p.album || "Fotocamera"} · ${fmtDate(p.ts)}</div>
+        ${p.video && p.dur ? `<div style="opacity:.85">Durata ${p.dur} s</div>` : ""}
+        <div style="opacity:.85">${sizeOf(p.data)}</div>
+        <div style="opacity:.85" id="vdim"></div>`;
       const openViewer = (i) => {
         const p = items[i];
-        const go = j => openViewer((j+items.length)%items.length);
+        if (!p) return;
+        const go = j => openViewer((j + items.length) % items.length);
+        const inTrash = !!p.trash;
         const big = p.video
-          ? `<video id="vimg" src="${p.data}" controls autoplay playsinline ${p.audioTrack?'muted':''} style="max-width:100%;max-height:100%;object-fit:contain;background:#000"></video>${p.audioTrack?`<audio id="vaud" src="${p.audioTrack}" preload="auto"></audio>`:''}`
-          : p.real
-          ? `<img id="vimg" src="${p.data}" style="max-width:100%;max-height:100%;object-fit:contain;transition:transform .18s;touch-action:none;will-change:transform">`
-          : `<div id="vimg" style="width:80%;aspect-ratio:3/4;border-radius:16px;background:${p.bg};display:flex;align-items:center;justify-content:center;font-size:calc(96px*var(--fscale,1))">${p.emoji}</div>`;
+          ? `<video id="vimg" src="${p.data}" controls autoplay playsinline ${p.audioTrack ? 'muted' : ''} style="max-width:100%;max-height:100%;object-fit:contain"></video>${p.audioTrack ? `<audio id="vaud" src="${p.audioTrack}" preload="auto"></audio>` : ''}`
+          : `<img id="vimg" src="${p.data}" style="max-width:100%;max-height:100%;object-fit:contain;transition:transform .18s;touch-action:none;will-change:transform">`;
+        const bottom = inTrash
+          ? `<button class="gv-bot" id="vb-restore">${ICO("arrow-repeat","width:20px;height:20px")}<span>Ripristina</span></button><button class="gv-bot" id="vb-del">${ICO("trash-fill","width:20px;height:20px")}<span>Elimina</span></button>`
+          : `<button class="gv-bot ${p.fav ? 'on' : ''}" id="vb-fav">${ICO("heart-fill","width:22px;height:22px")}<span>Preferito</span></button>
+             <button class="gv-bot" id="vb-share">${ICO("share-fill","width:20px;height:20px")}<span>Condividi</span></button>
+             ${p.video ? "" : `<button class="gv-bot" id="vb-edit">${ICO("pencil-fill","width:20px;height:20px")}<span>Modifica</span></button>`}
+             <button class="gv-bot" id="vb-trash">${ICO("trash-fill","width:20px;height:20px")}<span>Elimina</span></button>`;
         root.innerHTML = `
           <div style="height:100%;display:flex;flex-direction:column;background:#000">
             <div class="gv-bar">
-              <button id="vclose" class="gv-btn" title="Chiudi">${ICO("x-lg")||"✕"}</button>
-              <div class="gv-title"><b>${p.name}</b><span>${i+1} di ${items.length}</span></div>
-              <button id="vslide" class="gv-btn" title="Presentazione">${ICO("play-fill")||"▶"}</button>
-              <button id="vinfo" class="gv-btn" title="Info">${ICO("info-circle-fill")||"ℹ"}</button>
-              ${p.real?`<button id="vshare" class="gv-btn" title="Condividi">${ICO("share-fill")||"📤"}</button>`:''}
-              ${p.real&&!p.video?`<button id="vedit" class="gv-btn" title="Modifica">${ICO("pencil-fill")||"✏"}</button>`:''}
-              <button id="vdel" class="gv-btn danger" title="Elimina">${ICO("trash-fill")||"🗑"}</button>
+              <button class="gv-btn" id="vclose">${ICO("x-lg") || "✕"}</button>
+              <div class="gv-title"><b>${p.name || "Foto"}</b><span>${fmtShort(p.ts)}</span></div>
+              <button class="gv-btn" id="vmore">${ICO("three-dots") || "⋯"}</button>
             </div>
             <div id="vstage" style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">
-              <button id="vprev" style="position:absolute;left:8px;z-index:2;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.12);color:#fff;font-size:calc(20px*var(--fscale,1));cursor:pointer">‹</button>
+              <button id="vprev" class="gv-nav">‹</button>
               ${big}
-              <button id="vnext" style="position:absolute;right:8px;z-index:2;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.12);color:#fff;font-size:calc(20px*var(--fscale,1));cursor:pointer">›</button>
-              <div id="vinfobox" style="display:none;position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.72);color:#fff;padding:14px 18px;font-size:calc(13px*var(--fscale,1));line-height:1.7">
-                <div><b>${p.real?'Foto':p.name}</b></div>
-                <div style="opacity:.8;text-transform:capitalize">📅 ${fmtDate(p.ts)}</div>
-                ${p.real?`<div style="opacity:.8" id="vdim">🖼️ dimensioni…</div><div style="opacity:.8">💾 ${sizeOf(p.data)}</div>`:'<div style="opacity:.8">Immagine dimostrativa</div>'}
-              </div>
+              <button id="vnext" class="gv-nav">›</button>
+              <div id="vinfo" class="gp-info" style="display:none">${infoHtml(p)}</div>
             </div>
+            <div class="gv-bottom">${bottom}</div>
           </div>`;
-        root.querySelector("#vclose").onclick = () => { stopSlide(); draw(); };
-        root.querySelector("#vprev").onclick = () => go(i-1);
-        root.querySelector("#vnext").onclick = () => go(i+1);
-
-        // pannello info + dimensioni reali
-        const infobox = root.querySelector("#vinfobox");
-        root.querySelector("#vinfo").onclick = () => { infobox.style.display = infobox.style.display==="none"?"block":"none"; };
-        const img = root.querySelector("#vimg");
-        if (p.real && img.tagName==="IMG") img.onload = () => { const d=root.querySelector("#vdim"); if(d) d.textContent=`🖼️ ${img.naturalWidth}×${img.naturalHeight} px`; };
-
-        // presentazione (slideshow) automatica
-        const slideBtn = root.querySelector("#vslide");
-        slideBtn.onclick = () => {
-          if (slideTimer) { stopSlide(); slideBtn.innerHTML=ICO("play-fill")||"▶"; }
-          else { slideBtn.innerHTML=ICO("pause-fill")||"⏸"; slideTimer = setInterval(()=>go(i+1), 2200); }
+        root.querySelector("#vclose").onclick = () => draw();
+        root.querySelector("#vprev").onclick = () => go(i - 1);
+        root.querySelector("#vnext").onclick = () => go(i + 1);
+        bindViewerActions(p, inTrash);
+        if (p.video) bindAudioSync(p);
+        else bindGestures(p, go, i);
+      };
+      const bindViewerActions = (p, inTrash) => {
+        const more = root.querySelector("#vmore");
+        if (more) more.onclick = () => openViewerMenu(p, inTrash);
+        const fav = root.querySelector("#vb-fav");
+        if (fav) fav.onclick = async () => { await os.photos.patch(p.id, { fav: !p.fav }); p.fav = !p.fav; fav.classList.toggle("on", p.fav); };
+        const share = root.querySelector("#vb-share");
+        if (share) share.onclick = () => os.share({ app:"gallery", image: p.data, filename:"novaos-foto", title:"Foto da NovaOS" });
+        const ed = root.querySelector("#vb-edit");
+        if (ed) ed.onclick = () => openEditor(p);
+        const trash = root.querySelector("#vb-trash");
+        if (trash) trash.onclick = async () => {
+          if (!await os.confirm({ title:"Spostare nel Cestino?", message:"La foto verrà spostata nel Cestino.", okText:"Sposta" })) return;
+          await os.photos.patch(p.id, { trash:true, fav:false }); draw();
         };
-
-        // condivisione: helper unificato (bridge nativo → Web Share → appunti)
-        const shareBtn = root.querySelector("#vshare");
-        if (shareBtn) shareBtn.onclick = () => os.share({ app:"gallery", image:p.data, filename:"novaos-foto", title:"Foto da NovaOS" });
-
-        const del = root.querySelector("#vdel");
+        const rst = root.querySelector("#vb-restore");
+        if (rst) rst.onclick = async () => { await os.photos.patch(p.id, { trash:false }); draw(); };
+        const del = root.querySelector("#vb-del");
         if (del) del.onclick = async () => {
-          if (!await os.confirm({title:"Eliminare elemento?",message:"Questo elemento verrà eliminato dalla Galleria.",okText:"Elimina"})) return;
-          stopSlide();
-          if (p.real) await os.photos.remove(p.id);
-          else { hidden.push(p.id); os.store.set("galHidden", hidden); }
+          if (!await os.confirm({ title:"Eliminare definitivamente?", message:"Questa foto verrà rimossa per sempre.", okText:"Elimina" })) return;
+          await os.photos.remove(p.id); draw();
+        };
+      };
+      const openViewerMenu = (p, inTrash) => {
+        const sheet = document.createElement("div"); sheet.className = "sheet-ov";
+        const opts = inTrash
+          ? [["arrow-repeat","Ripristina","","m-restore"],["trash-fill","Elimina definitivamente","danger","m-del"]]
+          : [["info-circle-fill","Informazioni","","m-info"],["arrow-clockwise","Ruota a destra","","m-rot"],["image","Imposta come sfondo","","m-wall"],["trash-fill","Sposta nel cestino","danger","m-trash"]];
+        sheet.innerHTML = `<div class="sheet">${opts.map(([ic, lbl, cls, id]) => `<button class="sheet-item ${cls}" id="${id}">${ICO(ic,"width:22px;height:22px")}<span>${lbl}</span></button>`).join("")}
+          <div class="sheet-sep"></div><button class="sheet-item" id="m-x"><span>Annulla</span></button></div>`;
+        document.body.appendChild(sheet);
+        const close = () => sheet.remove();
+        sheet.querySelectorAll(".sheet-item").forEach(b => b.onclick = () => { const id = b.id; close();
+          if (id === "m-info") { const inf = root.querySelector("#vinfo"); if (inf) { inf.style.display = inf.style.display === "none" ? "block" : "none"; const img = root.querySelector("#vimg"); if (img && img.tagName === "IMG" && img.complete && !img.naturalWidth) img.onload = () => { const d = root.querySelector("#vdim"); if (d) d.textContent = "🖼️ " + img.naturalWidth + "×" + img.naturalHeight + " px"; }; } }
+          else if (id === "m-rot") rotatePhoto(p);
+          else if (id === "m-wall") setWallpaper(p.data);
+          else if (id === "m-trash") { const b = root.querySelector("#vb-trash"); if (b) b.click(); }
+          else if (id === "m-restore") { const b = root.querySelector("#vb-restore"); if (b) b.click(); }
+          else if (id === "m-del") { const b = root.querySelector("#vb-del"); if (b) b.click(); }
+        });
+        sheet.addEventListener("click", e => { if (e.target === sheet) close(); });
+      };
+      const rotatePhoto = (p) => {
+        const img = new Image();
+        img.onload = async () => {
+          const cv = document.createElement("canvas");
+          cv.width = img.height; cv.height = img.width;
+          const c = cv.getContext("2d");
+          c.translate(cv.width / 2, cv.height / 2); c.rotate(Math.PI / 2);
+          c.drawImage(img, -img.width / 2, -img.height / 2);
+          await os.photos.patch(p.id, { data: cv.toDataURL("image/jpeg", .9) });
+          os.notify({ app:"gallery", title:"Galleria", text:"Foto ruotata." });
           draw();
         };
-        const ed = root.querySelector("#vedit"); if (ed) ed.onclick = () => { stopSlide(); openEditor(p); };
-
-        // video con traccia audio separata (registrata dal runtime): sincronizza
-        // l'audio nascosto col video muto durante play/pausa/seek.
-        if (p.video && p.audioTrack) {
-          const vid = img, aud = root.querySelector("#vaud");
-          if (aud) {
-            const sync = () => { if (Math.abs(aud.currentTime - vid.currentTime) > 0.25) aud.currentTime = vid.currentTime; };
-            vid.addEventListener("play", () => { aud.currentTime = vid.currentTime; aud.play().catch(()=>{}); });
-            vid.addEventListener("pause", () => aud.pause());
-            vid.addEventListener("seeking", () => { try { aud.currentTime = vid.currentTime; } catch {} });
-            vid.addEventListener("timeupdate", sync);
-            vid.addEventListener("ratechange", () => { aud.playbackRate = vid.playbackRate; });
-            vid.addEventListener("ended", () => aud.pause());
-          }
-        }
-
-        // gesti: swipe per cambiare foto, doppio-tap per zoom, trascinamento in zoom
+        img.onerror = () => os.notify({ app:"gallery", title:"Galleria", text:"Impossibile ruotare la foto." });
+        img.src = p.data;
+      };
+      const setWallpaper = (data) => new Promise(res => {
+        const img = new Image();
+        img.onload = () => {
+          const max = 1080, sc = Math.min(1, max / Math.max(img.width, img.height));
+          const cv = document.createElement("canvas");
+          cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+          cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+          os.set("wallImage", cv.toDataURL("image/jpeg", .85)); os.set("wallFit", "cover"); os.set("wallZoom", 100);
+          os.notify({ app:"gallery", title:"Galleria", text:"Foto impostata come sfondo." });
+          res();
+        };
+        img.onerror = () => res();
+        img.src = data;
+      });
+      const bindGestures = (p, go, i) => {
         const stage = root.querySelector("#vstage");
-        if (p.video) return;   // per i video lasciamo i controlli nativi (no swipe/zoom)
+        const img = root.querySelector("#vimg");
+        if (!stage || !img) return;
         let scale = 1, tx = 0, ty = 0, sx = 0, sy = 0, moved = 0, dragging = false, lastTap = 0;
         const setT = () => { img.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`; };
-        stage.addEventListener("touchstart", e => {
-          if (e.touches.length!==1) return;
-          dragging = true; moved = 0; sx = e.touches[0].clientX; sy = e.touches[0].clientY;
-          img.style.transition = "none";
-        }, {passive:true});
-        stage.addEventListener("touchmove", e => {
-          if (!dragging || e.touches.length!==1) return;
-          const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy;
-          moved = Math.abs(dx)+Math.abs(dy);
-          if (scale > 1) { tx += dx; ty += dy; sx = e.touches[0].clientX; sy = e.touches[0].clientY; setT(); }
-        }, {passive:true});
-        stage.addEventListener("touchend", e => {
-          dragging = false; img.style.transition = "transform .18s";
-          const dx = (e.changedTouches[0].clientX - sx);
-          const now = Date.now();
-          if (now - lastTap < 300 && moved < 12) {           // doppio-tap => zoom toggle
-            if (scale>1){ scale=1; tx=0; ty=0; } else scale=2.4; setT(); lastTap=0; return;
-          }
+        const dims = () => { const d = root.querySelector("#vdim"); if (d && img.naturalWidth) d.textContent = "🖼️ " + img.naturalWidth + "×" + img.naturalHeight + " px"; };
+        img.onload = dims;
+        stage.addEventListener("touchstart", e => { if (e.touches.length !== 1) return; dragging = true; moved = 0; sx = e.touches[0].clientX; sy = e.touches[0].clientY; img.style.transition = "none"; }, { passive:true });
+        stage.addEventListener("touchmove", e => { if (!dragging || e.touches.length !== 1) return; const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy; moved = Math.abs(dx) + Math.abs(dy); if (scale > 1) { tx += dx; ty += dy; sx = e.touches[0].clientX; sy = e.touches[0].clientY; setT(); } }, { passive:true });
+        stage.addEventListener("touchend", e => { dragging = false; img.style.transition = "transform .18s";
+          const dx = e.changedTouches[0].clientX - sx; const now = Date.now();
+          if (now - lastTap < 300 && moved < 12) { if (scale > 1) { scale = 1; tx = 0; ty = 0; } else scale = 2.4; setT(); lastTap = 0; return; }
           lastTap = now;
-          if (scale===1 && moved>60) { if (dx<-40) go(i+1); else if (dx>40) go(i-1); }
-        }, {passive:true});
+          if (scale === 1 && moved > 60) { if (dx < -40) go(i + 1); else if (dx > 40) go(i - 1); } }, { passive:true });
+      };
+      const bindAudioSync = (p) => {
+        const vid = root.querySelector("#vimg"), aud = root.querySelector("#vaud");
+        if (!aud) return;
+        const sync = () => { if (Math.abs(aud.currentTime - vid.currentTime) > 0.25) aud.currentTime = vid.currentTime; };
+        vid.addEventListener("play", () => { aud.currentTime = vid.currentTime; aud.play().catch(() => {}); });
+        vid.addEventListener("pause", () => aud.pause());
+        vid.addEventListener("seeking", () => { try { aud.currentTime = vid.currentTime; } catch {} });
+        vid.addEventListener("timeupdate", sync);
+        vid.addEventListener("ratechange", () => { aud.playbackRate = vid.playbackRate; });
+        vid.addEventListener("ended", () => aud.pause());
       };
 
+      // ---- editor (filtri + luminosità/contrasto/saturazione + rotazione) ----
+      const FILTERS = [["Originale","none"],["B/N","grayscale(1)"],["Seppia","sepia(.8)"],["Vivido","saturate(1.7) contrast(1.08)"],["Freddo","saturate(1.2) hue-rotate(-15deg) brightness(1.05)"],["Caldo","sepia(.35) saturate(1.4)"]];
       const openEditor = (p) => {
         let filter = "none", bright = 100, contrast = 100, saturate = 100, rot = 0;
-        const cssFilter = () => `${filter==='none'?'':filter} brightness(${bright}%) contrast(${contrast}%) saturate(${saturate}%)`;
-        const apply = () => { const el = root.querySelector("#edit-img");
-          el.style.filter = cssFilter(); el.style.transform = `rotate(${rot}deg)` + (rot%180?" scale(.75)":""); };
-        const slider = (id,label,min,max,val) => `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        const cssFilter = () => `${filter === 'none' ? '' : filter} brightness(${bright}%) contrast(${contrast}%) saturate(${saturate}%)`;
+        const apply = () => { const el = root.querySelector("#edit-img"); el.style.filter = cssFilter(); el.style.transform = `rotate(${rot}deg)` + (rot % 180 ? " scale(.75)" : ""); };
+        const slider = (id, label, min, max, val) => `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <div style="color:#fff;font-size:calc(12px*var(--fscale,1));width:78px">${label}</div><input type="range" class="slider" style="flex:1" min="${min}" max="${max}" value="${val}" id="${id}"></div>`;
         root.innerHTML = `
           <div style="height:100%;display:flex;flex-direction:column;background:#000">
@@ -1017,17 +1380,17 @@ const NovaApps = (() => {
               ${slider("br","Luminosità",50,150,100)}
               ${slider("co","Contrasto",50,150,100)}
               ${slider("sa","Saturazione",0,200,100)}</div>
-            <div style="display:flex;gap:8px;overflow-x:auto;padding:8px 16px 20px">${FILTERS.map((f,fi)=>`
-              <button data-fil="${fi}" style="flex:0 0 auto;padding:10px 14px;border-radius:12px;border:none;background:${fi===0?'var(--accent)':'rgba(255,255,255,.12)'};color:#fff;cursor:pointer;font-size:calc(13px*var(--fscale,1))">${f[0]}</button>`).join("")}</div>
+            <div style="display:flex;gap:8px;overflow-x:auto;padding:8px 16px 20px">${FILTERS.map((f, fi) => `
+              <button data-fil="${fi}" style="flex:0 0 auto;padding:10px 14px;border-radius:12px;border:none;background:${fi === 0 ? 'var(--accent)' : 'rgba(255,255,255,.12)'};color:#fff;cursor:pointer;font-size:calc(13px*var(--fscale,1))">${f[0]}</button>`).join("")}</div>
           </div>`;
         apply();
         root.querySelector(".back-btn").onclick = () => openViewer(items.indexOf(p));
-        root.querySelector("#br").oninput = e => { bright=+e.target.value; apply(); };
-        root.querySelector("#co").oninput = e => { contrast=+e.target.value; apply(); };
-        root.querySelector("#sa").oninput = e => { saturate=+e.target.value; apply(); };
-        root.querySelector("#rot").onclick = () => { rot=(rot+90)%360; apply(); };
-        root.querySelectorAll("[data-fil]").forEach(b=>b.onclick=()=>{ filter=FILTERS[+b.dataset.fil][1];
-          root.querySelectorAll("[data-fil]").forEach(x=>x.style.background="rgba(255,255,255,.12)"); b.style.background="var(--accent)"; apply(); });
+        root.querySelector("#br").oninput = e => { bright = +e.target.value; apply(); };
+        root.querySelector("#co").oninput = e => { contrast = +e.target.value; apply(); };
+        root.querySelector("#sa").oninput = e => { saturate = +e.target.value; apply(); };
+        root.querySelector("#rot").onclick = () => { rot = (rot + 90) % 360; apply(); };
+        root.querySelectorAll("[data-fil]").forEach(b => b.onclick = () => { filter = FILTERS[+b.dataset.fil][1];
+          root.querySelectorAll("[data-fil]").forEach(x => x.style.background = "rgba(255,255,255,.12)"); b.style.background = "var(--accent)"; apply(); });
         root.querySelector("#save").onclick = () => {
           const img = new Image();
           img.onload = async () => {
@@ -1037,10 +1400,10 @@ const NovaApps = (() => {
             cv.height = swap ? img.width  : img.height;
             const ctx = cv.getContext("2d");
             ctx.filter = cssFilter();
-            ctx.translate(cv.width/2, cv.height/2);
-            ctx.rotate(rot*Math.PI/180);
-            ctx.drawImage(img, -img.width/2, -img.height/2);
-            await os.photos.add(cv.toDataURL("image/jpeg",0.9));
+            ctx.translate(cv.width / 2, cv.height / 2);
+            ctx.rotate(rot * Math.PI / 180);
+            ctx.drawImage(img, -img.width / 2, -img.height / 2);
+            await os.photos.add(cv.toDataURL("image/jpeg", 0.9));
             os.notify({ app:"gallery", title:"Galleria", text:"Foto modificata salvata." });
             draw();
           };
@@ -1049,9 +1412,8 @@ const NovaApps = (() => {
       };
 
       draw();
-      root._cleanup = stopSlide;
+      root._cleanup = () => {};
     }});
-
   /* ---------- Orologio (orologio + sveglie + cronometro + fusi CRUD) ---------- */
   const clock = app({ id:"clock", name:"Orologio", icon:"⏰", color:"#1c1c2e",
     render(root, os) {
@@ -2886,7 +3248,22 @@ const NovaApps = (() => {
                 <button class="btn ghost" id="th-export" style="flex:1">Esporta tema</button>
                 <label class="btn ghost" style="flex:1;text-align:center;cursor:pointer">Importa tema<input id="th-import" type="file" accept=".json,.novatheme" hidden></label>
               </div>
+              <div style="display:flex;gap:10px;margin-top:8px">
+                <button class="btn ghost" id="th-share" style="flex:1">Condividi tema</button>
+                <button class="btn ghost" id="th-reset" style="flex:1;color:var(--danger)">Ripristina di sistema</button>
+              </div>
               <div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));margin-top:8px">Salva o applica un tema (.novatheme/2): launcher, colori, forma e stile icone, sfondo, testo.</div>
+            </div>
+            <div class="section-label">Temi installati</div>
+            <div class="group" style="padding:8px 16px" id="theme-list">${renderThemeList()}</div>
+            <div class="section-label">Negozio temi</div>
+            <div class="group" style="padding:14px 16px">
+              <div style="display:flex;gap:8px">
+                <input id="th-url" type="text" placeholder="URL di un tema (.novatheme.json)" value="" style="flex:1;min-width:0;background:var(--surface-2);border:none;border-radius:10px;padding:10px 12px;color:var(--text);font-size:calc(13px*var(--fscale,1));outline:none">
+                <button class="btn" id="th-fetch" style="flex:0 0 auto">Scarica</button>
+              </div>
+              <div id="th-shop" style="margin-top:10px"><button class="btn ghost" id="th-shop-load" style="width:100%">Carica il catalogo temi</button></div>
+              <div style="color:var(--text-dim);font-size:calc(11px*var(--fscale,1));margin-top:8px;word-break:break-all" id="th-cat-url"></div>
             </div>`;
           sec.querySelectorAll("[data-th]").forEach(b => b.onclick = () => { os.set("theme", b.dataset.th); sections.display(); });
           sec.querySelectorAll("[data-lch]").forEach(b => b.onclick = () => { os.set("launcher", b.dataset.lch); sections.display(); });
@@ -2896,71 +3273,123 @@ const NovaApps = (() => {
           sec.querySelector("#acccol").oninput = e => os.set("accentColor", e.target.value);
           sec.querySelector("#iconcol").oninput = e => os.set("iconColor", e.target.value);
           const ir = sec.querySelector("#icon-reset"); if (ir) ir.onclick = () => { ["iconStyle","deskColor","iconColor","accentColor"].forEach((k,i)=>os.set(k, i?"":"filled")); os.set("iconShape","squircle"); sections.display(); };
-          // esporta/importa tema nel formato .novatheme (allineato al Theme Studio)
-          sec.querySelector("#th-export").onclick = () => {
-            const iconMap = {}; Object.entries(S.iconMap||{}).forEach(([id,v]) => { if (v) iconMap[id] = { type:"emoji", value:v }; });
+          // temi .novatheme: esporta / condividi / importa / ripristina + lista installati.
+          // La logica di applicazione vive in os.applyTheme (validata e condivisa con il negozio).
+          const exportTheme = () => {
+            const pal = Object.assign({}, S.themePalette || {});
+            const iconMap = {}; Object.entries(S.iconMap || {}).forEach(([id, v]) => { if (v) iconMap[id] = { type:"emoji", value:v }; });
             const order = os.store.get("launcherOrder", []);
-            const t = { format:"novatheme/2", meta:{ id:"tema-"+Date.now(), name:"Tema personale", base:S.theme },
+            const colors = {};
+            ["bg","bg-2","surface","surface-2","text","text-dim","accent","accent-2","danger","ok"].forEach(k => { if (pal[k]) colors[k] = pal[k]; });
+            if (!colors.bg && S.deskColor) colors.bg = S.deskColor;
+            if (!colors.accent && S.accentColor) colors.accent = S.accentColor;
+            if (S.iconColor) colors.icon = S.iconColor;
+            return { format:"novatheme/2", meta:{ id:"tema-"+Date.now(), name:"Tema personale", base:S.theme },
               layout:{ id:S.launcher||"springboard", ...(order.length?{order}:{}) },
-              colors:{ accent:S.accentColor||undefined, bg:S.deskColor||undefined, icon:S.iconColor||undefined },
-              shape:{ iconStyle:S.iconStyle, iconShape:S.iconShape||"squircle" },
+              colors, shape:{ iconStyle:S.iconStyle, iconShape:S.iconShape||"squircle" },
               icons:{ shape:S.iconShape||"squircle", ...(Object.keys(iconMap).length?{map:iconMap}:{}) },
-              wallpaper: S.deskColor?{type:"solid",value:S.deskColor}:(S.wallImage?{type:"image",value:S.wallImage,fit:S.wallFit||"cover",zoom:S.wallZoom||100,posX:S.wallPosX??50,posY:S.wallPosY??50}:{type:"gradient",value:os.WALLS[S.wallpaper]}),
+              wallpaper: S.deskColor?{type:"solid",value:S.deskColor}:(S.wallImage?{type:"image",value:S.wallImage,fit:S.wallFit||"cover",zoom:S.wallZoom||100,posX:S.wallPosX??50,posY:S.wallPosY??50}:{type:"gradient",value:S.wallGradient||os.WALLS[S.wallpaper]}),
               sounds:{ ringtone:{type:"builtin",value:S.ringtone}, notif:{type:"builtin",value:S.notifSound}, alarm:{type:"builtin",value:S.alarmSound} },
               typography:{ textScale:S.textScale } };
+          };
+          const downloadTheme = () => {
+            const t = exportTheme();
             const a = document.createElement("a");
             a.href = URL.createObjectURL(new Blob([JSON.stringify(t,null,2)],{type:"application/json"}));
             a.download = "tema-novaos.novatheme.json"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
             os.notify({ app:"settings", title:"Tema", text:"Tema esportato come file." });
           };
+          sec.querySelector("#th-export").onclick = downloadTheme;
+          sec.querySelector("#th-share").onclick = () => {
+            const json = JSON.stringify(exportTheme(), null, 2);
+            os.share({ app:"settings", title:"Tema NovaOS",
+              text:"Tema NovaOS da installare: Impostazioni → Personalizzazione → Importa tema.",
+              file:{ data:"data:application/json;base64,"+btoa(unescape(encodeURIComponent(json))), name:"tema-novaos.novatheme.json" } });
+          };
+          sec.querySelector("#th-reset").onclick = async () => {
+            if (!await os.confirm({ title:"Ripristinare l'aspetto di sistema?", message:"Colori, launcher e icone torneranno ai valori predefiniti. I temi installati restano in lista.", okText:"Ripristina" })) return;
+            os.resetTheme(); os.notify({ app:"settings", title:"Tema", text:"Tema di sistema ripristinato." }); sections.display();
+          };
           sec.querySelector("#th-import").onchange = e => {
             const f = e.target.files[0]; if (!f) return;
             const r = new FileReader();
-            r.onload = () => { try { const t = JSON.parse(r.result);
-              if (t.format !== "novatheme/1" && t.format !== "novatheme/2") { os.notify({app:"settings",title:"Tema",text:"File non riconosciuto."}); return; }
-              if (t.meta?.base) os.set("theme", t.meta.base);
-              // layout: template a blocchi del tema (launcher "custom") oppure launcher predefinito
-              if (t.layout?.engine === "blocks" && Array.isArray(t.layout.blocks)) os.applyThemeLayout(t.layout);
-              else if (t.layout?.id && os.launchers().some(l => l.id === t.layout.id)) os.set("launcher", t.layout.id);
-              if (t.colors?.accent) os.set("accentColor", t.colors.accent);
-              if (t.colors?.icon) os.set("iconColor", t.colors.icon);
-              if (t.shape?.iconStyle) os.set("iconStyle", t.shape.iconStyle);
-              if (t.shape?.iconShape) os.set("iconShape", t.shape.iconShape);
-              if (t.typography?.textScale) os.set("textScale", t.typography.textScale);
-              if (t.wallpaper?.type === "solid") { os.set("deskColor", t.wallpaper.value); os.set("wallImage",""); }
-              else if (t.wallpaper?.type === "image") { os.set("wallImage", t.wallpaper.value); os.set("deskColor","");
-                os.set("wallFit", t.wallpaper.fit||"cover"); os.set("wallZoom", t.wallpaper.zoom||100);
-                os.set("wallPosX", t.wallpaper.posX??50); os.set("wallPosY", t.wallpaper.posY??50); }
-              else { os.set("deskColor", ""); os.set("wallImage",""); }
-              // override icone per-app (icons.map: id → {type:"emoji",value})
-              // SICUREZZA: un tema è un file esterno non fidato. Accettiamo solo emoji/testo
-              // brevi senza caratteri HTML pericolosi, oppure URL immagine data:image//https.
-              if (t.icons && t.icons.map) { const m = {};
-                Object.entries(t.icons.map).forEach(([id,o]) => {
-                  let v = (o && typeof o==="object") ? o.value : o;
-                  v = String(v == null ? "" : v).trim();
-                  if (!v) return;
-                  if (/[<>"'`]/.test(v)) return;                                  // possibile iniezione: scarta
-                  const isImg = /^data:image\//i.test(v) || /^https:\/\//i.test(v);
-                  const isText = !/^data:|^https?:|^javascript:/i.test(v) && v.length <= 8;  // emoji/simbolo breve
-                  if (isImg || isText) m[id] = v;                                 // altrimenti scartato
-                });
-                os.set("iconMap", m);
-              } else os.set("iconMap", {});
-              // suoni (solo nomi validi per categoria)
-              if (t.sounds) { const L = os.sounds.lists || {ring:[],notif:[],alarm:[]};
-                const sv = s => (s && typeof s==="object") ? s.value : s;
-                if (L.ring.includes(sv(t.sounds.ringtone))) os.set("ringtone", sv(t.sounds.ringtone));
-                if (L.notif.includes(sv(t.sounds.notif)))   os.set("notifSound", sv(t.sounds.notif));
-                if (L.alarm.includes(sv(t.sounds.alarm)))   os.set("alarmSound", sv(t.sounds.alarm));
-              }
-              // disposizione app (springboard + ordine lista)
-              if (t.layout && Array.isArray(t.layout.order) && t.layout.order.length) os.applyLayoutOrder(t.layout.order);
-              os.notify({ app:"settings", title:"Tema", text:`Tema «${t.meta?.name||"importato"}» applicato.` });
-              sections.display();
-            } catch (err) { os.notify({app:"settings",title:"Tema",text:"File non valido."}); } };
+            r.onload = () => { try {
+              const t = JSON.parse(r.result);
+              if (os.applyTheme(t)) { os.notify({ app:"settings", title:"Tema", text:`Tema «${t.meta?.name||"importato"}» applicato.` }); sections.display(); }
+              else os.notify({ app:"settings", title:"Tema", text:"File non riconosciuto." });
+            } catch (err) { os.notify({ app:"settings", title:"Tema", text:"File non valido." }); } };
             r.readAsText(f);
           };
+          function renderThemeList() {
+            const esc = s => String(s==null?"":s).replace(/[<>&"]/g, c => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;" }[c]));
+            const items = os.themes();
+            const act = os.themeActive();
+            return items.length ? items.map(t => `
+              <div class="item" style="padding:8px 0;border-bottom:1px solid var(--surface-2)">
+                <div class="i-body">
+                  <div class="i-title">${esc(t.name)}${act===t.id?' <span style="color:var(--ok);font-size:11px">· attivo</span>':''}</div>
+                  <div class="i-sub">${esc(t.author||"anonimo")} · ${t.base==='light'?'chiaro':'scuro'}</div>
+                </div>
+                <div style="display:flex;gap:6px">
+                  <button class="round-act small" data-theme-app="${t.id}" title="Applica" style="background:var(--ok)">✓</button>
+                  <button class="round-act small" data-theme-del="${t.id}" title="Elimina" style="background:var(--danger)">✕</button>
+                </div>
+              </div>`).join("") : '<div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));padding:6px 0">Nessun tema importato: importane uno dal Theme Studio o dal negozio.</div>';
+          }
+          const bindThemeList = () => {
+            const el = sec.querySelector("#theme-list"); if (!el) return;
+            el.querySelectorAll("[data-theme-app]").forEach(b => b.onclick = () => {
+              const th = os.themeGet(b.dataset.themeApp);
+              if (th && os.applyTheme(th.data, { save:false })) { os.notify({ app:"settings", title:"Tema", text:"Tema applicato." }); sections.display(); }
+            });
+            el.querySelectorAll("[data-theme-del]").forEach(b => b.onclick = async () => {
+              if (!await os.confirm({ title:"Eliminare il tema?", message:"Verrà rimosso dalla lista dei temi installati.", okText:"Elimina" })) return;
+              os.themeDelete(b.dataset.themeDel); sections.display();
+            });
+          };
+          bindThemeList();
+          // negozio temi: catalogo remoto (GitHub raw, CORS aperto) + download da URL
+          const CAT_URL = "https://raw.githubusercontent.com/RedRider21/NovaOS/main/themes/catalog.json";
+          const escT = s => String(s==null?"":s).replace(/[<>&"]/g, c => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;" }[c]));
+          sec.querySelector("#th-cat-url").textContent = "Catalogo: " + CAT_URL;
+          const fetchThemeUrl = async (url) => {
+            try {
+              const r = await fetch(url, { cache:"no-store" });
+              if (!r.ok) throw new Error("HTTP " + r.status);
+              const t = await r.json();
+              if (os.applyTheme(t)) { os.notify({ app:"settings", title:"Negozio temi", text:`Tema «${t.meta?.name||""}» scaricato e applicato.` }); sections.display(); return true; }
+              os.notify({ app:"settings", title:"Negozio temi", text:"Tema non riconosciuto." });
+            } catch (err) { os.notify({ app:"settings", title:"Negozio temi", text:"Impossibile scaricare il tema (serve la rete)." }); }
+            return false;
+          };
+          sec.querySelector("#th-fetch").onclick = () => {
+            const u = sec.querySelector("#th-url").value.trim();
+            if (!u) return os.notify({ app:"settings", title:"Negozio temi", text:"Inserisci l'URL di un tema." });
+            fetchThemeUrl(u);
+          };
+          const loadShop = async () => {
+            const box = sec.querySelector("#th-shop");
+            box.innerHTML = '<div style="color:var(--text-dim);font-size:calc(12px*var(--fscale,1));padding:4px 0">Caricamento catalogo…</div>';
+            try {
+              const r = await fetch(CAT_URL, { cache:"no-store" });
+              if (!r.ok) throw new Error("HTTP " + r.status);
+              const cat = await r.json();
+              const items = (cat.themes || []);
+              if (!items.length) throw new Error("vuoto");
+              box.innerHTML = items.map(t => `
+                <div class="item" style="padding:8px 0;border-bottom:1px solid var(--surface-2)">
+                  <div class="i-body">
+                    <div class="i-title">${escT(t.name)} <span style="color:var(--text-dim);font-size:11px">· ${escT(t.launcher||"")}</span></div>
+                    <div class="i-sub">${escT(t.desc||"")}</div>
+                  </div>
+                  <button class="round-act small" data-shop-get="${escT(t.file)}" title="Scarica e applica" style="background:var(--accent)">↓</button>
+                </div>`).join("");
+              box.querySelectorAll("[data-shop-get]").forEach(b => b.onclick = () => fetchThemeUrl((cat.baseUrl||"") + b.dataset.shopGet));
+            } catch (err) {
+              box.innerHTML = '<div style="color:var(--danger);font-size:calc(12px*var(--fscale,1));padding:4px 0">Catalogo non raggiungibile (serve la rete).</div>';
+            }
+          };
+          sec.querySelector("#th-shop-load").onclick = loadShop;
           sec.querySelector("#bri").oninput = e => os.set("brightness", +e.target.value);
           sec.querySelector("#ts").oninput = e => { os.set("textScale", +e.target.value); sec.querySelector("#ts-v").textContent = e.target.value+"%"; };
           sec.querySelectorAll("[data-w]").forEach(el => el.onclick = () => { os.set("wallpaper", +el.dataset.w); os.set("wallImage",""); os.set("deskColor",""); sections.display(); });
@@ -3366,7 +3795,7 @@ const NovaApps = (() => {
             ["🔒","Blocco e sicurezza","In Impostazioni → «Sicurezza e blocco» imposti PIN o sblocco a scorrimento e la schermata di blocco. Il dispositivo si blocca da solo dopo un periodo di inattività."],
           ];
           const openUrl = u => { const nn = window.NovaNative; if (nn && nn.openBrowser) { try { nn.openBrowser(u); return; } catch(e){} } try { window.open(u, "_blank"); } catch(e){} };
-          const REPO = "https://github.com/dPlusOS21/NovaOS";
+          const REPO = "https://github.com/RedRider21/NovaOS";
           sec.innerHTML = `
             <div style="padding:6px 16px 4px;color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">Guida rapida a NovaOS ${VER}. Tocca un argomento per i dettagli.</div>
             <div id="help-list">${topics.map(([ic,t,txt])=>`
