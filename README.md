@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.48** (build 50). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.49** (build 51). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -232,6 +232,10 @@ Fatto:
   Corretto anche il bottone **←** per tornare a Foto da Cerca e Raccolte.
 - **Drawer riallineato al modello dello Studio** — le icone delle Quick action del launcher
   Drawer riempiono la cella come nel modello (niente più testo `data:` a video).
+- **Dock compatto come il modello** — le 4 app fisse in basso (Telefono, Messaggi, Fotocamera,
+  Browser) hanno le icone a **42px** (`.dock .app-icon .glyph`), come nel modello dello Studio
+  (`.p-dock .p-ic`): prima, con le icone vettoriali NovaOS, le tessere a 58px del dock
+  apparivano enormi rispetto al modello (le emoji precedenti stavano a ~27px).
 
 Prossimi passi: rifinire il launcher (evitare il re-boot quando si preme Home,
 gestione InCallService per la telefonia nativa), poi la build ROM (`system/`).

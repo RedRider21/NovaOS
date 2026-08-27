@@ -509,6 +509,10 @@ html.nova-preview #device { width: 390px !important; height: 844px !important; m
 }
 body[data-theme="light"] .dock { background: rgba(255,255,255,.6); }
 .dock .app-icon .label { display: none; }
+/* Icone del dock più compatte della griglia, come nel modello dello Studio
+   (.p-dock .p-ic 42px): prima le emoji stavano a ~27px e il contenuto appariva
+   più piccolo; ora che le icone sono SVG a tutta tessera serve il 42px esplicito. */
+.dock .app-icon .glyph { width:42px; height:42px; font-size:20px; }
 
 /* ============================================================
    APP VIEW

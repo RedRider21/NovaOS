@@ -1,9 +1,9 @@
 {
-  "version": "0.1.48",
-  "build": 50,
+  "version": "0.1.49",
+  "build": 51,
   "minNative": 12,
   "date": "2026-08-27",
-  "notes": "GALLERIA — RACCOLTE: nella scheda Raccolte puoi creare una nuova raccolta e cancellare quelle esistenti (le foto restano nella Galleria). Selezionando più foto le aggiungi a una raccolta già creata o ne crei una al volo. Corretto il bottone ← che non tornava a Foto da Cerca e Raccolte. Launcher Drawer riallineato al modello dello Studio (icone a tutta cella).",
+  "notes": "GALLERIA — RACCOLTE: nella scheda Raccolte puoi creare una nuova raccolta e cancellare quelle esistenti (le foto restano nella Galleria). Selezionando più foto le aggiungi a una raccolta già creata o ne crei una al volo. Corretto il bottone ← che non tornava a Foto da Cerca e Raccolte. Launcher Drawer riallineato al modello dello Studio (icone a tutta cella). FIX ICONE DOCK: le 4 app fisse in basso (Telefono, Messaggi, Fotocamera, Browser) ora sono compatte come nel modello dello Studio (42px), non più enormi con le icone vettoriali NovaOS.",
   "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1.46/NovaOS-0.1.46.apk",
   "files": [
     "css/style.css",
