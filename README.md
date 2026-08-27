@@ -59,7 +59,7 @@ web-phone-os/
 | Mail | client email **reale** (SMTP/IMAP via bridge nativo JavaMail): schermata account con **selettore provider** (Gmail/Outlook/Yahoo/iCloud/Libero/Aruba/PEC/GMX/TIM che precompilano host e porte) **o configurazione manuale**, invio SMTP e sincronizzazione IMAP, **password cifrata nell'Android Keystore** (mai in chiaro). In assenza del bridge (browser) resta simulazione locale. Inoltre: cartelle (arrivo/inviati/bozze/cestino), **ricerca**, stella, **bozze reali**, **rispondi con citazione**, **inoltra**, **allegati** con anteprima, destinatari dai contatti, firma |
 | Browser | cronologia + preferiti; sul device apre i siti in **WebView nativa a schermo intero** (BrowserActivity) → nessun limite iframe (banche, Google, ecc.). **Vista desktop** (pulsante 🖥) attiva in automatico per **WhatsApp/Telegram Web** così compare il **QR** di accesso (con UA mobile reindirizzerebbero all'app). In shell web resta l'anteprima iframe |
 | Fotocamera | anteprima live `getUserMedia`, scatto salvato in Galleria, import da file |
-| Galleria | **clone di Google Foto**: tab **Foto · Cerca · Raccolte**, **Ricordi** (striscia + per mese), giorni (Oggi/Ieri/data), **selezione multipla** (pressione lunga) con azioni (preferito/condividi/cestino), **preferiti**, **cestino** con ripristino (30 giorni) e **svuota**, **archivio**, ricerca per nome/album/data, **viewer** con swipe, zoom doppio-tap, **info scatto** e menu azioni (ruota, imposta come sfondo, sposta nel cestino), **editor** (filtri + luminosità/contrasto/saturazione + rotazione, salvataggio come nuova foto). Gli **esempi di primo avvio sono foto reali** (canvas JPEG) salvate nello store: si eliminano davvero e non ricompaiono |
+| Galleria | **clone di Google Foto**: tab **Foto · Cerca · Raccolte**, **Ricordi** (striscia + per mese), giorni (Oggi/Ieri/data), **selezione multipla** (pressione lunga) con azioni (preferito/condividi/cestino), **preferiti**, **cestino** con ripristino (30 giorni) e **svuota**, **archivio**, ricerca per nome/album/data, **viewer** con swipe, zoom doppio-tap, **info scatto** e menu azioni (ruota, imposta come sfondo, sposta nel cestino), **editor** (filtri + luminosità/contrasto/saturazione + rotazione, salvataggio come nuova foto). Gli **esempi di primo avvio sono foto reali** (canvas JPEG) salvate nello store: si eliminano davvero e non ricompaiono. Il cestino tiene traccia del **momento della cancellazione** (non dello scatto): anche una foto vecchia resta 30 giorni nel cestino e si può ripristinare |
 | Orologio | orologio, **sveglie** (picker integrato), **cronometro**, **fusi orari CRUD** (copertura mondiale) |
 | Calendario | vista mese, eventi per giorno (aggiungi/elimina), navigazione mesi |
 | Meteo | **previsioni reali** via open-meteo (geocoding città + 7 giorni, percepita/umidità/vento) |
@@ -79,6 +79,9 @@ sveglia selezionabili** (sintetizzate, con volumi reali), **notifiche heads-up (
 e per-app, **backup dati** (export JSON), ricerca nelle impostazioni. **Home a pagine
 editabile** con **posizionamento libero delle icone** (slot fissi 4×4: ogni icona
 resta dove la metti, anche con spazi vuoti), drag tra desktop, cartelle, swipe con flick.
+I **launcher alternativi** (drawer, elenco, tessere, dash, radiale, cover, layout custom
+dei temi) sostituiscono la home classica e **nascondono la widget orologio di sistema**
+in alto (portano il proprio orologio); la springboard classica la mantiene.
 Sul dispositivo molte voci aprono i **pannelli di sistema reali** (Wi-Fi, Bluetooth,
 data/ora, lingua, permessi app).
 
@@ -89,6 +92,25 @@ cd shell
 python3 -m http.server 8091
 # apri http://127.0.0.1:8091/index.html in un browser
 ```
+
+## Anteprima live del tema (feed sul dispositivo)
+
+Dalla build installata (APK/WebView) non è possibile scambiare postMessage con lo
+Studio come nel browser. La shell supporta quindi un **feed del tema corrente**:
+lo Studio pubblica il tema su un endpoint (`/theme/current`, incluso in
+`novaos-theme-studio/server.py`) e la shell lo **polla ogni 2 secondi** e lo applica
+dal vivo, senza salvare.
+
+```text
+?preview=1&themeFeed=http://192.168.x.x:8100/theme/current
+```
+
+- `themeFeed` può essere assoluto (telefono sulla stessa rete Wi-Fi del server,
+  che risponde con **CORS aperto** per funzionare anche da `file://` dentro l'APK)
+  o relativo (stessa origine: `?preview=1&themeFeed=/theme/current`).
+- L'endpoint serve `{rev, theme}`; la shell applica solo quando `rev` cambia.
+- Sull'emulatore Android si punta a `http://10.0.2.2:8100/theme/current`.
+- Nello Studio il link pronto è nel pannello **"Sul dispositivo"**.
 
 ## Test nell'emulatore Android
 

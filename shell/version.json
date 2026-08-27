@@ -1,9 +1,9 @@
 {
   "version": "0.1.45",
-  "build": 46,
+  "build": 47,
   "minNative": 12,
   "date": "2026-08-27",
-  "notes": "App Telefono completa: tab Preferiti/Recenti/Contatti con rubrica integrata, suggerimenti contatti mentre digiti, ricerca nelle chiamate e pannello azioni contatto. Anteprima Theme Studio: device scalato in proporzione nell'iframe.",
+  "notes": "Galleria: il Cestino conserva gli elementi 30 giorni dal momento della cancellazione (anche le foto demo vecchie si ripristinano). Theme Studio: i launcher alternativi (drawer/tiles/dash/radial/cover/custom) nascondono la widget orologio di sistema in alto — il reale ora coincide col modello. Anteprima tema sul dispositivo: feed /theme/current con CORS; la shell polla e applica il tema dal vivo da ?preview=1&themeFeed=… (APK incluso).",
   "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1/NovaOS-0.1.apk",
   "files": [
     "css/style.css",

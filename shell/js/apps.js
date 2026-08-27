@@ -1097,7 +1097,7 @@ const NovaApps = (() => {
         await seed();
         let all = await os.photos.all();
         const now = Date.now();
-        const tooOld = all.filter(p => p.trash && (now - (p.ts || now)) > 30 * 86400000);
+        const tooOld = all.filter(p => p.trash && (now - (p.trashTs || p.ts || now)) > 30 * 86400000);
         if (tooOld.length) { for (const p of tooOld) await os.photos.remove(p.id); all = all.filter(p => !tooOld.includes(p)); }
         const mapItem = p => ({ real:true, id:p.id, data:p.data, ts:p.ts, album:p.album, video:!!p.video, poster:p.poster, dur:p.dur, audioTrack:p.audioTrack, name:p.name || (p.video ? "Video" : (p.album || "Foto")), fav:!!p.fav, arch:!!p.arch, trash:!!p.trash });
         all = all.map(mapItem);
@@ -1158,10 +1158,10 @@ const NovaApps = (() => {
       const selTrash = async () => {
         const n = sel.length;
         if (!await os.confirm({ title:"Spostare nel Cestino?", message: n === 1 ? "L'elemento verrà spostato nel Cestino." : n + " elementi verranno spostati nel Cestino.", okText:"Sposta" })) return;
-        for (const id of sel) await os.photos.patch(id, { trash:true, arch:false, fav:false });
+        for (const id of sel) await os.photos.patch(id, { trash:true, arch:false, fav:false, trashTs:Date.now() });
         exitSel();
       };
-      const selRestore = async () => { for (const id of sel) await os.photos.patch(id, { trash:false }); exitSel(); };
+      const selRestore = async () => { for (const id of sel) await os.photos.patch(id, { trash:false, trashTs:null }); exitSel(); };
       const selDel = async () => {
         const n = sel.length;
         if (!await os.confirm({ title:"Eliminare definitivamente?", message: "Questi elementi verranno rimossi per sempre.", okText:"Elimina" })) return;
@@ -1276,10 +1276,10 @@ const NovaApps = (() => {
         const trash = root.querySelector("#vb-trash");
         if (trash) trash.onclick = async () => {
           if (!await os.confirm({ title:"Spostare nel Cestino?", message:"La foto verrà spostata nel Cestino.", okText:"Sposta" })) return;
-          await os.photos.patch(p.id, { trash:true, fav:false }); draw();
+          await os.photos.patch(p.id, { trash:true, fav:false, trashTs:Date.now() }); draw();
         };
         const rst = root.querySelector("#vb-restore");
-        if (rst) rst.onclick = async () => { await os.photos.patch(p.id, { trash:false }); draw(); };
+        if (rst) rst.onclick = async () => { await os.photos.patch(p.id, { trash:false, trashTs:null }); draw(); };
         const del = root.querySelector("#vb-del");
         if (del) del.onclick = async () => {
           if (!await os.confirm({ title:"Eliminare definitivamente?", message:"Questa foto verrà rimossa per sempre.", okText:"Elimina" })) return;

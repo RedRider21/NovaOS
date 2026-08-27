@@ -164,6 +164,9 @@ html.nova-preview #device { width: 390px !important; height: 844px !important; m
    ============================================================ */
 #home { background-color: var(--bg); }
 .home-clock { text-align: center; margin: 14px 0 22px; }
+/* con un launcher alternativo attivo (drawer, tiles, dash, radial, cover, custom)
+   la widget orologio di sistema sparisce: i launcher portano il proprio orologio */
+#home.launcher-alt .home-clock { display: none; }
 .home-time { font-size:calc(40px*var(--fscale,1)); font-weight: 300; }
 .home-date { font-size:calc(14px*var(--fscale,1)); color: var(--text-dim); text-transform: capitalize; }
 

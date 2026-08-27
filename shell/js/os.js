@@ -7,7 +7,9 @@
 
 // Anteprima Theme Studio (?preview=1 o #preview): la shell entra in modalità
 // anteprima — niente boot animato né blocco automatico, parte direttamente dalla
-// home; riceve il tema dallo Studio via postMessage e lo applica in tempo reale.
+// home; riceve il tema dallo Studio via postMessage (iframe) oppure, sul vero
+// telefono/APK, dal "feed tema" (?preview=1&themeFeed=... che polla /theme/current)
+// e lo applica in tempo reale. Entrambe le strade usano applyTheme senza salvare.
 const IS_PREVIEW = /[?&]preview=1(\b|&|$)/.test(location.search) || location.hash.slice(1) === "preview";
 
 const OS = (() => {
@@ -841,6 +843,7 @@ const OS = (() => {
       if (cl && Array.isArray(cl.blocks) && cl.blocks.length) {
         editing = false;
         host.classList.remove("editing"); host.classList.add("launcher-alt");
+        $("#home").classList.add("launcher-alt");
         host.setAttribute("data-launcher", "custom");
         dock.style.display = "none"; dock.innerHTML = "";
         const ctx = { apps: allApps(), dock: NovaApps.dock, recent: recentApps().map(appById).filter(Boolean), open: openApp };
@@ -853,6 +856,7 @@ const OS = (() => {
     if (lch !== "springboard" && LAUNCHERS[lch] && LAUNCHERS[lch].render) {
       editing = false;
       host.classList.remove("editing"); host.classList.add("launcher-alt");
+      $("#home").classList.add("launcher-alt");
       host.setAttribute("data-launcher", lch);
       dock.style.display = "none"; dock.innerHTML = "";
       // contesto passato ai launcher: app, dock, recenti, apertura (le app non cambiano)
@@ -862,6 +866,7 @@ const OS = (() => {
       return;
     }
     host.classList.remove("launcher-alt");
+    $("#home").classList.remove("launcher-alt");
     host.removeAttribute("data-launcher");
     dock.style.display = "";
     const L = homeLayout();
@@ -2187,6 +2192,30 @@ window.addEventListener("message", (ev) => {
   else if (d.type === "reset") OS.api.resetTheme();
   else if (d.type === "navigate" && d.to) { try { OS.api.openApp(String(d.to)); } catch (_) {} }
 });
+
+// Anteprima sul dispositivo (vero telefono/APK): in ?preview=1&themeFeed=...
+// la shell polla il feed tema esposto dal Theme Studio (/theme/current) e
+// applica dal vivo il tema corrente. Vale la stessa strada dell'anteprima in
+// iframe (applyTheme senza salvare), ma funziona tra origini/dispositivi
+// diversi, dove postMessage non può arrivare.
+(() => {
+  const feed = (location.search.match(/[?&]themeFeed=([^&]+)/) || [])[1];
+  if (!feed) return;
+  let rev = null;
+  (async function poll() {
+    try {
+      const r = await fetch(decodeURIComponent(feed), { cache: "no-store" });
+      if (r.ok) {
+        const j = await r.json();
+        if (j && j.theme && typeof j.theme === "object" && j.rev !== rev) {
+          rev = j.rev;
+          OS.api.applyTheme(j.theme, { save: false });
+        }
+      }
+    } catch (_) {}
+    setTimeout(poll, 2000);
+  })();
+})();
 
 /* ============================================================
    NovaCall — schermata di chiamata dentro NovaOS.
