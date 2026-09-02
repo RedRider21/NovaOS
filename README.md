@@ -12,6 +12,9 @@ scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 > cosa resta del telefono (kernel/driver riusati), installazione passo-passo,
 > bridge "reale" a doppia modalità e nota sulle app bancarie/attestazione.
 
+> Sito di presentazione e manuale d'uso: **<https://redrider21.github.io/NovaOS/>**
+> (pubblicato da `docs/` con GitHub Pages; `docs/index.html`, `docs/manuale.html`).
+
 ## Architettura a tre livelli
 
 ```
@@ -238,6 +241,15 @@ Fatto:
   (come la griglia), così non appaiono più enormi né nel Drawer reale né nella simulazione
   del reale dello Studio (il modello in scala resta invariato).
 
+Ultime novità (0.1.52) — fix ruolo dialer:
+- **Doppio intent-filter `ACTION_DIAL`** — il ruolo di telefono predefinito su Android 10+ richiede
+  **due** filtri (uno senza scheme e uno con `scheme="tel"`): aggiunto il secondo. Senza, il sistema
+  non offre il ruolo a NovaOS e l'InCallService resta inattivo.
+- **Whitelist priv-app in `make-emulator-rom.sh`** — lo script ora pusha da solo
+  `system/privapp-permissions-novaos.xml` in `/system/etc/permissions/` (senza la whitelist,
+  Android 9+ blocca il boot con `not in privapp-permissions allowlist`). Rimossi `--user 0` dal
+  `cmd role` (NumberFormatException) e il comando inesistente `cmd telecom set-default-dialer`.
+
 Ultime novità (0.1.51) — telefonia:
 - **UI di chiamata ridisegnata in stile dialer Android** — schermata in arrivo con avatar
   grande, nome e numero, e i pulsanti **Rispondi** (verde) / **Rifiuta** (rosso) con etichette;
@@ -284,8 +296,9 @@ Validazione ROM sull'emulatore (2026-08-27, Via A):
 
 Prossimi passi (in ordine): (1) **ROM con WebView su hardware reale** via GSI (flash solo
 `system`, kernel e driver originali intatti), (2) **migrazione motore WebView → GeckoView**
-(Gradle + GeckoSession + WebExtension al posto di `addJavascriptInterface`, contenuta al
-livello contenitore), (3) pulizia dei fallback WebView-specifici, (4) **ROM definitiva**
+(piano dettagliato in **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**: Gradle +
+GeckoSession + WebExtension al posto di `addJavascriptInterface`, contenuta al livello
+contenitore), (3) pulizia dei fallback WebView-specifici, (4) **ROM definitiva**
 con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
 
 ### Ricompilare l'APK

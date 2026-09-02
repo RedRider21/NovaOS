@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sviluppo e contributi — NovaOS</title>
+<meta name="description" content="Come sviluppare NovaOS: struttura del progetto, avvio in browser ed emulatore, compilazione dell'APK, validazione, OTA e contributi.">
+<link rel="icon" href="img/logo.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="NovaOS">
+<meta property="og:title" content="Sviluppo e contributi — NovaOS">
+<meta property="og:description" content="Struttura del progetto, avvio in browser/emulatore, build dell'APK, validazione e come contribuire a NovaOS.">
+<meta property="og:url" content="https://redrider21.github.io/NovaOS/sviluppo.html">
+<meta property="og:image" content="https://redrider21.github.io/NovaOS/screens/home.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="container">
+    <a class="brand" href="index.html"><img src="img/logo.svg" alt=""><b>NovaOS</b></a>
+    <nav class="nav">
+      <a href="index.html">Presentazione</a>
+      <a href="manuale.html">Manuale</a>
+      <a href="https://github.com/RedRider21/NovaOS/releases" target="_blank" rel="noopener">Release</a>
+    </nav>
+  </div>
+</header>
+
+<section class="doc">
+  <div class="container">
+    <p class="breadcrumb"><a href="index.html">NovaOS</a> · Sviluppo e contributi</p>
+    <p class="kicker">Per chi sviluppa</p>
+    <h1>Sviluppare NovaOS</h1>
+    <p class="lead">Struttura del progetto, avvio in un browser o nell'emulatore, compilazione
+      dell'APK, validazione e canali per contribuire. Tutto senza toccare un telefono vero:
+      il codice e le verifica sono pensati per girare su un PC e un emulatore.</p>
+
+    <div class="toc">
+      <b>Indice</b>
+      <ol>
+        <li><a href="#struttura">La struttura del repository</a></li>
+        <li><a href="#browser">Avviare la shell in un browser</a></li>
+        <li><a href="#emulatore">Sull'emulatore Android</a></li>
+        <li><a href="#rom">Trasformare l'emulatore in una ROM</a></li>
+        <li><a href="#apk">Compilare l'APK</a></li>
+        <li><a href="#validazione">Validazione rapida</a></li>
+        <li><a href="#ota">Pubblicare versioni e OTA</a></li>
+        <li><a href="#temi">Temi .novatheme e catalogo</a></li>
+        <li><a href="#contribute">Contribuire</a></li>
+      </ol>
+    </div>
+
+    <h2 id="struttura">1 · La struttura del repository</h2>
+    <p>NovaOS vive in un unico repository con tre livelli ben separati:</p>
+    <pre class="doc-code">NovaOS/
+├─ shell/                     <span class="c"># web shell: l'intero "sistema" visibile (HTML/CSS/JS)</span>
+│  ├─ index.html              <span class="c"># boot · lockscreen · home · app · shade · navbar</span>
+│  ├─ css/style.css           <span class="c"># design flat, tema chiaro/scuro</span>
+│  ├─ js/os.js                <span class="c"># core: boot, blocco/PIN, window manager, notifiche, storage</span>
+│  ├─ js/apps.js              <span class="c"># app di sistema</span>
+│  ├─ sw.js · manifest.webmanifest · icon.svg
+├─ android-launcher/          <span class="c"># contenitore Android (WebView) + ponte NovaNative</span>
+│  ├─ app/src/main/java/os/nova/launcher/   <span class="c"># MainActivity, CallHub, MailBridge, InCallService</span>
+│  ├─ build-apk.sh            <span class="c"># build manuale dell'APK senza Gradle</span>
+│  └─ setup-emulator.sh       <span class="c"># SDK + emulatore + AVD "nova"</span>
+├─ system/                    <span class="c"># livello ROM (AOSP / GSI): priv-app, whitelist, script</span>
+│  └─ make-emulator-rom.sh    <span class="c"># emulatore → dispositivo NovaOS senza ricompilare AOSP</span>
+├─ docs/                      <span class="c"># sito Pages (index/manuale/sviluppo) + guide (ROM, Mail, GeckoView)</span>
+└─ themes/                    <span class="c"># catalogo del negozio temi (catalog.json)</span></pre>
+    <p>Il README del repository resta la fonte di verità e si aggiorna a ogni rilascio.</p>
+
+    <h2 id="browser">2 · Avviare la shell in un browser</h2>
+    <p>Il modo più veloce per lavorare sull'interfaccia:</p>
+    <pre class="doc-code">cd shell
+python3 -m http.server 8091
+<span class="c"># apri http://127.0.0.1:8091/index.html</span></pre>
+    <p>In questa modalità telefonia, sensori e posta vera sono <b>simulati</b> (è il comportamento
+      di default della shell quando non trova il ponte nativo), così puoi provare ogni app senza
+      un telefono.</p>
+
+    <h2 id="emulatore">3 · Sull'emulatore Android</h2>
+    <pre class="doc-code">./android-launcher/setup-emulator.sh                  <span class="c"># una tantum: SDK + AVD "nova"</span>
+
+export ANDROID_HOME=$HOME/Android/Sdk
+export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH
+emulator -avd nova -no-window -no-audio -gpu swiftshader_indirect &
+
+<span class="c"># servi la shell e aprilala nella WebView/Chrome dell'emulatore</span>
+cd shell &amp;&amp; python3 -m http.server 8091 &amp;
+adb shell am start -a android.intent.action.VIEW -d "http://10.0.2.2:8091/index.html" \
+  -n com.android.chrome/com.google.android.apps.chrome.Main
+
+<span class="c"># screenshot: adb exec-out screencap -p &gt; screen.png</span></pre>
+
+    <h2 id="rom">4 · Trasformare l'emulatore in una ROM</h2>
+    <p>Per avviare <b>direttamente in NovaOS</b> come interfaccia di sistema, senza ricompilare
+      AOSP:</p>
+    <pre class="doc-code">emulator -avd nova -writable-system -no-snapshot -gpu host
+./system/make-emulator-rom.sh</pre>
+    <p>Lo script installa NovaOS come <b>priv-app</b>, pusha la whitelist dei permessi
+      privilegiati, disattiva launcher e setup di serie e imposta Home e telefono predefinito.
+      Per tornare indietro: <code>./android-launcher/reset-device.sh</code> oppure ricrea l'AVD.
+      La guida completa (emulatore → GSI su device reale → AOSP) è nella
+      <a href="https://github.com/RedRider21/NovaOS/blob/main/docs/GUIDA-ROM.md" target="_blank" rel="noopener">Guida alla ROM</a>.</p>
+
+    <h2 id="apk">5 · Compilare l'APK</h2>
+    <p>La build è volutamente <b>senza Gradle</b> e senza IDE (servono solo <code>openjdk-17</code>
+      e l'Android SDK con build-tools 34):</p>
+    <pre class="doc-code">bash android-launcher/build-apk.sh    <span class="c"># → android-launcher/build/novaos.apk</span></pre>
+    <p>Lo script copia da solo la shell negli assets (passo [0]), così un clone pulito compila
+      senza passaggi manuali; rigenera anche <code>shell/version.json</code> e
+      <code>shell/js/version.js</code> dai numeri del manifest. L'APK include le librerie JavaMail
+      per la posta reale.</p>
+    <div class="note blue">La migrazione del motore a <b>GeckoView</b> cambierà questo percorso:
+      GeckoView si distribuisce come AAR su Maven e richiede Gradle. Il piano è descritto in
+      <a href="https://github.com/RedRider21/NovaOS/blob/main/docs/MIGRAZIONE-GECKOVIEW.md" target="_blank" rel="noopener">MIGRAZIONE-GECKOVIEW.md</a>.</div>
+
+    <h2 id="validazione">6 · Validazione rapida</h2>
+    <p>La shell si verifica in modo automatico con <b>Chrome headless</b>, senza emulatore:</p>
+    <pre class="doc-code"><span class="c"># verifica del DOM: la shell scrive un RESULT nel titolo</span>
+google-chrome --headless=new --disable-gpu --allow-file-access-from-files \
+  --dump-dom --virtual-time-budget=10000 "file://…/shot.html?to=settings&amp;report=1" \
+  | grep -o '&lt;title&gt;[^&lt;]*&lt;/title&gt;'</pre>
+    <p>In questo modo si controlla che ogni vista (home, telefono, impostazioni, launcher…) si
+      apra senza errori prima ancora di compilare l'APK. Lo stato e le validazioni via emulatore
+      sono documentati nel README.</p>
+
+    <h2 id="ota">7 · Pubblicare versioni e OTA</h2>
+    <ol>
+      <li><b>Aggiorna i numeri</b> nel manifest
+        (<code>android-launcher/app/src/main/AndroidManifest.xml</code>: <code>versionCode</code>
+        e <code>versionName</code>) e il banner <code>shell/sw.js</code> (<code>CACHE</code>).</li>
+      <li><b>Compila</b>: <code>bash android-launcher/build-apk.sh</code> rigenera versione e APK.</li>
+      <li><b>Rilascia su GitHub</b>: <code>gh release create vX.Y …/novaos.apk</code>. L'APK è il
+        <b>bootstrap</b>; la shell si aggiorna da sola leggendo
+        <code>shell/version.json</code> su <code>main</code>.</li>
+    </ol>
+    <p>Il controllo avviene all'avvio: se <code>version.json</code> è più recente dell'installato,
+      l'interfaccia propone l'aggiornamento da <em>Impostazioni → Sistema</em>.</p>
+
+    <h2 id="temi">8 · Temi .novatheme e catalogo</h2>
+    <p>Un tema (<code>.novatheme/2</code>) può portare launcher, colori, forma e stile delle icone,
+      sfondo e tipografia. La shell li importa da <em>Impostazioni → Display → Importa tema</em>
+      oppure da URL/catalogo; il catalogo del negozio vive in <code>themes/catalog.json</code>.
+      Le icone vettoriali dei temi sono applicate come immagini, mai come codice: importare un tema
+      non è pericoloso.</p>
+
+    <h2 id="contribute">9 · Contribuire</h2>
+    <ul>
+      <li><b>Segnalazioni</b>: apri un issue sul repository GitHub indicando versione
+        (da <em>Impostazioni → Info sul telefono</em>) e come riprodurre.</li>
+      <li><b>Modifiche</b>: PR sul ramo <code>main</code>. Regole semplici: la shell deve restare
+        avviabile in un browser (fallback simulati), il README si aggiorna a ogni rilascio e le
+        pagine pubbliche (README, sito, release) restano in italiano.</li>
+      <li><b>Aree di lavoro aperte</b>: la roadmap nel README — ROM su hardware reale via GSI,
+        migrazione GeckoView (piano già scritto), poi la ROM definitiva.</li>
+    </ul>
+
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <a class="f-brand" href="index.html"><img src="img/logo.svg" alt="">NovaOS</a>
+    <nav>
+      <a href="index.html">Presentazione</a>
+      <a href="manuale.html">Manuale d'uso</a>
+      <a href="https://github.com/RedRider21/NovaOS" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <small>Sviluppo · NovaOS 0.1.52 (build 54)</small>
+  </div>
+</footer>
+
+</body>
+</html>
