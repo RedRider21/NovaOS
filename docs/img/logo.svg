@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="NovaOS">
+  <defs>
+    <linearGradient id="ng" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5b8cff"/>
+      <stop offset="55%" stop-color="#8a63ff"/>
+      <stop offset="100%" stop-color="#c15bff"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="26" fill="#0b0f17"/>
+  <circle cx="60" cy="60" r="40" fill="none" stroke="url(#ng)" stroke-width="3" stroke-linecap="round" stroke-dasharray="150 90"/>
+  <circle cx="60" cy="60" r="28" fill="url(#ng)"/>
+  <path fill="#fff" d="M60 36 C62 51, 69 58, 84 60 C69 62, 62 69, 60 84 C58 69, 51 62, 36 60 C51 58, 58 51, 60 36 Z"/>
+</svg>

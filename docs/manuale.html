@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manuale d'uso — NovaOS</title>
+<meta name="description" content="Manuale d'uso di NovaOS: installazione, impostazione come Home e telefono predefinito, navigazione, app, launcher, temi, aggiornamenti e backup.">
+<link rel="icon" href="img/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="container">
+    <a class="brand" href="index.html"><img src="img/logo.svg" alt=""><b>NovaOS</b></a>
+    <nav class="nav">
+      <a href="index.html">Presentazione</a>
+      <a href="https://github.com/RedRitter21/NovaOS/blob/main/docs/GUIDA-ROM.md">Guida alla ROM</a>
+      <a href="https://github.com/RedRitter21/NovaOS/releases" target="_blank" rel="noopener">Release</a>
+    </nav>
+  </div>
+</header>
+
+<section class="doc">
+  <div class="container">
+    <p class="breadcrumb"><a href="index.html">NovaOS</a> · Manuale d'uso</p>
+    <p class="kicker">Manuale d'uso</p>
+    <h1>Usare NovaOS</h1>
+    <p class="lead">Dal primo avvio alla personalizzazione completa: installazione, Home e telefono
+      predefinito, navigazione tra app e launcher, temi, aggiornamenti e backup.
+      NovaOS 0.1.52 (build 54).</p>
+
+    <div class="toc">
+      <b>Indice</b>
+      <ol>
+        <li><a href="#installare">Installare e diventare la Home</a></li>
+        <li><a href="#telefono">NovaOS come telefono (chiamate vere)</a></li>
+        <li><a href="#primo">Primo avvio e navigazione</a></li>
+        <li><a href="#home">Organizzare la home</a></li>
+        <li><a href="#app">Le app principali</a></li>
+        <li><a href="#mail">La posta reale (SMTP/IMAP)</a></li>
+        <li><a href="#launcher">Home e launcher: otto stili</a></li>
+        <li><a href="#temi">Personalizzazione e temi</a></li>
+        <li><a href="#aggiornamenti">Aggiornamenti OTA</a></li>
+        <li><a href="#backup">Backup e ripristino</a></li>
+        <li><a href="#ripristinare">Tornare al telefono di serie</a></li>
+        <li><a href="#limiti">Limiti e note</a></li>
+      </ol>
+    </div>
+
+    <h2 id="installare">1 · Installare e diventare la Home</h2>
+    <p><b>Requisiti.</b> Un telefono Android (8.0 o superiore consigliato) o un emulatore.
+      L'APK di NovaOS è autonomo: contiene al suo interno l'intera shell web, quindi funziona
+      <b>anche offline</b>.</p>
+    <ol>
+      <li>Scarica l'ultimo APK dalla pagina
+        <a href="https://github.com/RedRitter21/NovaOS/releases/latest" target="_blank" rel="noopener">Release su GitHub</a>
+        (file <code>NovaOS-….apk</code>).</li>
+      <li>Apri il file e consenti l'installazione da sorgenti sconosciute se richiesto.</li>
+      <li>Apri NovaOS come una normale app: vedrai il sistema avviarsi con la sua interfaccia.</li>
+    </ol>
+    <p><b>Per usarlo come vero sistema</b> premi il tasto <kbd>Home</kbd> del telefono: Android
+      chiederà quale app usare come schermata iniziale. Scegli <b>NovaOS</b> e poi <b>Sempre</b>.
+      In alternativa: <em>Impostazioni Android → App → App predefinite → App Home → NovaOS</em>.</p>
+    <div class="note blue">In questa modalità NovaOS non disinstalla nulla: resta un'app come le altre
+      e il launcher originale può essere riselezionato in qualsiasi momento. Per la trasformazione
+      «completa» (launcher di sistema disattivati, boot diretto in NovaOS) vedi la
+      <a href="https://github.com/RedRitter21/NovaOS/blob/main/docs/GUIDA-ROM.md">Guida alla ROM</a>.</div>
+
+    <h2 id="telefono">2 · NovaOS come telefono (chiamate vere)</h2>
+    <p>Per ricevere e gestire le chiamate <b>dentro l'interfaccia di NovaOS</b> (schermata di chiamata
+      in arrivo, rispondi/rifiuta, muto, vivavoce) NovaOS deve essere il <b>telefono predefinito</b>:</p>
+    <ol>
+      <li>Apri <b>Impostazioni → Rete e connettività → Telefono predefinito</b>.</li>
+      <li>Tocca la voce: se NovaOS non è già il default, si apre il pannello del ruolo di Android.
+        Seleziona NovaOS.</li>
+    </ol>
+    <p>Quando compose o ricevi una chiamata, tutto avviene nella web app: la schermata in arrivo
+      mostra avatar, nome e numero con i pulsanti <b>Rispondi</b> (verde) e <b>Rifiuta</b> (rosso);
+      in conversazione hai <b>Termina</b>, <b>Muto</b>, <b>Tastierino DTMF</b> e <b>Vivavoce</b>.
+      Se invece non imposti NovaOS come default, i link <code>tel:</code> aprono comunque il dialer
+      col numero precompilato, ma la telefonata vera la gestisce il dialer di sistema.</p>
+    <p><b>Prova senza ricevere chiamate.</b> Nel Telefono, il tasto verde (in basso) avvia una
+      <b>chiamata simulata</b> quando NovaOS gira in un browser o in anteprima; sul dispositivo reale
+      inoltra invece la chiamata vera tramite il dialer/la radio. Sull'<b>emulatore</b> puoi simulare
+      una chiamata in arrivo con:</p>
+    <pre class="doc-code">adb emu gsm call 3401234567      <span class="c"># squillo → schermata di NovaOS</span>
+adb emu gsm cancel 3401234567    <span class="c"># termina la chiamata</span></pre>
+
+    <h2 id="primo">3 · Primo avvio e navigazione</h2>
+    <ul>
+      <li><b>Avvio.</b> Compare il logo animato, poi il blocco schermo. Per impostare un metodo di
+        sblocco vai in <b>Impostazioni → Sicurezza e blocco</b>: nessuno, scorrimento o <b>PIN</b>,
+        con blocco automatico per inattività.</li>
+      <li><b>Scorri dal bordo superiore</b> per aprire la <b>tendina rapida</b>: tile per Wi-Fi,
+        Bluetooth, dati, luminosità (con slider) e altre scorciatoie, più le notifiche. Le notifiche
+        arrivano anche come <b>bolle heads-up</b> sopra la home.</li>
+      <li><b>Dock.</b> In basso ci sono quattro app sempre visibili (Telefono, Messaggi, Fotocamera,
+        Browser). Sopra, la griglia della home.</li>
+      <li><b>Tornare alla home.</b> Premi il tasto Home di Android (o l'icona di casa nella barra di
+        navigazione). Il tasto <b>Indietro</b> chiude l'app corrente.</li>
+      <li><b>Cambiare rapidamente l'aspetto.</b> Da <b>Impostazioni → Display</b> scegli tema
+        chiaro/scuro, luminosità, dimensione del testo, sfondo e lo stile della home.</li>
+      <li>Le Impostazioni hanno una <b>barra di ricerca</b>: digita una voce e le voci corrispondenti
+        restano filtrate.</li>
+    </ul>
+
+    <h2 id="home">4 · Organizzare la home</h2>
+    <p>La <b>Griglia</b> classica usa pagine di slot <b>4×4 a posizionamento libero</b>: ogni icona
+      resta esattamente dove la metti, anche lasciando spazi vuoti.</p>
+    <ul>
+      <li><b>Sposta</b> un'icona: tieni premuta, poi trascinala (se stai modificando, puoi trascinarla
+        tra le pagine o verso il dock).</li>
+      <li><b>Cartelle:</b> trascina un'icona sopra un'altra per raggrupparle.</li>
+      <li><b>Pagine:</b> scorri lateralmente con un gesto di flick per cambiare pagina della home.</li>
+      <li><b>Sfondo e colori:</b> in <b>Impostazioni → Display → Sfondo</b> scegli un colore o
+        un'immagine (Riempi / Adatta / Zoom, con regolazione della posizione).</li>
+    </ul>
+
+    <h2 id="app">5 · Le app principali</h2>
+    <table>
+      <tr><th>App</th><th>Come si usa</th></tr>
+      <tr><td><b>Telefono</b></td><td>Schede Preferiti, Recenti (con ricerca), Rubrica e Tastierino.
+        Mentre digiti compaiono i contatti suggeriti; dalla cronologia puoi richiamare o aggiungere ai
+        contatti. Il tasto verde compone (simulato nel browser, reale sul dispositivo).</td></tr>
+      <tr><td><b>Rubrica</b></td><td>Aggiungi, modifica ed elimina contatti (nome, telefono, email).
+        Da un contatto chiami, mandi SMS o apri la mail in un tocco.</td></tr>
+      <tr><td><b>Messaggi</b></td><td>Nuova conversazione partendo dai contatti; ogni messaggio ha il
+        suo orario, puoi rispondere in linea ed eliminare conversazioni.</td></tr>
+      <tr><td><b>Mail</b></td><td>Client reale SMTP/IMAP, vedi sezione <a href="#mail">posta</a>.
+        Nel browser, senza bridge, resta una simulazione locale.</td></tr>
+      <tr><td><b>Browser</b></td><td>Cronologia e preferiti. Sul dispositivo apre i siti in una
+        <b>WebView nativa a schermo intero</b> (niente limiti da iframe). Usa il pulsante
+        <b>Vista desktop</b> per WhatsApp/Telegram Web: così compare il QR di accesso.</td></tr>
+      <tr><td><b>Fotocamera</b></td><td>Anteprima live, scatto salvato in Galleria, import da file.</td></tr>
+      <tr><td><b>Galleria</b></td><td>Scheda <b>Foto</b>, <b>Cerca</b> e <b>Raccolte</b> (creabili e
+        eliminabili), <b>Ricordi</b> per mese, raggruppamenti per giorno. Pressione lunga per la
+        selezione multipla: preferito, condividi, cestino. Il <b>cestino</b> conserva 30 giorni e
+        permette di ripristinare. L'<b>editor</b> applica filtri, luminosità/contrasto/saturazione e
+        rotazione, salvando come nuova foto.</td></tr>
+      <tr><td><b>Meteo</b></td><td>Cerca una città: previsioni reali a 7 giorni (percepita, umidità,
+        vento) via open-meteo.</td></tr>
+      <tr><td><b>Note</b></td><td>Più note con ricerca, cartelle/categorie, colori e formattazione
+        markdown con anteprima; puoi fissare le note importanti.</td></tr>
+      <tr><td><b>Calendario</b></td><td>Vista mese, eventi per giorno con aggiunta ed eliminazione.</td></tr>
+      <tr><td><b>Orologio</b></td><td>Orologio, sveglie, cronometro e fusi orari del mondo.</td></tr>
+      <tr><td><b>File</b></td><td>«I miei file» con cartelle e file di testo: crea, rinomina, sposta,
+        elimina; ricerca e riepilogo dello spazio. Le cartelle intelligenti <b>Immagini</b> e
+        <b>Note</b> sono collegate a foto e note reali.</td></tr>
+      <tr><td><b>Store</b></td><td>Aggiungi una web app di terze parti indicandone l'URL, scegliendo
+        l'icona (emoji, favicon del sito o immagine) e modificando nome, colore e indirizzo quando
+        vuoi.</td></tr>
+    </table>
+
+    <h2 id="mail">6 · La posta reale (SMTP/IMAP)</h2>
+    <p>Sul dispositivo (APK con bridge), Mail è un client <b>vero</b>: invio via SMTP e sincronizzazione
+      IMAP. Scegli il tuo provider nella lista che precompila host e porte (Gmail, Outlook, Yahoo,
+      iCloud, Libero, Aruba, PEC, GMX, TIM…) oppure configura a mano. La password è cifrata
+      nell'<b>Android Keystore</b> e non viene mai salvata in chiaro. Sono disponibili cartelle
+      (arrivo/inviati/bozze/cestino), ricerca, rispondi con citazione, inoltro e allegati con
+      anteprima. Per la configurazione passo-passo dei principali provider vedi la
+      <a href="https://github.com/RedRitter21/NovaOS/blob/main/docs/GUIDA-MAIL.md">Guida alla Mail</a>.</p>
+
+    <h2 id="launcher">7 · Home e launcher: otto stili</h2>
+    <p>In <b>Impostazioni → Display → «Home · launcher»</b> puoi cambiare la schermata principale:</p>
+    <table>
+      <tr><th>Stile</th><th>Che cosa fa</th></tr>
+      <tr><td>Griglia</td><td>Icone a pagine 4×4 a posizionamento libero + dock (quella predefinita).</td></tr>
+      <tr><td>Lista</td><td>Elenco con ricerca; trascina la maniglia per riordinare le app.</td></tr>
+      <tr><td>Drawer</td><td>Menu laterale a scomparsa con le quick action in alto.</td></tr>
+      <tr><td>Tiles</td><td>Riquadri colorati a tutta larghezza.</td></tr>
+      <tr><td>Dashboard</td><td>Widget, orologio e app recenti.</td></tr>
+      <tr><td>Radiale</td><td>App disposte in orbita attorno all'hub centrale.</td></tr>
+      <tr><td>Cover flow</td><td>Carosello di grandi schede.</td></tr>
+      <tr><td>Indice A-Z</td><td>Elenco alfabetico con scorrimento rapido.</td></tr>
+    </table>
+    <p>Nei launcher Dashboard e Radiale non tutte le app sono in vista: scorri (o trascina) per
+      raggiungere le altre. Quando attivi un launcher alternativo, il widget orologio di sistema in
+      alto scompare perché il launcher porta il proprio orologio.</p>
+
+    <h2 id="temi">8 · Personalizzazione e temi</h2>
+    <p>In <b>Impostazioni → Display</b> trovi tutto ciò che riguarda l'aspetto:</p>
+    <ul>
+      <li><b>Tema</b> scuro/chiaro; <b>Luminosità</b> (con adattiva); <b>Dimensione testo</b>.</li>
+      <li><b>Icone</b>: stile colorato o contorno, forma (cerchio/squircle/quadrato) e colori di
+        fondo, risalto e glifo.</li>
+      <li><b>Sfondo</b>: colore o immagine con inquadratura regolabile.</li>
+      <li><b>Tema · condivisione</b>: <b>Esporta</b> il tema corrente in un file
+        <code>.novatheme</code>, <b>Importa</b> un tema ricevuto (file <code>.json</code> o
+        <code>.novatheme</code>) oppure <b>Condividi</b> il tema via sistema. I temi possono portare
+        con sé launcher, colori, forma e stile delle icone, sfondo e tipografia.</li>
+      <li><b>Negozio temi</b>: incolla l'URL di un tema remoto (<code>.novatheme.json</code>) per
+        scaricarlo, oppure <b>Carica il catalogo temi</b> per sfogliare quelli pubblicati.</li>
+    </ul>
+    <div class="note">Importare un tema <b>non</b> è pericoloso: le icone vettoriali dei temi sono
+      applicate come immagini, mai come codice eseguibile. In ogni caso, da «Temi installati» puoi
+      <b>Ripristina di sistema</b> per tornare all'aspetto predefinito in un tocco.</div>
+
+    <h2 id="aggiornamenti">9 · Aggiornamenti OTA</h2>
+    <p>NovaOS controlla autonomamente gli aggiornamenti <b>all'avvio</b> confrontando la versione
+      corrente con <code>shell/version.json</code> sul repository. Quando c'è una versione più recente:</p>
+    <ul>
+      <li>compare una notifica di <b>aggiornamento disponibile</b>;</li>
+      <li>da <b>Impostazioni → Sistema</b> puoi avviare l'installazione: sul dispositivo scarica e
+        installa l'APK nuovo; in modalità web/PWA svuota la cache e ricarica.</li>
+    </ul>
+    <p>Il controllo richiede una connessione verso GitHub. Se non vuoi aggiornare, ignora la
+      notifica: NovaOS continua a funzionare con la versione installata.</p>
+
+    <h2 id="backup">10 · Backup e ripristino</h2>
+    <ul>
+      <li><b>Backup dati:</b> in <b>Impostazioni → Sistema → Backup dati</b> esporti i dati di NovaOS
+        in un file JSON (contatti, note, impostazioni, dati delle app…).</li>
+      <li><b>Ripristino:</b> dalla stessa schermata (o dall'app File → voce Backup) scegli un backup
+        interno e ripristinalo: i dati vengono riportati e l'interfaccia si riavvia.</li>
+      <li>Puoi anche salvare il file di backup fuori dal telefono (cloud, PC) per conservarlo.</li>
+    </ul>
+
+    <h2 id="ripristinare">11 · Tornare al telefono di serie</h2>
+    <p>Se NovaOS è solo un'app launcher, il ripristino è immediato:</p>
+    <ol>
+      <li><b>App Home</b>: <em>Impostazioni Android → App → App predefinite → App Home</em> e
+        riseleziona il launcher originale.</li>
+      <li><b>App telefono</b>: nella stessa schermata riseleziona il dialer di sistema.</li>
+      <li>Poi puoi disinstallare NovaOS come una normale app.</li>
+    </ol>
+    <p>Con adb e lo script di supporto:</p>
+    <pre class="doc-code">./android-launcher/reset-device.sh   <span class="c"># Home + dialer di serie e (opz.) disinstalla NovaOS</span></pre>
+    <p>Per un dispositivo trasformato in ROM (priv-app) vedi la
+      <a href="https://github.com/RedRitter21/NovaOS/blob/main/docs/GUIDA-ROM.md">Guida alla ROM</a>: lì il ripristino richiede di riflashare la
+      partizione di sistema.</p>
+
+    <h2 id="limiti">12 · Limiti e note</h2>
+    <ul>
+      <li><b>Browser e anteprima</b>: chiamate, SMS, sensori e mail vera sono simulati; servono il
+        bridge <code>NovaNative</code> (APK) per l'hardware reale.</li>
+      <li><b>Nessun servizio Google</b>: NovaOS non include app né servizi Google. Alcune app
+        bancarie si appoggiano a Play Integrity e potrebbero non riconoscere il sistema: la questione
+        è discussa nella <a href="https://github.com/RedRitter21/NovaOS/blob/main/docs/GUIDA-ROM.md">Guida alla ROM</a>.</li>
+      <li><b>Motore web</b>: oggi la shell gira nella WebView di Android. Il prossimo passo è il
+        passaggio a <b>GeckoView</b>, sempre dietro la stessa interfaccia.</li>
+      <li><b>Nome e versione</b>: «NovaOS 0.1.52 (build 54)». Il nome è un segnaposto modificabile in
+        un punto (<code>shell/index.html</code> e <code>manifest.webmanifest</code>).</li>
+      <li>Per lo sviluppo dal codice (servire <code>shell/</code> in un browser, emulatore, build
+        dell'APK) consulta il <a href="https://github.com/RedRitter21/NovaOS" target="_blank" rel="noopener">README
+        del repository</a>.</li>
+    </ul>
+
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <a class="f-brand" href="index.html"><img src="img/logo.svg" alt="">NovaOS</a>
+    <nav>
+      <a href="index.html">Presentazione</a>
+      <a href="https://github.com/RedRitter21/NovaOS/blob/main/docs/GUIDA-ROM.md">Guida alla ROM</a>
+      <a href="https://github.com/RedRitter21/NovaOS/blob/main/docs/GUIDA-MAIL.md">Guida alla Mail</a>
+      <a href="https://github.com/RedRitter21/NovaOS" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <small>Manuale · NovaOS 0.1.52 (build 54)</small>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NovaOS — un sistema operativo per smartphone fatto di web</title>
+<meta name="description" content="NovaOS è un sistema operativo per smartphone con interfacce web su base Android, nello spirito di Firefox OS e KaiOS. Home, launcher e app sono HTML, CSS e JavaScript.">
+<link rel="icon" href="img/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="container">
+    <a class="brand" href="index.html"><img src="img/logo.svg" alt=""><b>NovaOS</b><span class="tagline">0.1.52</span></a>
+    <nav class="nav">
+      <a href="#idea">Il progetto</a>
+      <a href="#home">Home</a>
+      <a href="#app">App</a>
+      <a href="#architettura">Architettura</a>
+      <a href="#stato">Stato</a>
+      <a href="manuale.html">Manuale</a>
+      <a class="btn small" href="https://github.com/RedRitter21/NovaOS/releases" target="_blank" rel="noopener">Scarica l'APK</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ================= HERO ================= -->
+<section class="hero">
+  <div class="container">
+    <div>
+      <span class="hero-badge"><span class="dot"></span>Sistema operativo · interfacce web · base Android</span>
+      <h1>Un telefono il cui <em>sistema</em> è il web.</h1>
+      <p class="lead">NovaOS è un sistema operativo per smartphone nello spirito di Firefox OS e KaiOS:
+      Android gestisce l'essenziale — kernel, driver, radio, sensori — mentre tutta l'esperienza
+      d'uso, dalla home al blocco schermo alle app, è scritta in HTML, CSS e JavaScript.
+      Open source, senza account e senza servizi cloud obbligatori.</p>
+      <div class="hero-cta">
+        <a class="btn grad" href="https://github.com/RedRitter21/NovaOS/releases/latest" target="_blank" rel="noopener">
+          Scarica NovaOS 0.1.52</a>
+        <a class="btn outline" href="manuale.html">Leggi il manuale</a>
+        <a class="btn outline" href="https://github.com/RedRitter21/NovaOS" target="_blank" rel="noopener">Codice su GitHub</a>
+      </div>
+      <div class="hero-meta">
+        <div><b>15+</b> app di sistema</div>
+        <div><b>8</b> stili di home</div>
+        <div><b>100%</b> interfaccia web</div>
+        <div><b>0</b> account richiesti</div>
+      </div>
+    </div>
+    <div class="phone-stage">
+      <div class="phone"><div class="scr"><img src="screens/home.png" alt="La home di NovaOS: griglia di app con dock"></div></div>
+      <div class="phone mini"><div class="scr"><img src="screens/lch-tiles.png" alt="Launcher Tiles di NovaOS"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= IDEE CHIAVE ================= -->
+<section class="block" id="idea">
+  <div class="container">
+    <p class="kicker">L'idea</p>
+    <h2>Perché scrivere un sistema operativo in HTML?</h2>
+    <p class="sub">Perché l'interfaccia di un telefono — home, app, notifiche — è fatta di elementi
+    che il web disegna benissimo. Così NovaOS concentra ogni sforzo dove serve davvero: pixel,
+    interazioni e personalizzazione, senza toccare il cuore hardware che Android già gestisce.</p>
+    <div class="value-grid">
+      <div class="value">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><rect x="5" y="3" width="14" height="18" rx="2.4"/><path d="M9 8.5h6M9 12h6M9 15.5h3"/></svg></div>
+        <h4>Interfaccia 100% web</h4>
+        <p>Home, blocco schermo, tendina rapida, notifiche e app sono HTML/CSS/JS: funzionano in un
+        browser, in una WebView o — in futuro — in un motore GeckoView, con lo stesso codice.</p>
+      </div>
+      <div class="value">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h.01M3 14h18"/></svg></div>
+        <h4>Android come base</h4>
+        <p>Kernel, driver, radio e sensori del telefono restano quelli originali. NovaOS viaggia sopra
+        come launcher di sistema: il dispositivo continua a essere un Android, solo con un'altra faccia.</p>
+      </div>
+      <div class="value">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg></div>
+        <h4>Home intercambiabili</h4>
+        <p>La home non è scolpita nella pietra: griglia, drawer, dashboard, tessere, elenco, radiale,
+        cover flow o il layout di un tema importato — cambiano aspetto e funzioni, le app restano.</p>
+      </div>
+      <div class="value">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M12 3l2.4 5.6L20 9.3l-4.3 4 1.1 5.9L12 16.6 7.2 19.2l1.1-5.9L4 9.3l5.6-.7z"/></svg></div>
+        <h4>Privacy per progetto</h4>
+        <p>Nessun account richiesto, nessun cloud imposto. I dati vivono sul dispositivo (o dove scegli tu):
+        meteo e mail usano i servizi che indichi, il resto funziona anche in assenza di rete.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HOME / LAUNCHER ================= -->
+<section class="block alt" id="home">
+  <div class="container">
+    <p class="kicker">La home</p>
+    <h2>La home, come la vuoi tu</h2>
+    <p class="sub">La schermata principale non è un'unica griglia fissa: NovaOS offre otto stili
+      di home, selezionabili da <em>Impostazioni → Display → «Home · launcher»</em>. Ognuno porta il
+      proprio orologio e la propria logica — tessere, widget, elenchi — ma le app sono sempre le stesse.</p>
+    <div class="gallery">
+      <div class="lcard">
+        <div class="phone"><div class="scr"><img src="screens/lch-tiles.png" alt="Launcher Tiles"></div></div>
+        <h4>Tiles</h4><p>Riquadri colorati a tutta larghezza</p>
+      </div>
+      <div class="lcard">
+        <div class="phone"><div class="scr"><img src="screens/lch-dash.png" alt="Launcher Dashboard"></div></div>
+        <h4>Dashboard</h4><p>Widget, orologio e app recenti</p>
+      </div>
+      <div class="lcard">
+        <div class="phone"><div class="scr"><img src="screens/lch-index.png" alt="Launcher Indice A-Z"></div></div>
+        <h4>Indice A-Z</h4><p>Elenco alfabetico con scorrimento rapido</p>
+      </div>
+      <div class="lcard">
+        <div class="phone"><div class="scr"><img src="screens/lch-drawer.png" alt="Launcher Drawer"></div></div>
+        <h4>Drawer</h4><p>Menu laterale a scomparsa con quick action</p>
+      </div>
+    </div>
+    <p class="sub" style="margin-top:26px">E ancora: la <b>Griglia</b> classica a pagine con dock,
+      la <b>Lista</b> con ricerca, il <b>Radiale</b> con le app in orbita, il <b>Cover flow</b> a grandi
+      schede — oppure un layout personalizzato importato da un tema. La griglia di base è editabile:
+      icone a posizionamento libero (slot 4×4), trascinamento tra pagine, cartelle e swipe.</p>
+  </div>
+</section>
+
+<!-- ================= APP ================= -->
+<section class="block" id="app">
+  <div class="container">
+    <p class="kicker">Le app</p>
+    <h2>Quindici app di sistema, senza servizi imposti</h2>
+    <p class="sub">Tutte le app nascono dal progetto (repository <code>shell/</code>) e funzionano offline
+      nell'APK; molte si appoggiano a dati reali solo se glieli consenti tu.</p>
+    <div class="app-grid">
+      <div class="app"><div class="glyph" style="background:#30d158">📞</div><div><h4>Telefono</h4>
+        <p>Dialer stile Android: preferiti, recenti con ricerca, tastierino con suggerimenti contatti,
+        cronologia richiamabile e schermata di chiamata in corso con muto, vivavoce e tastierino DTMF.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#0a84ff">👥</div><div><h4>Rubrica</h4>
+        <p>Contatti con nome, telefono ed email; chiama, scrivi SMS o apri la mail con un tocco dal contatto.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#34c759">💬</div><div><h4>Messaggi</h4>
+        <p>Conversazioni dai contatti, orari per messaggio, risposte contestuali, avatar ed eliminazione.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#5e5ce6">✉️</div><div><h4>Mail</h4>
+        <p>Client email reale SMTP/IMAP con selettore di provider (Gmail, Outlook, Libero, Aruba, PEC…),
+        cartelle, ricerca e allegati. Le password sono cifrate nell'Android Keystore.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#8e8e93">🌐</div><div><h4>Browser</h4>
+        <p>Cronologia e preferiti. Sul dispositivo apre i siti in una WebView nativa a schermo intero,
+        con vista desktop automatica per WhatsApp e Telegram Web.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#ff375f">📷</div><div><h4>Fotocamera</h4>
+        <p>Anteprima live, scatto salvato in Galleria e import da file.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#ff9f0a">🖼️</div><div><h4>Galleria</h4>
+        <p>Stile Google Foto: scheda foto, ricerca, raccolte creabili, ricordi per mese, preferiti,
+        cestino con ripristino (30 giorni) ed editor con filtri.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#40c8e0">⛅</div><div><h4>Meteo</h4>
+        <p>Previsioni reali a 7 giorni via open-meteo: geocoding della città, percepita, umidità e vento.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#bf5af2">📝</div><div><h4>Note</h4>
+        <p>Multi-nota con ricerca, cartelle, colori, note fissate e formattazione markdown con anteprima.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#0a84ff">🧮</div><div><h4>Calcolatrice</h4>
+        <p>Calcolo di espressioni con operatori.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#30d158">🕒</div><div><h4>Orologio</h4>
+        <p>Orologio, sveglie, cronometro e fusi orari del mondo con copertura globale.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#5e5ce6">📅</div><div><h4>Calendario</h4>
+        <p>Vista mese, eventi per giorno, aggiunta ed eliminazione, navigazione tra i mesi.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#8e8e93">🗂️</div><div><h4>File</h4>
+        <p>Gestore reale: cartelle e file di testo creabili, rinominabili e spostabili, con ricerca,
+        riepilogo spazio e cartelle intelligenti per Immagini e Note.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#af52de">🛒</div><div><h4>Store</h4>
+        <p>Installa web app di terze parti da URL, con scelta di icona, anteprima e modifica
+        di nome, URL, icona e colore.</p></div></div>
+      <div class="app"><div class="glyph" style="background:#8e8e93">⚙️</div><div><h4>Impostazioni</h4>
+        <p>Rete, display, suoni, sicurezza (PIN), app, batteria, archiviazione, accessibilità e
+        aggiornamenti di sistema OTA dalla stessa schermata.</p></div></div>
+    </div>
+    <p class="sub" style="margin-top:22px">Funzioni di sistema trasversali: blocco schermo con PIN o
+      swipe, tendina rapida stile Android, tema chiaro/scuro, luminosità adattiva, icone
+      personalizzabili, notifiche heads-up, suonerie selezionabili, ricerca nelle impostazioni,
+      backup dati in JSON e aggiornamento OTA automatico.</p>
+  </div>
+</section>
+
+<!-- ================= ARCHITETTURA ================= -->
+<section class="block alt" id="architettura">
+  <div class="container">
+    <p class="kicker">Dentro il sistema</p>
+    <h2>Tre livelli, un solo telefono</h2>
+    <p class="sub">NovaOS non sostituisce Android: ci vive sopra. L'hardware e i driver restano quelli
+      del costruttore; ciò che cambia è tutto ciò che si vede e si tocca.</p>
+    <div class="arch">
+      <div class="layer l2">
+        <div class="n" style="background:var(--grad)">2</div>
+        <div><h4>Web shell — l'interfaccia</h4>
+        <p>Tutto il «sistema» visibile: boot con logo, blocco schermo, home, app, notifiche, tendina.
+        È HTML/CSS/JS e vive nella cartella <code>shell/</code>: si sviluppa e si prova in un browser.</p></div>
+      </div>
+      <div class="layer l1">
+        <div class="n" style="background:#2b6be2">1</div>
+        <div><h4>Launcher Android — il ponte con l'hardware</h4>
+        <p>Una piccola app (WebView) che apre la shell a schermo intero e la espone come Home.
+        Il bridge <code>NovaNative</code> collega la web app a chiamate, SMS, batteria, sensori
+        e alla posta reale via JavaMail.</p></div>
+      </div>
+      <div class="layer l0">
+        <div class="n">0</div>
+        <div><h4>Base Android — il cuore che resta intatto</h4>
+        <p>Kernel, driver, radio e sensori del telefono. Sulla ROM definitiva NovaOS è innestato come
+        app di sistema (priv-app) con whitelist di privilegi: si flasha la sola partizione
+        <code>system</code>, lasciando <code>vendor</code> e <code>boot</code> originali.</p></div>
+      </div>
+    </div>
+    <div class="split-grid" style="margin-top:40px">
+      <div>
+        <h3 style="font-size:22px">Da un'idea alla ROM</h3>
+        <ul class="checks">
+          <li><span class="t">✓</span><div><b>Launcher come Home reale.</b> Il manifest dichiara la
+            categoria HOME: il sistema offre NovaOS come launcher del dispositivo.
+            <small>Verificato su emulatore AOSP 14: l'emulatore boota direttamente in NovaOS.</small></div></li>
+          <li><span class="t">✓</span><div><b>Telefono predefinito.</b> Doppio filtro ACTION_DIAL per
+            Android 10+: NovaOS può gestire le chiamate in arrivo nella propria interfaccia
+            (InCallService), con rispondi, rifiuta, muto e vivavoce.
+            <small>Ruolo DIALER assegnato e verificato.</small></div></li>
+          <li><span class="t">✓</span><div><b>Toggle di sistema reali.</b> Con i privilegi da app di
+            sistema gli interruttori di Wi-Fi, Bluetooth e dati commutano l'hardware in-process,
+            senza uscire da NovaOS. <small>In modalità app aprono i pannelli ufficiali.</small></div></li>
+          <li><span class="t">✓</span><div><b>Installabile a strati.</b> Prima APK sul tuo Android,
+            poi come priv-app su un'immagine di sistema, infine compilata in una ROM dedicata.
+            <small>Guida passo-passo nella <a href="https://github.com/RedRitter21/NovaOS/blob/main/docs/GUIDA-ROM.md">GUIDA-ROM</a>.</small></div></li>
+        </ul>
+      </div>
+      <div>
+        <h3 style="font-size:22px">Uno sviluppo senza hardware</h3>
+        <p class="sub">Tutto si può provare subito, dal browser all'emulatore Android, prima di
+          toccare un telefono vero:</p>
+        <ul class="checks">
+          <li><span class="t">✓</span><div><b>In un browser.</b> Basta servire <code>shell/</code>
+            con un server locale: home, app e launcher funzionano identici.
+            <small>Chiamate e sensori passano in modalità simulata.</small></div></li>
+          <li><span class="t">✓</span><div><b>Sull'emulatore.</b> <code>setup-emulator.sh</code> crea
+            l'AVD; <code>make-emulator-rom.sh</code> lo trasforma in un dispositivo NovaOS senza
+            ricompilare AOSP.</div></li>
+          <li><span class="t">✓</span><div><b>Test automatici.</b> La shell si verifica con Chrome
+            headless e l'APK si compila con <code>build-apk.sh</code>, senza Gradle e senza IDE.</div></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= STATO E STRADA ================= -->
+<section class="block" id="stato">
+  <div class="container">
+    <p class="kicker">Stato e prossimi passi</p>
+    <h2>Dove siamo</h2>
+    <p class="sub">Prototipo completo e funzionante, testato su emulatore Android (AOSP 14): 15 app
+      operative, home di sistema, telefono predefinito e toggle privilegiati verificati. Le release
+      con l'APK sono su GitHub; la shell si aggiorna da sola via OTA leggendo
+      <code>shell/version.json</code>.</p>
+    <ol class="road">
+      <li><span class="s">fatto</span><div><b>Release 0.1.52 — telefonia</b><p>UI di chiamata ridisegnata,
+        InCallService abilitato, doppio filtro ACTION_DIAL per il ruolo dialer su Android 10+, link
+        <code>tel:</code> che precompilano il compositore, recupero della chiamata al boot.</p></div></li>
+      <li><span class="s">fatto</span><div><b>ROM di prova sull'emulatore</b><p>NovaOS innestato come
+        priv-app con whitelist, launcher e setup di serie disattivati, Home e telefono predefinito
+        impostati. L'emulatore si avvia direttamente in NovaOS.</p></div></li>
+      <li><span class="s">in corso</span><div><b>ROM con WebView su hardware reale</b><p>Installazione
+        via GSI flashando la sola partizione <code>system</code>: kernel e driver originali restano
+        intatti. Richiede un dispositivo di prova.</p></div></li>
+      <li><span class="s">dopo</span><div><b>Motore WebView → GeckoView</b><p>Migrazione del motore
+        (Gradle + GeckoSession al posto della WebView), contenuta a livello di contenitore: la shell
+        non cambia.</p></div></li>
+      <li><span class="s">poi</span><div><b>ROM definitiva con GeckoView</b><p>NovaOS come UI di
+        sistema con app firmata con chiave di piattaforma, whitelist e SELinux.</p></div></li>
+    </ol>
+  </div>
+</section>
+
+<!-- ================= PROVALO ================= -->
+<section class="block alt">
+  <div class="container">
+    <p class="kicker">Provalo</p>
+    <h2>Tre modi per toccarlo con mano</h2>
+    <p class="sub">Dalla finestra del browser a un telefono che diventa NovaOS.</p>
+    <div class="try-grid">
+      <div class="try">
+        <span class="step">Subito · 30 secondi</span>
+        <h3>Nel browser</h3>
+        <p>Scarica il progetto, servi la cartella <code>shell/</code> e apri la pagina: l'intero
+          sistema gira in una scheda del browser, con telefonia e sensori in modalità simulata.</p>
+        <code>python3 -m http.server 8091</code>
+      </div>
+      <div class="try">
+        <span class="step">Sul tuo Android</span>
+        <h3>Come app e Home</h3>
+        <p>Installa l'APK, premi Home e scegli NovaOS. Puoi anche impostarlo come telefono
+          predefinito e usare il bridge nativo per chiamate, SMS e posta reale.</p>
+        <a class="btn small" href="https://github.com/RedRitter21/NovaOS/releases/latest" target="_blank" rel="noopener">Ultima release</a>
+      </div>
+      <div class="try">
+        <span class="step">Fino in fondo</span>
+        <h3>Come sistema</h3>
+        <p>Da un'immagine di sistema AOSP/LineageOS (GSI) o dall'emulatore, NovaOS diventa
+          l'interfaccia che vedi all'accensione: una ROM senza ricompilare il mondo.</p>
+        <a class="btn small ghost" href="https://github.com/RedRitter21/NovaOS/blob/main/docs/GUIDA-ROM.md">Guida alla ROM</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CTA ================= -->
+<section class="cta">
+  <div class="container">
+    <h2>Un sistema operativo, fatto di web.</h2>
+    <p>Esplora il codice, leggi la guida, prova la shell. NovaOS è open source e si costruisce
+      un pezzo alla volta, dal browser fino alla ROM.</p>
+    <a class="btn grad" href="https://github.com/RedRitter21/NovaOS" target="_blank" rel="noopener">Apri il repository</a>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <a class="f-brand" href="index.html"><img src="img/logo.svg" alt="">NovaOS</a>
+    <nav>
+      <a href="index.html">Presentazione</a>
+      <a href="manuale.html">Manuale d'uso</a>
+      <a href="https://github.com/RedRitter21/NovaOS/blob/main/docs/GUIDA-ROM.md">Guida alla ROM</a>
+      <a href="https://github.com/RedRitter21/NovaOS/blob/main/docs/GUIDA-MAIL.md">Guida alla Mail</a>
+      <a href="https://github.com/RedRitter21/NovaOS" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <small>NovaOS 0.1.52 (build 54) · sistema operativo con interfacce web su base Android ·
+      progetto open source, senza affiliazioni con Firefox OS o KaiOS.</small>
+  </div>
+</footer>
+
+</body>
+</html>

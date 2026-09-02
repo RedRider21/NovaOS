@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.51** (build 53). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.52** (build 54). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -272,7 +272,12 @@ Validazione ROM sull'emulatore (2026-08-27, Via A):
   Android 9+ blocca il boot con `not in privapp-permissions allowlist` (crashloop di
   `system_server`) → lo script ora la puscha da solo; (2) il ruolo dialer richiede **due**
   filtri `ACTION_DIAL` (uno senza scheme e uno con `scheme="tel"`) → manifest aggiornato
-  (include la prossima release).
+  (incluso nella **release 0.1.52**).
+- **NETWORK_SETTINGS `granted=false`** (ri-verificato il 2026-09-02 con 0.1.52): è **atteso**,
+  non un bug — l'immagine dell'emulatore dichiara quel permesso `prot=signature` (lo concede
+  solo la chiave di piattaforma; l'APK di prova è firmato debug). Il codice di NovaOS non lo
+  usa mai (i toggle diretti usano `WRITE_SECURE_SETTINGS` e `MODIFY_PHONE_STATE`, concessi).
+  Nel ROM definitivo (app firmata con chiave di piattaforma) verrà concesso per signature match.
 - **Esito**: permessi privilegiati concessi (`WRITE_SECURE_SETTINGS`, `MODIFY_PHONE_STATE`,
   `WRITE_SETTINGS` → i toggle dei sensori commutano in-process, banner «Sistema integrato»),
   permessi runtime concessi, **ruolo DIALER assegnato a NovaOS**.
