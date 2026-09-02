@@ -14,6 +14,11 @@ scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
 > Sito di presentazione e manuale d'uso: **<https://redrider21.github.io/NovaOS/>**
 > (pubblicato da `docs/` con GitHub Pages; `docs/index.html`, `docs/manuale.html`).
+>
+> Il **Theme Studio** — costruttore visuale di temi `.novatheme/2` — è un progetto
+> dedicato: repo **<https://github.com/RedRider21/novaos-theme-studio>** · demo live
+> **<https://redrider21.github.io/novaos-theme-studio/studio/>** · pagina sul sito
+> **<https://redrider21.github.io/NovaOS/theme-studio.html>**.
 
 ## Architettura a tre livelli
 
@@ -236,6 +241,13 @@ Fatto:
   **eliminano** quelle esistenti (l'eliminazione non tocca le foto, che restano in Galleria);
   selezionando più foto le si aggiunge a una raccolta già creata o se ne crea una **al volo**.
   Corretto anche il bottone **←** per tornare a Foto da Cerca e Raccolte.
+- **Theme Studio pubblicato online** — il costruttore di temi ha ora un repository
+  dedicato ([RedRider21/novaos-theme-studio](https://github.com/RedRider21/novaos-theme-studio))
+  con demo pubblicata su GitHub Pages
+  ([studio](https://redrider21.github.io/novaos-theme-studio/studio/) ·
+  [galleria launcher](https://redrider21.github.io/novaos-theme-studio/gallery/launcher-lab.html))
+  e una pagina dedicata sul sito NovaOS
+  ([theme-studio.html](https://redrider21.github.io/NovaOS/theme-studio.html)).
 - **Drawer riallineato al modello dello Studio** — le icone delle Quick action del launcher
   Drawer riempiono la cella come nel modello (niente più testo `data:` a video).
 - **Fix icone del Drawer** — le 4 app fisse del launcher Drawer (le Quick action: Telefono,

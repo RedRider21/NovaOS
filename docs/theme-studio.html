@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Theme Studio — NovaOS</title>
+<meta name="description" content="NovaOS Theme Studio: l'editor visuale per creare temi .novatheme/2 di NovaOS — launcher, colori, icone, suoni e layout a blocchi. Con demo live.">
+<link rel="icon" href="img/logo.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="NovaOS">
+<meta property="og:title" content="Theme Studio — NovaOS">
+<meta property="og:description" content="Editor visuale per creare temi .novatheme/2 di NovaOS: launcher, colori, icone, suoni, layout a blocchi. Demo live inclusa.">
+<meta property="og:url" content="https://redrider21.github.io/NovaOS/theme-studio.html">
+<meta property="og:image" content="https://redrider21.github.io/NovaOS/screens/theme-studio.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="container">
+    <a class="brand" href="index.html"><img src="img/logo.svg" alt=""><b>NovaOS</b></a>
+    <nav class="nav">
+      <a href="index.html">Presentazione</a>
+      <a href="manuale.html">Manuale</a>
+      <a href="theme-studio.html">Theme Studio</a>
+      <a href="sviluppo.html">Sviluppo</a>
+      <a class="btn small" href="https://github.com/RedRider21/NovaOS/releases" target="_blank" rel="noopener">Scarica l'APK</a>
+    </nav>
+  </div>
+</header>
+
+<section class="doc">
+  <div class="container">
+    <p class="breadcrumb"><a href="index.html">NovaOS</a> · Theme Studio</p>
+    <p class="kicker">Per chi crea</p>
+    <h1>NovaOS Theme Studio</h1>
+    <p class="lead">Il <b>costruttore di temi</b> per NovaOS: un editor visuale, gratuito e che
+      gira interamente nel browser, per progettare e condividere un tema
+      <code>.novatheme/2</code> — launcher, colori, icone, suoni e layout a blocchi — senza
+      scrivere una riga di codice. Un tema non cambia solo i colori: <b>può ridisegnare
+      l'intera home</b> di NovaOS.</p>
+
+    <div class="cta" style="margin:26px 0 8px">
+      <div class="container" style="padding:26px 24px">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;align-items:center">
+          <a class="btn grad" style="font-size:15px;padding:12px 22px" href="https://redrider21.github.io/novaos-theme-studio/studio/" target="_blank" rel="noopener">Apri la demo live del Theme Studio</a>
+          <a class="btn outline" style="font-size:14px" href="https://github.com/RedRider21/novaos-theme-studio" target="_blank" rel="noopener">Repository su GitHub</a>
+        </div>
+        <p style="text-align:center;margin:12px 0 0;color:#aeb6c6;font-size:13px">Demo pubblicata su GitHub Pages · funziona senza server · i tuoi progetti restano nel browser</p>
+      </div>
+    </div>
+
+    <h2 id="demo">1 · Provalo subito</h2>
+    <p>L'editor è incorporato qui sotto: scegli un modello pronto o parti da zero, modifica
+      colori, launcher e icone, poi <b>Esporta</b> il tema e importalo su NovaOS da
+      <em>Impostazioni → Display → Importa tema</em>. Per lavorare a schermo intero apri la
+      <a href="https://redrider21.github.io/novaos-theme-studio/studio/" target="_blank" rel="noopener">demo live</a>.</p>
+    <div style="border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:#fff;margin:14px 0 4px">
+      <iframe src="https://redrider21.github.io/novaos-theme-studio/studio/" title="Demo del Theme Studio"
+        style="width:100%;height:720px;border:0;display:block" loading="lazy" referrerpolicy="no-referrer"></iframe>
+    </div>
+
+    <h2 id="che-cosa">2 · Che cos'è un tema .novatheme</h2>
+    <p>Un tema è un file <b>JSON</b> (un solo file, da condividere o importare) che descrive
+      un'intera identità per NovaOS. La versione <code>novatheme/2</code> porta anche il
+      <b>desktop</b>: NovaOS può cambiare paradigma di home (griglia, elenco, dashboard,
+      radiale, tiles, cover flow, indice alfabetico, blocchi) semplicemente applicando un tema.</p>
+    <pre class="doc-code"><span class="c">// un estratto del formato (semplificato)</span>
+{
+  "format": "novatheme/2",
+  "meta":   { "id": "mio-tema", "name": "Il mio tema", "base": "dark" },
+  "colors": { "bg": "#0b0f17", "surface": "#151a24", "accent": "#6a63f0" },
+  "layout": { "id": "springboard", "order": ["phone","messages","camera"] },
+  "icons":  { "style": "filled", "shape": "squircle", "map": {} },
+  "wallpaper": { "type": "gradient", "value": "linear-gradient(135deg,#1b2a4a,#0b0f17)" },
+  "sounds": { "ringtone": "nord", "notify": "pop" }
+}</pre>
+
+    <h2 id="funzioni">3 · Cosa puoi fare</h2>
+    <ul class="checks">
+      <li><span class="t">✓</span><div><b>Editor visuale a fedeltà reale</b><small>Anteprima dal vivo con le stesse classi e launcher di NovaOS; in modalità "Reale" la shell vera gira in un iframe.</small></div></li>
+      <li><span class="t">✓</span><div><b>Parti da 8 modelli pronti</b><small>Nova, Chiaro, Indice A-Z, Dashboard, Radiale, Tiles, Cover flow e Bolle — tutti modificabili.</small></div></li>
+      <li><span class="t">✓</span><div><b>Icon-pack e icone per app</b><small>Pack con SVG vettoriali (es. il pack NovaOS delle 16 app), icone emoji o immagini, forma e stile configurabili.</small></div></li>
+      <li><span class="t">✓</span><div><b>Colori con verifica del contrasto (WCAG)</b><small>Il tema segnala i contrasti testo/sfondo insufficienti prima dell'esportazione.</small></div></li>
+      <li><span class="t">✓</span><div><b>Suoni con mini-sequencer</b><small>Componi suonerie e notifiche con una griglia di passi e WebAudio, oppure scegli dai suoni integrati.</small></div></li>
+      <li><span class="t">✓</span><div><b>Layout a blocchi componibili</b><small>Clock, ricerca, indice app, griglia, bolle, arco radiale, deck e widget meteo da ordinare e parametrare.</small></div></li>
+      <li><span class="t">✓</span><div><b>Annulla/rifai e autosalvataggio</b><small>Storico delle modifiche e salvataggio automatico nel browser: non perdi mai il lavoro.</small></div></li>
+    </ul>
+    <p>Anche l'<b>anteprima interattiva dei launcher</b> è pubblicata: una sola home NovaOS che
+      cambia paradigma su app invariate — <a href="https://redrider21.github.io/novaos-theme-studio/gallery/launcher-lab.html" target="_blank" rel="noopener">apri la galleria launcher</a>.</p>
+
+    <h2 id="galleria">4 · Schermate</h2>
+    <figure style="margin:16px 0 26px">
+      <img src="screens/theme-studio.png" alt="Editor del Theme Studio: modello, colori e anteprima del launcher" style="width:100%;height:auto;border:1px solid var(--line);border-radius:14px;display:block">
+      <figcaption style="color:var(--muted);font-size:13px;margin-top:8px">L'editor: pannello delle proprietà e anteprima live della home NovaOS.</figcaption>
+    </figure>
+    <figure style="margin:16px 0 26px">
+      <img src="screens/theme-studio-gallery.png" alt="Galleria dei launcher NovaOS: springboard, lista, drawer, tiles, dashboard, radiale, cover e indice" style="width:100%;height:auto;border:1px solid var(--line);border-radius:14px;display:block">
+      <figcaption style="color:var(--muted);font-size:13px;margin-top:8px">La galleria dei launcher: lo stesso NovaOS con 8 paradigmi di home diversi.</figcaption>
+    </figure>
+
+    <h2 id="importare">5 · Usare un tema su NovaOS</h2>
+    <ol>
+      <li>In NovaOS apri <b>Impostazioni → Display</b>.</li>
+      <li>Scegli <b>Importa tema</b> e seleziona il file <code>.novatheme</code> (o aprilo da un link/catalogo).</li>
+      <li>Il tema viene <b>ispezionato in sicurezza</b>: colori, icone e suoni si applicano subito;
+        le icone dei temi sono immagini o emoji brevi, mai codice eseguibile.</li>
+      <li>Da <b>Personalizzazione</b> puoi tornare al tema di sistema o a un altro tema installato.</li>
+    </ol>
+
+    <h2 id="perche">6 · Perché uno strumento separato</h2>
+    <p>NovaOS resta un sistema minimale: il <b>motore dei temi</b> vive dentro la shell (leggerissimo,
+      applica <code>colors/layout/icons/…</code>), mentre la <b>creazione</b> è un'attività da scrivania
+      che vive qui, in un progetto indipendente e completamente statico. Nessuna dipendenza esterna,
+      nessun server, nessun account: il Theme Studio è una pagina web che funziona anche offline dopo
+      il primo caricamento.</p>
+
+    <div class="note blue">Le icone vettoriali incluse nei pack sono generate come immagini
+      (SVG → data-URL) e mai interpretate come HTML: importare un tema di terze parti non espone
+      al codice del tema.</div>
+
+    <div class="cta" style="margin:34px 0 0">
+      <div class="container" style="padding:34px 24px">
+        <h2 style="color:#fff">Crea il tema della tua NovaOS</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">
+          <a class="btn grad" href="https://redrider21.github.io/novaos-theme-studio/studio/" target="_blank" rel="noopener">Apri il Theme Studio</a>
+          <a class="btn outline" href="https://github.com/RedRider21/novaos-theme-studio" target="_blank" rel="noopener">Repository e documentazione</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <a class="f-brand" href="index.html"><img src="img/logo.svg" alt="">NovaOS</a>
+    <nav>
+      <a href="index.html">Presentazione</a>
+      <a href="manuale.html">Manuale d'uso</a>
+      <a href="theme-studio.html">Theme Studio</a>
+      <a href="sviluppo.html">Sviluppo</a>
+      <a href="https://github.com/RedRider21/NovaOS" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <small>Temi · Theme Studio per NovaOS 0.1.52</small>
+  </div>
+</footer>
+
+</body>
+</html>
