@@ -49,7 +49,7 @@ cat > "$SHELL_SRC/version.json" <<JSON
   "minNative": $MINNATIVE,
   "date": "$VDATE",
   "notes": "$NOTES",
-  "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1.51/NovaOS-0.1.51.apk",
+  "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1.52/NovaOS-0.1.52.apk",
   "files": [
 $FILES_JSON
   ]

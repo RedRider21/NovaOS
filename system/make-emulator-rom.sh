@@ -24,9 +24,13 @@ if ! adb remount 2>/dev/null; then
   adb root; sleep 2; adb remount
 fi
 
-echo "[2/6] installo NovaOS come app di sistema (priv-app)"
+echo "[2/6] installo NovaOS come app di sistema (priv-app) + whitelist privilegi"
 adb shell mkdir -p /system/priv-app/NovaOS
 adb push "$APK" /system/priv-app/NovaOS/NovaOS.apk
+# SENZA la whitelist, Android 9+ blocca il boot con "not in privapp-permissions
+# allowlist" (crashloop di system_server). Deve stare in /system/etc/permissions/.
+adb shell mkdir -p /system/etc/permissions
+adb push "$(dirname "$0")/privapp-permissions-novaos.xml" /system/etc/permissions/privapp-permissions-novaos.xml
 
 echo "[3/6] disabilito launcher e setup di serie"
 for p in com.google.android.apps.nexuslauncher com.android.launcher3 \
@@ -38,8 +42,10 @@ echo "[4/6] NovaOS come Home predefinita"
 adb shell cmd package set-home-activity "$PKG/.MainActivity" || true
 
 echo "[5/6] NovaOS come telefono predefinito"
+# Il ruolo dialer si assegna SOLO con cmd role (senza --user: il flag causa
+# NumberFormatException). cmd telecom set-default-dialer NON esiste come comando
+# shell: il default-dialer è proprio il ruolo, quindi basta il comando seguente.
 adb shell cmd role add-role-holder android.app.role.DIALER "$PKG" 2>/dev/null || true
-adb shell cmd telecom set-default-dialer "$PKG" 2>/dev/null || true
 
 echo "[6/6] riavvio: il device parte direttamente in NovaOS"
 adb reboot

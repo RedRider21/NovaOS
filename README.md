@@ -263,9 +263,25 @@ Ultime novità (0.1.49):
   (`.p-dock .p-ic`): prima, con le icone vettoriali NovaOS, le tessere a 58px del dock
   apparivano enormi rispetto al modello (le emoji precedenti stavano a ~27px).
 
-Prossimi passi: rifinire il launcher (evitare il re-boot quando si preme Home — fix
-applicato in 0.1.49), poi la build ROM (`system/`), dove NovaOS come priv-app potrà
-concedere il ruolo di telefono predefinito e la telefonia nativa si attiva da sola.
+Validazione ROM sull'emulatore (2026-08-27, Via A):
+- **`system/make-emulator-rom.sh` funzionante** — innesta NovaOS come **priv-app** su
+  AVD con `-writable-system`, disattiva launcher/setup di serie, imposta Home e telefono
+  predefinito. L'emulatore **boota direttamente in NovaOS** come interfaccia di sistema.
+- **Fix trovati e applicati** (bug reali, prima del flash su hardware): (1) senza la
+  whitelist `system/privapp-permissions-novaos.xml` in `/system/etc/permissions/`,
+  Android 9+ blocca il boot con `not in privapp-permissions allowlist` (crashloop di
+  `system_server`) → lo script ora la puscha da solo; (2) il ruolo dialer richiede **due**
+  filtri `ACTION_DIAL` (uno senza scheme e uno con `scheme="tel"`) → manifest aggiornato
+  (include la prossima release).
+- **Esito**: permessi privilegiati concessi (`WRITE_SECURE_SETTINGS`, `MODIFY_PHONE_STATE`,
+  `WRITE_SETTINGS` → i toggle dei sensori commutano in-process, banner «Sistema integrato»),
+  permessi runtime concessi, **ruolo DIALER assegnato a NovaOS**.
+
+Prossimi passi (in ordine): (1) **ROM con WebView su hardware reale** via GSI (flash solo
+`system`, kernel e driver originali intatti), (2) **migrazione motore WebView → GeckoView**
+(Gradle + GeckoSession + WebExtension al posto di `addJavascriptInterface`, contenuta al
+livello contenitore), (3) pulizia dei fallback WebView-specifici, (4) **ROM definitiva**
+con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
 
 ### Ricompilare l'APK
 ```bash
