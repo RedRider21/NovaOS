@@ -2,6 +2,16 @@ plugins {
     id 'com.android.application'
 }
 
+// --- versione letta dal manifest Android: unica fonte, come in build-apk.sh ---
+def _manifestText = file("src/main/AndroidManifest.xml").getText('UTF-8')
+def _vc = null, _vn = null
+def _mVC = (_manifestText =~ /versionCode="(\d+)"/)
+def _mVN = (_manifestText =~ /versionName="([^"]+)"/)
+if (_mVC.find()) _vc = _mVC.group(1) as Integer
+if (_mVN.find()) _vn = _mVN.group(1)
+if (_vc == null || _vn == null) throw new GradleException(
+    "versionCode/versionName mancanti in src/main/AndroidManifest.xml")
+
 android {
     namespace 'os.nova.launcher'
     compileSdk 34
@@ -10,8 +20,8 @@ android {
         applicationId "os.nova.launcher"
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName "0.1"
+        versionCode _vc as Integer
+        versionName _vn
     }
 
     buildTypes {
@@ -27,4 +37,11 @@ android {
 }
 
 dependencies {
+    // Librerie per la posta reale (JavaMail + Activation), le stesse che
+    // build-apk.sh mette nel classpath: serve la copia in android-launcher/libs/.
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
 }
+
+// Nota: questo percorso Gradle serve per lo sviluppo da Android Studio.
+// La build canonica (senza IDE) è android-launcher/build-apk.sh, che copia da
+// sola la shell in assets/www e firma l'APK con i numeri del manifest.

@@ -138,8 +138,10 @@ adb shell am start -a android.intent.action.VIEW \
 
 ## Launcher come Home reale
 
-Apri `android-launcher/` in Android Studio e premi Run (o `./gradlew installDebug`
-con l'emulatore avviato). Il manifest registra NovaOS come categoria `HOME`:
+Per lo sviluppo su device si apre `android-launcher/` in Android Studio e si preme
+Run (percorso Gradle, con le librerie `libs/` dichiarate; la build canonica resta
+`bash android-launcher/build-apk.sh`, che copia la shell negli assets e firma l'APK).
+Il manifest registra NovaOS come categoria `HOME`:
 premi il tasto Home e scegli NovaOS come launcher. Il bridge `NovaNative` espone
 alla shell `call`, `sms`/`sendSms`, `vibrate`, `batteryLevel`, `toast`,
 `openBrowser`, `shareImage`/`shareText`, la Mail (`mail*`), i **sensori**
