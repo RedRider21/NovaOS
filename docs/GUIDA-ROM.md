@@ -151,7 +151,7 @@ permanente sull'immagine base).
 
 ## 6. App APK particolari (banche, app con conferme): funzionano?
 
-Domanda giusta e importante. Riposta onesta, in due parti.
+Domanda giusta e importante. Risposta onesta, in due parti.
 
 ### 6a. Tecnicamente si possono installare ed eseguire?
 **Sì.** NovaOS sostituisce l'**interfaccia**, non il **runtime**: il framework
@@ -166,10 +166,18 @@ gli APK installati e li avvia via intent.
 non un limite di NovaOS.** Le app bancarie usano:
 
 - **Rilevamento manomissione/root** e bootloader sbloccato;
-- **Play Integrity API** (ex SafetyNet): verifica che il sistema sia "certificato
-  Google". Un ROM custom con bootloader sbloccato in genere **fallisce**
-  `DEVICE`/`STRONG_INTEGRITY` → molte app bancarie rifiutano l'accesso o **bloccano
-  le conferme** (proprio i push/OTP in-app che citavi).
+- **Play Integrity API** (ex SafetyNet, che l'ha preceduta dal 2014 al maggio 2025):
+  verifica che il sistema sia "certificato Google".
+
+Il punto da capire è che **il fusibile è hardware**. Sbloccare il bootloader scrive un
+fusibile nel dispositivo, e da quel momento il chip di sicurezza dichiara onestamente
+`UNLOCKED` nella sua attestazione. Non è una variabile che si possa nascondere via software:
+
+| Livello | Cosa verifica | Con bootloader sbloccato |
+|---|---|---|
+| `MEETS_BASIC_INTEGRITY` | sistema non manomesso | di solito passa |
+| `MEETS_DEVICE_INTEGRITY` | dispositivo certificato e non modificato | recuperabile con configurazione adeguata |
+| `MEETS_STRONG_INTEGRITY` | attestazione hardware + bootloader bloccato | **impossibile** (fisicamente) |
 
 Quindi:
 
@@ -184,17 +192,27 @@ Quindi:
    siti delle banche nella **WebView nativa a schermo intero** (o in Chrome), con
    OTP via SMS. Funziona senza attestazione dell'app.
 2. **Device Pixel con re-lock a chiavi proprie.** Sui Pixel puoi **richiudere il
-   bootloader firmando il ROM con le tue chiavi AVB**: in alcune configurazioni si
-   ottiene di nuovo l'integrità di base/dispositivo. È l'unico percorso "pulito" per
-   far passare l'attestazione con un ROM custom.
+   bootloader firmando il ROM con le tue chiavi AVB** (custom root of trust): verified boot
+   torna verde. È l'unico percorso "pulito", ed è quello che fa GrapheneOS — che infatti
+   supporta **solo Pixel**, è stato il primo OS alternativo a usare questa funzione e ha
+   contribuito a scriverne la documentazione AOSP. **Attenzione al limite:** il dispositivo
+   resta **non certificato Google**, quindi circa l'1% delle app con controlli rigidi
+   continua a non funzionare, anche se la gran parte delle app bancarie va.
 3. **Tenere le poche app critiche su un telefono stock.** Pragmatico se ti servono
-   solo per rare conferme.
-4. *(Sconsigliato)* moduli tipo Play Integrity Fix: rincorsa continua, non affidabile.
+   solo per rare conferme — ed è la ragione per cui la via ROM di NovaOS è ora destinata a
+   un **dispositivo secondario** (vedi il README).
+4. *(Sconsigliato)* moduli tipo Play Integrity Fix: rincorsa continua, non affidabile — Google
+   cambia la verifica ogni 4–6 settimane, e alcune banche usano controlli propri (RASP nativo,
+   ricerca di binari `su`, blocklist di impronte) che ignorano del tutto Play Integrity.
 
 **In sintesi:** far *girare* gli APK sì; farli *superare i controlli bancari* dipende
 dall'attestazione, che il modello "ROM custom" mette in discussione per progettazione
 del sistema Google — non per come è fatta NovaOS. Per l'uso bancario quotidiano, la
 **versione web** dentro NovaOS è la soluzione robusta e sempre disponibile.
+
+> Perché il problema non si pose a Firefox OS (e perché oggi NovaOS paga questo costo),
+> con la cronologia dell'attestazione hardware dal 2014 a oggi: vedi la sezione
+> **«App bancarie, attestazione e le due destinazioni»** nel [README](../README.md).
 
 ---
 

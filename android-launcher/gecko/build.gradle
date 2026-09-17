@@ -1,0 +1,74 @@
+// Modulo isolato della fase 0: carica la shell NovaOS dentro una GeckoSession e
+// verifica che booti identica a oggi. NON fa parte dell'APK pubblicato — ha un
+// applicationId proprio (os.nova.gecko), quindi si installa accanto a NovaOS.
+// La build canonica dell'app resta android-launcher/build-apk.sh, intoccata.
+plugins {
+    id 'com.android.application'
+}
+
+// La shell sta in ../shell rispetto alla radice del progetto Gradle (android-launcher/):
+// la stessa cartella che build-apk.sh copia negli assets di :app.
+def shellDir = file("${rootProject.projectDir}/../shell")
+
+// Copia la shell negli assets PRIMA di ogni build, come fa build-apk.sh.
+// La destinazione è generata, non sorgente: sta in .gitignore.
+def syncShell = tasks.register('syncShell', Sync) {
+    from(shellDir)
+    into("${projectDir}/src/main/assets/www")
+}
+
+tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.configureEach {
+    dependsOn(syncShell)
+}
+
+android {
+    namespace 'os.nova.gecko'
+
+    // SCOPERTO DALLO SPIKE (2026-09-17): lo stesso compileSdk 34 di :app NON basta.
+    // La progressione reale dei vincoli, provata una alla volta:
+    //   compileSdk 34 + AGP 8.5.0  -> androidx.core:core:1.19.0 chiede >= 36
+    //   compileSdk 36 + AGP 8.13.2 -> androidx.core:core:1.19.0 chiede >= 37 e AGP >= 9.1.0
+    //   compileSdk 37 + AGP 9.4.0  -> GeckoView 155 stesso chiede >= 37.1
+    // Da qui la catena definitiva: compileSdk 37.1 (minor separato, vedi sotto),
+    // AGP 9.4.0, Gradle 9.7.1, platform android-37.1.
+    // È il vincolo più pesante che la migrazione comporta sul lato build, ed è la
+    // ragione per cui la via Gradle diventa obbligata (build-apk.sh non regge
+    // ~40 dipendenze transitive).
+    compileSdk 37
+    // Android 37 ha versioni minori: 37.0 non basta, serve 37.1 come platform separata.
+    compileSdkMinor 1
+
+    defaultConfig {
+        applicationId "os.nova.gecko"
+        minSdk 26          // GeckoView richiede almeno 26: il progetto è già conforme
+        targetSdk 34
+        versionCode 1
+        versionName "spike"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packaging {
+        resources {
+            excludes += [
+                'META-INF/*.kotlin_module',
+                'META-INF/DEPENDENCIES',
+                'META-INF/LICENSE*',
+                'META-INF/NOTICE*',
+            ]
+        }
+    }
+}
+
+dependencies {
+    implementation "org.mozilla.geckoview:geckoview:155.0.20260903215306"
+}

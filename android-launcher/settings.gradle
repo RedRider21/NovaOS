@@ -9,7 +9,12 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // GeckoView non è su Maven Central: vive solo nel repository Mozilla.
+        maven { url 'https://maven.mozilla.org/maven2/' }
     }
 }
 rootProject.name = "NovaOS"
 include ':app'
+// Spike della fase 0 (migrazione a GeckoView). Modulo isolato, con applicationId
+// proprio: si installa accanto a NovaOS e non entra nell'APK pubblicato.
+include ':gecko'

@@ -1,6 +1,17 @@
 // Progetto root del launcher NovaOS.
 // Apri questa cartella (android-launcher/) con Android Studio e premi Run,
 // oppure da terminale: ./gradlew installDebug con l'emulatore avviato.
+//
+// NOTA SULLA CATENA DI BUILD — era AGP 8.5.0 + Gradle 8.7, con compileSdk 34.
+// Lo spike GeckoView ha mostrato che non basta, e la progressione è stata:
+//   GeckoView 155 -> androidx.core:core:1.19.0
+//   androidx.core 1.19.0 -> minCompileSdk 37 e AGP >= 9.1.0
+// Quindi: AGP 9.4.0 (ultimo stabile), Gradle 9.7.1, compileSdk 37.
+// Vale solo per il modulo :gecko, ma la versione di AGP è dichiarata qui perché
+// è una sola per tutto il progetto.
+//
+// Questo NON tocca la build canonica dell'APK, che resta android-launcher/build-apk.sh
+// e non passa da Gradle.
 plugins {
-    id 'com.android.application' version '8.5.0' apply false
+    id 'com.android.application' version '9.4.0' apply false
 }

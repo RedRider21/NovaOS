@@ -1,0 +1,19 @@
+{
+  "manifest_version": 2,
+  "name": "NovaOS Bridge",
+  "version": "0.1",
+  "description": "Espone window.NovaNative alla shell NovaOS e inoltra i comandi fire-and-forget al nativo.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "novaos-bridge@os.nova"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["file:///*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}

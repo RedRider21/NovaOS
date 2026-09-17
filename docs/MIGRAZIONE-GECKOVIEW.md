@@ -182,7 +182,9 @@ migrare un componente alla volta e tenere sempre un'istanza avviabile.
 
 ## 8 · Punti aperti da confermare nello spike
 
-- [ ] Rilascio AAR + Maven: versione GeckoView e requisiti (minSdk) da fissare.
+- [x] **Rilascio AAR + Maven** — risolto dallo spike: GeckoView `155.0.20260903215306`, scaricabile
+  **solo** da `maven.mozilla.org/maven2/` (non su Maven Central), minSdk 26 (già conforme).
+  La catena di build che ne deriva è in §9.
 - [ ] Modalità migliore per lo shim in pagina: content script che espone `window.NovaNative`
   (pattern ufficiale) oppure WebChannel. Lo shim deve soddisfare il contratto di `js/bridge.js`
   (v. §3.2) e iniettare `__NOVA_PREFS` a `document_start`.
@@ -200,6 +202,85 @@ migrare un componente alla volta e tenere sempre un'istanza avviabile.
   dice «non riuscito» (il valore di ritorno è già trattato come «ignoto» e non fa danni).
 - [ ] **Push lato Java** (`MainActivity.java`, `MailBridge.java`): oggi usano `evaluateJavascript`
   diretto; conviene farli passare da `NovaMsg`. Richiede build APK + emulatore per la verifica.
+
+## 9 · Esito dello spike (fase 0) — 2026-09-17
+
+**Risposta: sì.** La shell NovaOS gira sotto GeckoView, da entrambe le origini previste, senza
+modifiche al codice della shell.
+
+### Cosa è stato costruito
+
+Modulo Gradle separato `android-launcher/gecko/`, `applicationId "os.nova.gecko"`, quindi
+installabile **accanto** a NovaOS: lo spike non tocca l'app in uso. Carica la shell in una
+`GeckoSession` e la serve da due origini, scelte con l'extra di intent `origin`:
+
+| `origin` | URL | Esito |
+|---|---|---|
+| `asset` (default) | `resource://android/assets/www/index.html` | ✅ lockscreen → home, icone e dock corretti |
+| `internal` | `file://…/files/shell/index.html` | ✅ identico |
+
+Verifica di interattività: aperta la Calcolatrice e calcolato `7 + 5` → `12`. Il JS della shell
+risponde ai tocchi sotto Gecko.
+
+L'origine `internal` conta per la fase 2: i content script delle WebExtension **non** possono
+agganciare `resource://android/assets/*`, quindi il ponte richiederà la shell su `file://` — che è
+la stessa disposizione che NovaOS usa già per la shell aggiornata via OTA.
+
+### Catena di build — il vincolo più pesante scoperto
+
+Provata una versione alla volta, ognuna fallita sul precedente:
+
+| Tentativo | Esito |
+|---|---|
+| `compileSdk 34` + AGP 8.5.0 (catena del progetto) | ❌ `androidx.core:core:1.19.0` chiede ≥ 36 |
+| `compileSdk 36` + AGP 8.13.2 + Gradle 8.13 | ❌ la stessa chiede ≥ 37 **e AGP ≥ 9.1.0** |
+| `compileSdk 37` + AGP 9.4.0 + Gradle 9.7.1 | ❌ GeckoView 155 stesso chiede ≥ **37.1** |
+| `compileSdk 37` + `compileSdkMinor 1` + platform `android-37.1` | ✅ |
+
+Catena definitiva: **GeckoView 155.0.20260903215306 · AGP 9.4.0 · Gradle 9.7.1 · compileSdk 37.1
+(versione minore, platform separata) · minSdk 26** (già conforme) · Java 17.
+
+GeckoView non è su Maven Central: si scarica solo da `maven.mozilla.org/maven2/`, da aggiungere in
+`settings.gradle`.
+
+**Conseguenza non aggirabile:** la traccia A implica **abbandonare `build-apk.sh`** in favore di
+Gradle. La build artigianale `aapt2`/`javac`/`d8` non regge la composizione di ~40 dipendenze
+transitive (media3/ExoPlayer, androidx.core, lifecycle, `play-services-fido`, exifinterface,
+tracing). L'APK debug dello spike pesa **504 MB** — non minificato e con tutte le ABI; in release
+scende molto, ma resta nell'ordine delle decine di MB (§7.2).
+
+### Comportamenti diversi dalla WebView, da mettere a piano
+
+- **`AssetManager.list()` restituisce un array vuoto — non `null` — per i file.** Il primo tentativo
+  di copiare la shell in storage interno ha trasformato `index.html`, `sw.js`, `icon.svg`,
+  `manifest.webmanifest` e `version.json` in **cartelle vuote**; Gecko mostrava un «Index of…»
+  invece della shell. L'unico modo affidabile di distinguere file e cartelle è provare ad aprire il
+  percorso come stream. Corretto e verificato.
+- **`ContentDelegate.onConsoleMessage` non esiste più** in GeckoView 155 (verificato con `javap`
+  sull'AAR: nessuna classe `Console*`). La console si dirotta con
+  `GeckoRuntimeSettings.Builder().consoleOutput(true)` → logcat, tag `GeckoConsole`. I ponti
+  JS↔nativo passano ormai dalle WebExtension, quindi `NovaBridge` va **riprogettato**, non adattato.
+- **I flag `SYSTEM_UI_FLAG_*` sono ignorati** sulle versioni recenti di Android: la status bar resta
+  visibile. Per il fullscreen immersivo serve `WindowInsetsController` (fase 1).
+- **Primo avvio lento**: caricamento delle librerie native `20,1 s` al primo avvio a freddo, con
+  `Skipped 186 frames` a catena. Si tratta di un costo una tantum (le lib restano nella cache), ma
+  va tenuto presente per la schermata di avvio.
+- **Nessun errore JS** dalla shell in nessuna delle due origini: l'unica riga in `GeckoConsole` è
+  l'innocuo `No chrome package registered for chrome://browser/content/built_in_addons.json`.
+
+### Nota sull'ambiente di prova
+
+L'emulatore era configurato con `-gpu swiftshader_indirect` (rendering software) e con GeckoView in
+esecuzione la pipeline grafica si è **bloccata in modo irreversibile** — `screencap` non rispondeva
+più nemmeno dopo la chiusura dell'app. Riavviato con `-gpu host` (GPU reale) tutto funziona. Non è
+un problema di NovaOS, ma è un dato pratico: **per provare Gecko serve un dispositivo o un emulatore
+con accelerazione grafica reale**, non uno in rendering software.
+
+### Cosa resta aperto
+
+Persistenza (`localStorage`/IndexedDB) nello storage di Gecko — l'origine cambia, quindi i dati
+esistenti non seguono; service worker e `fetch` su `file://`; forma dello shim del ponte; peso
+finale in release. Sono le fasi 2–7, invariate.
 
 ---
 

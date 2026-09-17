@@ -206,6 +206,132 @@ In sintesi: si parte da un Android vanilla (GSI/AOSP), si innesta NovaOS come ap
 sistema e Home predefinita, si flasha **solo `system`** lasciando intatte `vendor` e
 `boot` → l'hardware del telefono continua a funzionare col suo kernel.
 
+## App bancarie, attestazione e le due destinazioni
+
+Questa sezione raccoglie la risposta alla domanda «NovaOS disinnesca i controlli delle app
+bancarie?» e la decisione che ne è seguita. Il dettaglio operativo è in
+[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md) §6.
+
+**Oggi, con NovaOS come app su Android di serie, non si disinnesca nulla.** Le app bancarie
+sono processi separati nel loro sandbox: NovaOS è un'app come le altre, non le tocca, e il
+bootloader resta bloccato, quindi l'attestazione passa. Anche aprire il sito della banca nella
+WebView di NovaOS è una normale sessione browser: i controlli dell'app non c'entrano.
+
+Il rischio nasce **solo** con la ROM, ed è più duro di quanto sembri.
+
+### Il fusibile hardware
+
+Sbloccare il bootloader scrive un **fusibile hardware** nel dispositivo. Da quel momento il
+chip di sicurezza dichiara onestamente `UNLOCKED` nella sua attestazione, e
+`MEETS_STRONG_INTEGRITY` diventa **impossibile per via fisica** — nessun modulo software lo
+aggira. Non è un limite di NovaOS: vale per qualunque ROM custom.
+
+| Livello Play Integrity | Cosa verifica | Con bootloader sbloccato |
+|---|---|---|
+| `MEETS_BASIC_INTEGRITY` | sistema non manomesso | di solito passa |
+| `MEETS_DEVICE_INTEGRITY` | dispositivo certificato e non modificato | recuperabile con configurazione adeguata |
+| `MEETS_STRONG_INTEGRITY` | attestazione hardware + bootloader bloccato | **impossibile** |
+
+`BASIC` + `DEVICE` si recuperano con uno stack di occultamento (Magisk + Zygisk + moduli tipo
+Play Integrity Fix + DenyList), ma è un tiro alla fune: Google cambia la verifica ogni 4–6
+settimane. E alcune banche **ignorano del tutto Play Integrity**, usando controlli propri
+(RASP nativo, ricerca di binari `su`, blocklist di impronte): con quelle non c'è partita,
+qualunque cosa si installi.
+
+### Come si evita il problema (non come si aggira)
+
+Il fusibile non è aggirabile, ma **si può non incontrarlo**: alcune macchine supportano il
+**ri-blocco del bootloader con una chiave AVB propria** (un root of trust personale), così
+verified boot torna verde. GrapheneOS funziona esattamente così, ed è il motivo per cui
+supporta **solo Pixel** — è stato il primo OS alternativo a usare questa funzione e ha
+contribuito a scriverne la documentazione AOSP. Il limite resta: il dispositivo **non è
+certificato Google**, quindi circa l'1% delle app con controlli rigidi resta fuori, mentre la
+gran parte delle app bancarie funziona.
+
+### Le due destinazioni
+
+Da qui la decisione del 2026-09-17: **due tracce, entrambe mantenute**.
+
+| Traccia | Cosa | Stato |
+|---|---|---|
+| **A** | **GeckoView dentro l'APK** — NovaOS resta un'app/launcher su Android di serie e adotta GeckoView al posto della WebView | immediata |
+| **B** | **ROM su telefono secondario** — il telefono principale resta stock | differita |
+
+Entrambe portano lo stesso motore GeckoView, quindi lo **spike della fase 0** (vedi
+[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)) serve identico a tutte e due.
+
+La traccia A ha un valore che **non dipende dalla ROM**: GeckoView conviene già dentro l'APK
+normale.
+
+- `getUserMedia` audio cattura davvero il microfono → spariscono i fallback nativi
+  `audioRecStart`/`audioRecStop`;
+- `window.confirm`/`alert` nativi → sparisce `os.confirm` in-app;
+- storage standard su `file://`, niente più doppia persistenza;
+- nessun tocco a bootloader, integrità, Google Wallet o DRM.
+
+Per la traccia B: **il telefono secondario va scelto Pixel**, l'unico che supporta il ri-blocco
+con chiave AVB propria. Su un dispositivo qualsiasi si finisce nello stack di occultamento, da
+mantenere a mano nel tempo.
+
+### Perché Firefox OS non ha mai incontrato questo problema
+
+Vale la pena fissarlo, perché spiega il costo che NovaOS paga oggi. Firefox OS (B2G, annunciato
+nel 2011, primi dispositivi 2013, sviluppo cessato nel 2016) **non ha risolto il problema del
+fusibile: non l'ha mai incontrato**, per tre ragioni indipendenti.
+
+1. **Era troppo presto.** L'attestazione hardware entra in gioco molto dopo:
+
+   | Anno | Cosa succede |
+   |---|---|
+   | 2014 | SafetyNet Attestation API: **software**, binaria (`basicIntegrity`/`ctsProfileMatch`) |
+   | 2016 | Android 7.0 — key attestation (Keymaster 2) |
+   | 2017 | Android 8.0 — attestazione ID, **obbligatoria per la certificazione** |
+   | maggio 2020 | Google abilita l'attestazione hardware nelle risposte SafetyNet |
+   | marzo 2021 | il campo `evaluationType` diventa ufficiale |
+   | 2022 → maggio 2025 | Play Integrity sostituisce SafetyNet, che viene dismesso |
+
+   Nel periodo commerciale di Firefox OS l'attestazione era **software e aggirabile**: non era
+   ancora un cancello.
+
+2. **Non eseguiva app Android.** Firefox OS girava su Gonk — kernel Linux più HAL derivato da
+   Android — ma **senza il framework applicativo Android**: niente SafetyNet, niente Play
+   Integrity, nessuna app bancaria a cui opporre controlli. Il suo problema era l'opposto del
+   nostro: non «le app rifiutano di girare», ma **«le app non esistono»**. L'app più citata tra
+   quelle mancanti è proprio **WhatsApp**, la stessa che NovaOS usa via web.
+
+3. **Quindi il fusibile non interessava nessuno.** Senza attestazione da soddisfare, lo stato
+   del bootloader era irrilevante per il mercato.
+
+La lezione è il rovescio della medaglia: **la ROM costa proprio perché NovaOS ha scelto di
+restare su Android.** È quella scelta che rende possibili WhatsApp e le app bancarie; è la
+stessa scelta che fa ereditare la catena di fiducia di Google. Firefox OS non ha pagato quel
+prezzo perché ha rinunciato all'ecosistema — ed è anche per questo che è finito. Oggi l'erede
+di quell'idea, un'attestazione alternativa che non passi da Google, è l'**Android Integrity
+Consortium** (iodéOS e Famoco, 2025): ancora in fase embrionale, senza specifiche pubbliche.
+
+## WhatsApp Web e Telegram Web: come collegarli
+
+NovaOS apre già questi siti correttamente: `BrowserActivity` forza in automatico la **vista
+desktop** su `web.whatsapp.com` e `web.telegram.org`, così compare la pagina di accesso invece
+del rimando all'app (con user agent mobile rimanderebbero all'app installata).
+
+Il QR però **non si può inquadrare dal telefono stesso**: la fotocamera posteriore punta dalla
+parte opposta dello schermo, quindi il dispositivo non può fotografare il proprio display.
+Split-screen e screenshot non risolvono — la fotocamera resta girata dall'altra parte, e il
+codice è legato alla sessione viva e si rigenera ogni ~20 secondi, quindi uno screenshot è già
+scaduto.
+
+**La soluzione è l'alternativa ufficiale al QR: «Collega con numero di telefono».** Su
+`web.whatsapp.com` scegli quell'opzione invece del codice QR, inserisci il numero, ricevi un
+**codice di 8 caratteri** e lo digiti in WhatsApp → *Dispositivi collegati* → *Collega un
+dispositivo* → *Collega con numero di telefono*. Nessuna fotocamera, nessun secondo schermo.
+Vale per Web/Windows/Mac, che è il nostro caso: si sta collegando una **sessione browser**, non
+un secondo telefono (quello richiede ancora il QR).
+
+Due vincoli da sapere: massimo **4 dispositivi collegati**, e il telefono deve restare online
+perché WhatsApp Web specchi la sessione. Come alternativa fisica resta uno specchio che
+rifletta lo schermo nella fotocamera.
+
 ## Stato
 
 Prototipo completo e funzionante, testato su emulatore Android (AOSP 14).
@@ -350,13 +476,29 @@ Validazione ROM sull'emulatore (2026-08-27, Via A):
   `WRITE_SETTINGS` → i toggle dei sensori commutano in-process, banner «Sistema integrato»),
   permessi runtime concessi, **ruolo DIALER assegnato a NovaOS**.
 
-Prossimi passi (in ordine): (1) **ROM con WebView su hardware reale** via GSI (flash solo
-`system`, kernel e driver originali intatti), (2) **migrazione motore WebView → GeckoView**
-(piano dettagliato in **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**: Gradle +
-GeckoSession + WebExtension al posto di `addJavascriptInterface`, contenuta al livello
-contenitore), ~~(3) pulizia dei fallback WebView-specifici~~ (**fatta**: `js/bridge.js` è il punto
-di contatto unico e la shell non tocca più `window.NovaNative` in nessun punto), (4) **ROM definitiva**
-con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
+Prossimi passi (aggiornati al 2026-09-17, **due tracce** — vedi
+[App bancarie, attestazione e le due destinazioni](#app-bancarie-attestazione-e-le-due-destinazioni)):
+
+**Traccia A — GeckoView dentro l'APK** *(immediata)*
+1. ~~**Spike di fase 0**~~ — **fatto (2026-09-17): la shell boota sotto GeckoView**, da entrambe le
+   origini previste (`resource://android/assets/…` e `file://…/files/shell/`), senza modifiche al
+   codice della shell. Esito, catena di build e comportamenti diversi dalla WebView sono in
+   **[docs/MIGRAZIONE-GECKOVIEW.md §9](docs/MIGRAZIONE-GECKOVIEW.md)**.
+2. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
+   `addJavascriptInterface`, contenuta al livello contenitore (piano dettagliato in
+   **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**). Va messo a piano che la
+   traccia A **abbandona `build-apk.sh`**: la catena di GeckoView richiede Gradle (§9).
+3. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
+   doppia persistenza.
+
+**Traccia B — ROM su telefono secondario** *(differita)*
+4. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
+5. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
+   Da fare **solo su un dispositivo secondario, preferibilmente Pixel**, mai sul telefono
+   principale: il fusibile hardware è irreversibile.
+
+~~Pulizia dei fallback WebView-specifici~~ — **fatta**: `js/bridge.js` è il punto di contatto
+unico e la shell non tocca più `window.NovaNative` in nessun punto.
 
 ### Ricompilare l'APK
 ```bash
