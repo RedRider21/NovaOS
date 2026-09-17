@@ -1,9 +1,9 @@
 {
-  "version": "0.1.54",
-  "build": 56,
+  "version": "0.1.55",
+  "build": 57,
   "minNative": 12,
   "date": "2026-09-17",
-  "notes": "Galleria: eliminando tutte le raccolte di esempio (Paesaggi, Citta', Natura) non ricompaiono piu'. Il seme iniziale resta solo per chi non ha mai salvato una lista di raccolte: una lista vuota e' una scelta dell'utente e viene rispettata. Aggiornamento della sola interfaccia: nessuna reinstallazione dell'APK.",
+  "notes": "Ponte unico pagina-nativo: i comandi verso l'hardware (vibrazione, condivisione, apertura browser, torcia, mail) passano ora da NovaBridge.cmd(), che risponde true solo se il comando e' arrivato al nativo. La shell non interroga piu' window.NovaNative in nessun punto: prepara la migrazione del motore web e sistema quattro chiamate mail che non avevano alcuna guardia. Comportamento invariato: aggiornamento della sola interfaccia, nessuna reinstallazione dell'APK.",
   "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1.52/NovaOS-0.1.52.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/bridge.js",    "js/icons.js",    "js/os.js",    "js/version.js",    "manifest.webmanifest",    "sw.js",

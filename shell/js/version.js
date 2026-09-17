@@ -1,2 +1,2 @@
 /* Generato da build-apk.sh — build della shell in esecuzione. Vedi js/version.js nel repo. */
-window.__NOVA_SHELL = { version: "0.1.54", build: 56, minNative: 12, date: "2026-09-17" };
+window.__NOVA_SHELL = { version: "0.1.55", build: 57, minNative: 12, date: "2026-09-17" };

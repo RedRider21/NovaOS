@@ -15,6 +15,13 @@ const NovaApps = (() => {
     return `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="width:1em;height:1em;vertical-align:-.125em;${css||''}">${inner}</svg>`;
   };
 
+  // Accessore difensivo al ponte pagina↔nativo (vedi js/bridge.js). Le app che usano
+  // più metodi ne dichiarano uno proprio nel loro render (più ricco di default): qui
+  // c'è il minimo per le app che hanno bisogno solo di inoltrare un comando.
+  // `cmd` restituisce true solo se il comando è arrivato al nativo: dove non arriva,
+  // l'app prosegue con la simulazione, come faceva il vecchio probe su NovaNative.
+  const NB = () => window.NovaBridge || { has: () => false, cmd: () => false };
+
   // Rubrica di esempio, condivisa tra Rubrica e Telefono (default al primo avvio).
   const CONTACTS_SEED = [
     { id:1, name:"Anna Rossi", phone:"+39 340 1234567", email:"anna@example.com", fav:true },
@@ -26,7 +33,7 @@ const NovaApps = (() => {
   const phone = app({ id:"phone", name:"Telefono", icon:"📞", color:"#35c759", dock:true,
     render(root, os) {
       // Accessore difensivo al ponte pagina↔nativo (vedi js/bridge.js).
-      const NB = () => window.NovaBridge || { has: () => false };
+      const NB = () => window.NovaBridge || { has: () => false, cmd: () => false };
       const native = NB().has("call");
       let log = os.store.get("callLog", []);
       const saveLog = () => os.store.set("callLog", log);
@@ -46,7 +53,7 @@ const NovaApps = (() => {
         log.unshift({ num, name:name || nameOf(num), time:Date.now(), dir:"out" });
         log = log.slice(0, 50); saveLog();
         os.vibrate(30);
-        if (native && window.NovaNative.call) window.NovaNative.call(num);
+        if (native) NB().cmd("call", num);
         else if (window.NovaCall) {
           // demo (browser/preview, senza ROM): mostra la schermata di chiamata
           // simulata — dialing poi attiva — così la UI si prova anche qui.
@@ -68,8 +75,7 @@ const NovaApps = (() => {
       };
 
       const smsNum = num => { const n = norm(num);
-        if (window.NovaNative && window.NovaNative.sms) window.NovaNative.sms(n, "");
-        else window.location.href = "sms:" + n; };
+        if (!NB().cmd("sms", n, "")) window.location.href = "sms:" + n; };
 
       const shell = (body) => {
         root.innerHTML = `
@@ -370,14 +376,15 @@ const NovaApps = (() => {
         root.querySelector("#delc").onclick = async () => { if(await os.confirm({title:"Eliminare conversazione?",message:"La chat con "+name+" verrà eliminata.",okText:"Elimina"})){ delete threads[name]; save(); drawList(); } };
         const th = root.querySelector("#thread"); th.scrollTop = th.scrollHeight;
         const input = root.querySelector("#msg");
-        const nativeSms = window.NovaNative && window.NovaNative.sendSms;
+        const nativeSms = NB().has("sendSms");
         const send = () => {
           const v = input.value.trim(); if(!v) return;
           msgs.push(["out",v,now(),Date.now()]); save(); input.value="";
           th.innerHTML = bubbles(); th.scrollTop = th.scrollHeight;
           if (nativeSms) {
             const num = resolveNumber(name);
-            if (num) { try { window.NovaNative.sendSms(num, v); os.notify({app:"messages",title:name,text:"SMS inviato"}); } catch(e){ os.notify({app:"messages",title:name,text:"Invio SMS non riuscito"}); } }
+            if (num) { if (NB().cmd("sendSms", num, v)) os.notify({app:"messages",title:name,text:"SMS inviato"});
+                       else os.notify({app:"messages",title:name,text:"Invio SMS non riuscito"}); }
             else os.notify({ app:"messages", title:name, text:"Nessun numero valido per l'invio" });
           } else {
             setTimeout(()=>{ msgs.push(["in",autoReply(v),now(),Date.now()]); save();
@@ -479,14 +486,14 @@ const NovaApps = (() => {
       root.querySelector("#timer").onclick = () => { timerSec = timerSec===0?3:timerSec===3?10:0; root.querySelector("#timer-lbl").textContent = timerSec?timerSec+"s":"off"; };
       const flashBtn = root.querySelector("#flash");
       flashBtn.onclick = () => { flashOn = !flashOn; root.querySelector("#flash-lbl").textContent = flashOn?"on":"off"; flashBtn.style.color = flashOn?"#ffd60a":"#fff";
-        try { if (window.NovaNative && window.NovaNative.setTorch && facing==="environment") window.NovaNative.setTorch(flashOn); } catch {} };
+        try { if (facing==="environment" && NB().has("setTorch")) NB().setTorch(flashOn); } catch {} };
 
       const shotBtn = root.querySelector("#shot");
       const micChip = root.querySelector("#mic-chip");
       const micTxt = root.querySelector("#mic-txt");
       const micBtn = root.querySelector("#mic-enable");
       // Accessore difensivo al ponte pagina↔nativo (vedi js/bridge.js).
-      const NB = () => window.NovaBridge || { has: () => false, micGranted: () => true, micDiag: () => "granted", audioRecStart: () => false, audioRecStop: () => "" };
+      const NB = () => window.NovaBridge || { has: () => false, cmd: () => false, micGranted: () => true, micDiag: () => "granted", audioRecStart: () => false, audioRecStop: () => "" };
       const micGranted = () => { try { return NB().has("micGranted") ? NB().micGranted() === true : true; } catch { return true; } };
       // aggiorna l'avviso microfono: nascosto se c'è audio; "Attiva" (Impostazioni)
       // se il permesso è negato; "Riprova" se il permesso c'è ma manca la traccia audio.
@@ -503,8 +510,8 @@ const NovaApps = (() => {
       };
       micBtn.onclick = () => {
         if (micChip.dataset.act === "retry") { start(); return; }
-        try { if (window.NovaNative && window.NovaNative.openAppSettings) { window.NovaNative.openAppSettings(); return; } } catch {}
-        try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {}
+        if (NB().cmd("openAppSettings")) return;
+        NB().cmd("requestMic");
       };
       const setMode = (m) => { mode = m;
         root.querySelectorAll("[data-mode]").forEach(b=>b.classList.toggle("on", b.dataset.mode===m));
@@ -512,7 +519,7 @@ const NovaApps = (() => {
         // Audio del video: se c'è il runtime nativo (WebView) lo registriamo a parte,
         // quindi l'anteprima resta video-only (nessuna contesa sul microfono). Senza
         // nativo (GeckoView/desktop) chiediamo l'audio dentro lo stream web.
-        if (m==="video") { try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {} }
+        if (m==="video") NB().cmd("requestMic");
         const want = (m==="video") && !nativeAudioAvail;
         if (want !== wantAudio) {
           wantAudio = want;
@@ -664,7 +671,7 @@ const NovaApps = (() => {
 
       start(); updateThumb();
       root._cleanup = () => { try{ if(rec) rec.stop(); }catch{} clearInterval(recTimer);
-        try { if (flashOn && window.NovaNative && window.NovaNative.setTorch) window.NovaNative.setTorch(false); } catch {}
+        try { if (flashOn && NB().has("setTorch")) NB().setTorch(false); } catch {}
         window.__novaMic = null; window.__novaMicResume = null;
         if (stream) stream.getTracks().forEach(t=>t.stop()); };
     }});
@@ -744,13 +751,12 @@ const NovaApps = (() => {
         root.querySelector("#edit").onclick = () => drawEdit(id);
         root.querySelector("#call").onclick = () => {
           const num = c.phone.replace(/\s/g,"");
-          if (window.NovaNative && window.NovaNative.call) window.NovaNative.call(num);
+          if (native) NB().cmd("call", num);
           else window.location.href = "tel:" + num;
         };
         root.querySelector("#sms").onclick = () => {
           const num = c.phone.replace(/\s/g,"");
-          if (window.NovaNative && window.NovaNative.sms) window.NovaNative.sms(num,"");
-          else window.location.href = "sms:" + num;
+          if (!NB().cmd("sms", num, "")) window.location.href = "sms:" + num;
         };
         const mail = root.querySelector("#mail"); if (mail) mail.onclick = () => window.location.href = "mailto:" + c.email;
         root.querySelector("#del").onclick = async () => { if(await os.confirm({title:"Eliminare contatto?",message:c.name+" verrà eliminato dalla rubrica.",okText:"Elimina"})){ list=list.filter(x=>x.id!==id); save(); drawList(); } };
@@ -798,7 +804,7 @@ const NovaApps = (() => {
   const browser = app({ id:"browser", name:"Browser", icon:"🌐", color:"#0a84ff", dock:true,
     render(root, os) {
       // sul device (launcher) apre a schermo intero: nessun limite iframe (banche ecc.)
-      const native = !!(window.NovaNative && window.NovaNative.openBrowser);
+      const native = NB().has("openBrowser");
       let bookmarks = os.store.get("bookmarks", [
         { name:"Wikipedia", url:"https://it.wikipedia.org" },
         { name:"OpenStreetMap", url:"https://www.openstreetmap.org" },
@@ -885,7 +891,7 @@ const NovaApps = (() => {
       const drawFrame = (u) => {
         u = norm(u);
         const openReal = () => {
-          if (window.NovaNative && window.NovaNative.openBrowser) { try { window.NovaNative.openBrowser(u); return; } catch(e){} }
+          if (NB().cmd("openBrowser", u)) return;
           try { window.open(u, "_blank", "noopener"); } catch(e){}
         };
         root.innerHTML = `<div class="back-bar" style="padding:6px 10px;gap:6px"><button class="back-btn"></button>
@@ -1919,7 +1925,7 @@ const NovaApps = (() => {
 
       // ---- bridge nativo: posta reale (SMTP/IMAP) quando NovaOS è installato ----
       // Accessore difensivo al ponte pagina↔nativo (vedi js/bridge.js).
-      const NB = () => window.NovaBridge || { has: () => false, mailAccount: () => null, mailConfigure() {}, mailClear() {}, mailSend() {}, mailFetch() {} };
+      const NB = () => window.NovaBridge || { has: () => false, cmd: () => false, mailAccount: () => null };
       const nativeMail = NB().has("mailConfigure");
       const acct = () => { try { return nativeMail ? JSON.parse(NB().mailAccount()||"{}") : { configured:false }; } catch { return { configured:false }; } };
       let syncing = false;
@@ -1954,7 +1960,7 @@ const NovaApps = (() => {
       const syncNow = () => {
         if (!nativeMail || !acct().configured || syncing) return;
         syncing = true; drawList();
-        window.NovaNative.mailFetch("INBOX", 25);
+        NB().cmd("mailFetch", "INBOX", 25);
       };
 
       const drawList = () => {
@@ -2104,12 +2110,12 @@ const NovaApps = (() => {
             os.notify({ app:"mail", title:"Mail", text:"Compila server IMAP, SMTP e password." }); return;
           }
           cfg.name = payload.name || cfg.name; cfg.email = email || cfg.email; saveCfg();
-          window.NovaNative.mailConfigure(JSON.stringify(payload));
+          NB().cmd("mailConfigure", JSON.stringify(payload));
           os.notify({ app:"mail", title:"Mail", text:"Account collegato. Sincronizzo…" });
           drawList(); syncNow();
         };
         const disc = root.querySelector("#c-disc");
-        if (disc) disc.onclick = async () => { if(await os.confirm({title:"Scollegare l'account?",message:"La password cifrata verrà rimossa dal dispositivo.",okText:"Scollega"})){ window.NovaNative.mailClear(); os.notify({ app:"mail", title:"Mail", text:"Account scollegato." }); drawSettings(); } };
+        if (disc) disc.onclick = async () => { if(await os.confirm({title:"Scollegare l'account?",message:"La password cifrata verrà rimossa dal dispositivo.",okText:"Scollega"})){ NB().cmd("mailClear"); os.notify({ app:"mail", title:"Mail", text:"Account scollegato." }); drawSettings(); } };
         root.querySelector("#c-read").onclick = () => { box.inbox.forEach(m=>m.read=true); save(); os.notify({ app:"mail", title:"Mail", text:"Tutte le email segnate come lette." }); };
         root.querySelector("#c-empty").onclick = async () => { if(await os.confirm({title:"Svuotare il cestino?",message:"I messaggi nel cestino verranno eliminati definitivamente.",okText:"Svuota"})){ box.trash=[]; save(); os.notify({ app:"mail", title:"Mail", text:"Cestino svuotato." }); drawSettings(); } };
       };
@@ -2212,7 +2218,7 @@ const NovaApps = (() => {
             if (draftId) box.drafts = box.drafts.filter(x=>x.id!==draftId);   // la bozza inviata sparisce
             save();
             if (real) {                                        // invio SMTP reale (il MailBridge conferma via NovaMail.onSent)
-              window.NovaNative.mailSend(JSON.stringify({ to:f.to, subj:f.subj, body:bodyTxt }));
+              NB().cmd("mailSend", JSON.stringify({ to:f.to, subj:f.subj, body:bodyTxt }));
               os.notify({ app:"mail", title:"Mail", text:"Invio in corso a "+f.to+"…" });
             } else {
               os.notify({ app:"mail", title:"Mail", text:"Messaggio inviato a "+f.to });
@@ -3125,9 +3131,8 @@ const NovaApps = (() => {
     render(root, os) {
       const S = os.state;
       // ---- ponte hardware reale (presente solo dentro l'app NovaOS su Android) ----
-      const NN = window.NovaNative || {};
       // Accessore difensivo al ponte pagina↔nativo (vedi js/bridge.js).
-      const NB = () => window.NovaBridge || { has: () => false, sensorStates: () => null, appVersion: () => null, isDialer: () => null };
+      const NB = () => window.NovaBridge || { has: () => false, cmd: () => false, sensorStates: () => null, appVersion: () => null, isDialer: () => null };
       const hasSensors = NB().has("sensorStates");
       const readSensors = () => { try { const j = NB().sensorStates(); return j ? JSON.parse(j) : null; } catch { return null; } };
       // specchia nello stato della shell i valori VERI letti dall'hardware
@@ -3245,7 +3250,7 @@ const NovaApps = (() => {
               <button class="btn ghost" id="net-refresh" style="margin:14px 16px 4px">🔄 Aggiorna stato</button>
               <div style="padding:0 16px 20px;color:var(--text-dim);font-size:calc(11px*var(--fscale,1));word-break:break-all">Diagnostica hardware: ${raw}</div>`;
             sec.querySelectorAll("[data-sens]").forEach(el => el.onclick = () => sensorAct(el.dataset.sens, () => sections.net()));
-            sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
+            sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { NB().cmd("openSetting", el.dataset.open); });
             sec.querySelector("#net-refresh").onclick = () => sections.net();
             return;
           }
@@ -3292,7 +3297,7 @@ const NovaApps = (() => {
               <button class="btn ghost" id="conn-refresh" style="margin:14px 16px 4px">🔄 Aggiorna stato</button>
               <div style="padding:0 16px 20px;color:var(--text-dim);font-size:calc(11px*var(--fscale,1));word-break:break-all">${priv?'✓ Integrato · ':''}Diagnostica hardware: ${raw}</div>`;
             sec.querySelectorAll("[data-sens]").forEach(el => el.onclick = () => sensorAct(el.dataset.sens, () => sections.connected()));
-            sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
+            sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { NB().cmd("openSetting", el.dataset.open); });
             sec.querySelector("#conn-refresh").onclick = () => sections.connected();
             return;
           }
@@ -3329,8 +3334,8 @@ const NovaApps = (() => {
             <div style="padding:0 16px 20px;font-size:calc(11px*var(--fscale,1));color:var(--text-dim)">Con la ROM il ruolo è concesso di sistema. La schermata di chiamata si prova comunque dal Telefono (tasto verde) anche senza: in preview simula la chiamata.</div>`;
           sec.querySelector("[data-dialer]").onclick = () => {
             if (active) { os.notify({ app:"settings", title:"Telefono predefinito", text:"NovaOS è già il telefono predefinito." }); return; }
-            if (NN.requestDialerRole) { try { NN.requestDialerRole(); } catch (e) {} }
-            else os.notify({ app:"settings", title:"Telefono predefinito", text:"Disponibile solo nell'app NovaOS su Android." });
+            if (!NB().cmd("requestDialerRole"))
+              os.notify({ app:"settings", title:"Telefono predefinito", text:"Disponibile solo nell'app NovaOS su Android." });
           };
         }),
 
@@ -3720,7 +3725,7 @@ const NovaApps = (() => {
           const locSens = sec.querySelector('[data-sens="location"]');
           if (locSens) locSens.onclick = () => sensorAct("location", () => sections.privacy());
           else { const lsw = sec.querySelector(".switch"); if (lsw) lsw.onclick = () => { os.toggle("location"); sections.privacy(); }; }
-          sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
+          sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { NB().cmd("openSetting", el.dataset.open); });
           sec.querySelector("#clear-nav").onclick = async () => {
             if (!await os.confirm({title:"Cancellare i dati di navigazione?",message:"Cronologia e preferiti del Browser verranno cancellati.",okText:"Cancella"})) return;
             os.store.del("browserHistory"); os.store.del("bookmarks");
@@ -3846,7 +3851,7 @@ const NovaApps = (() => {
           doCheck();   // controllo automatico all'apertura della sezione
           sec.querySelector("#reset").onclick = async () => { if (await os.confirm({title:"Ripristino di fabbrica?",message:"Verranno cancellati impostazioni e app installate. L'operazione non è reversibile.",okText:"Ripristina"})) os.factoryReset(); };
           // Data e ora / Lingua: aprono i pannelli reali di sistema (sul dispositivo)
-          sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { try { NN.openSetting(el.dataset.open); } catch {} });
+          sec.querySelectorAll("[data-open]").forEach(el => el.onclick = () => { NB().cmd("openSetting", el.dataset.open); });
           // Backup reale: esporta i dati nova:* come file JSON, ripristina da file.
           const bkName = () => `novaos-backup-${new Date().toISOString().slice(0,10)}.json`;
           const bkJson = () => JSON.stringify({ format:"novaos-backup/1", date:new Date().toISOString(), data: os.backup() }, null, 2);
@@ -3936,7 +3941,7 @@ const NovaApps = (() => {
             ["⬆️","Aggiornamenti","In Impostazioni → Sistema → «Aggiornamenti» controlli e installi le novità. Gli aggiornamenti della sola interfaccia si applicano subito («Aggiorna ora»); quelli che toccano le funzioni di sistema richiedono la reinstallazione dell'app."],
             ["🔒","Blocco e sicurezza","In Impostazioni → «Sicurezza e blocco» imposti PIN o sblocco a scorrimento e la schermata di blocco. Il dispositivo si blocca da solo dopo un periodo di inattività."],
           ];
-          const openUrl = u => { const nn = window.NovaNative; if (nn && nn.openBrowser) { try { nn.openBrowser(u); return; } catch(e){} } try { window.open(u, "_blank"); } catch(e){} };
+          const openUrl = u => { if (NB().cmd("openBrowser", u)) return; try { window.open(u, "_blank"); } catch(e){} };
           const REPO = "https://github.com/RedRider21/NovaOS";
           sec.innerHTML = `
             <div style="padding:6px 16px 4px;color:var(--text-dim);font-size:calc(13px*var(--fscale,1))">Guida rapida a NovaOS ${VER}. Tocca un argomento per i dettagli.</div>
@@ -4063,7 +4068,7 @@ const NovaApps = (() => {
 
       const setState = (txt) => { const e = root.querySelector("#rec-state"); if (e) e.textContent = txt; };
       // Accessore difensivo al ponte pagina↔nativo (vedi js/bridge.js).
-      const NB = () => window.NovaBridge || { has: () => false, micDiag: () => "granted", audioRecStart: () => false, audioRecStop: () => "", openAppSettings() {}, requestMic() {} };
+      const NB = () => window.NovaBridge || { has: () => false, cmd: () => false, micDiag: () => "granted", audioRecStart: () => false, audioRecStop: () => "" };
       const micDiag = () => { try { return NB().has("micDiag") ? NB().micDiag() : "granted"; } catch { return "granted"; } };
       const showMicWarn = () => {
         const w = root.querySelector("#mic-warn"), txt = root.querySelector("#mic-warn-txt"), go = root.querySelector("#mic-go");
@@ -4108,7 +4113,7 @@ const NovaApps = (() => {
         // 1) via WEB standard (getUserMedia + MediaRecorder) — è così che funzionerà
         //    sulla ROM Gecko/Firefox OS finale, dove il runtime espone il microfono.
         try {
-          try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {}
+          NB().cmd("requestMic");
           stream = await navigator.mediaDevices.getUserMedia({ audio:true });
           const cand = ["audio/webm;codecs=opus","audio/mp4;codecs=mp4a.40.2","audio/mp4","audio/webm","audio/ogg;codecs=opus"];
           const mime = cand.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
@@ -4154,8 +4159,8 @@ const NovaApps = (() => {
           const w = root.querySelector("#mic-warn");
           const act = w && w.dataset.act;
           if (act === "retry") { hideMicWarn(); start(); return; }
-          if (act === "blocked") { try { window.NovaNative && window.NovaNative.openAppSettings && window.NovaNative.openAppSettings(); } catch {} return; }
-          try { window.NovaNative && window.NovaNative.requestMic && window.NovaNative.requestMic(); } catch {}
+          if (act === "blocked") { NB().cmd("openAppSettings"); return; }
+          NB().cmd("requestMic");
         };
         const audio = root.querySelector("#rec-audio");
         const durOf = (fallback) => (isFinite(audio.duration) && audio.duration > 0) ? audio.duration : fallback;

@@ -22,7 +22,7 @@
 
 <header class="topbar">
   <div class="container">
-    <a class="brand" href="index.html"><img src="img/logo.svg" alt=""><b>NovaOS</b><span class="tagline">0.1.54</span></a>
+    <a class="brand" href="index.html"><img src="img/logo.svg" alt=""><b>NovaOS</b><span class="tagline">0.1.55</span></a>
     <nav class="nav">
       <a href="index.html">Presentazione</a>
       <a href="manuale.html">Manuale</a>
@@ -276,6 +276,12 @@
       con l'APK sono su GitHub; la shell si aggiorna da sola via OTA leggendo
       <code>shell/version.json</code>.</p>
     <ol class="road">
+      <li><span class="s">fatto</span><div><b>Release 0.1.55 — i comandi passano dal ponte</b><p>La shell
+        non interroga più <code>window.NovaNative</code> in nessun punto: i 28 comandi verso l'hardware
+        passano da <code>NovaBridge.cmd()</code>, che risponde <code>true</code> solo se il comando è
+        arrivato al nativo. Chiude il punto più insidioso della migrazione a GeckoView e sistema quattro
+        chiamate mail che non avevano guardia. Comportamento invariato: aggiornamento della sola
+        interfaccia via OTA.</p></div></li>
       <li><span class="s">fatto</span><div><b>Release 0.1.54 — raccolte della Galleria</b><p>Eliminando
         tutte le raccolte di esempio (Paesaggi, Città, Natura) non ricompaiono più: il seme iniziale
         ora si applica solo a chi non ha mai salvato una lista, e una lista vuota viene rispettata.
@@ -357,7 +363,7 @@
       <a href="https://github.com/RedRider21/NovaOS/blob/main/docs/GUIDA-MAIL.md">Guida alla Mail</a>
       <a href="https://github.com/RedRider21/NovaOS" target="_blank" rel="noopener">GitHub</a>
     </nav>
-    <small>NovaOS 0.1.54 (build 56) · sistema operativo con interfacce web su base Android ·
+    <small>NovaOS 0.1.55 (build 57) · sistema operativo con interfacce web su base Android ·
       progetto open source, senza affiliazioni con Firefox OS o KaiOS.</small>
   </div>
 </footer>

@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.54** (build 56). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.55** (build 57). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -216,7 +216,9 @@ Fatto:
 - Chiamate reali verificate: la web app apre il dialer nativo che instrada sulla radio.
 - **APK compilato** (build manuale senza Gradle: `android-launcher/build-apk.sh`) con
   la shell impacchettata negli assets (**offline**) e **icona Nova** (adaptive icon).
-- Bridge nativo `NovaNative` (chiamate/SMS/vibrazione/batteria) e permesso camera per `getUserMedia`.
+- Bridge nativo (chiamate/SMS/vibrazione/batteria) e permesso camera per `getUserMedia`.
+  La shell ha **un solo punto di contatto**, `shell/js/bridge.js`: nessun file della shell
+  interroga più `window.NovaNative` — né per i getter sincroni, né per i comandi.
 - **NovaOS impostato e testato come Home predefinita** dell'emulatore.
 - Validazione JS rapida via Chrome headless (`google-chrome --headless --dump-dom`).
 - **Tipografia del tema** — il `.novatheme/2` ora applica anche `typography.font`
@@ -254,6 +256,24 @@ Fatto:
   Messaggi, Fotocamera, Browser) non riempiono più la cella: restano a **48px** centrate
   (come la griglia), così non appaiono più enormi né nel Drawer reale né nella simulazione
   del reale dello Studio (il modello in scala resta invariato).
+Ultime novità (0.1.55) — i comandi passano dal ponte:
+- **La shell non interroga più `window.NovaNative`** — i 28 comandi *fire-and-forget* (vibrazione,
+  condivisione, apertura browser, torcia, mail, chiamata, SMS…) passano ora da `NovaBridge.cmd()`,
+  che risponde `true` **solo se il comando è arrivato al nativo**. È il sostituto dei probe sparsi
+  `window.NovaNative && window.NovaNative.x` e dei `try/catch` che li avvolgevano: dove il comando
+  non parte, l'app prosegue con la **simulazione** come ha sempre fatto (Web Vibration API, Web
+  Share, anteprima in-app del Browser, `sms:`/`tel:`).
+- **Sistema quattro chiamate mail senza guardia** — `mailFetch`, `mailConfigure`, `mailClear` e
+  `mailSend` erano invocate direttamente: su un contenitore senza quei metodi avrebbero sollevato
+  un'eccezione invece di ripiegare sulla posta simulata. Ora passano dal ponte come tutto il resto.
+- **Prepara la migrazione a GeckoView** — è il punto che il documento di migrazione segnalava come
+  più insidioso (vedi il §8 di
+  [docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)): sotto Gecko quei rami useranno il
+  ponte, invece di cadere in silenzio sulla simulazione. **Comportamento sul motore attuale
+  invariato** — verificato con un test di equivalenza (2 modalità × 9 scenari, risultati identici
+  prima e dopo, con i percorsi nativi confermati vivi). Aggiornamento della sola interfaccia:
+  **non richiede di reinstallare l'APK**.
+
 Ultime novità (0.1.54) — raccolte della Galleria:
 - **Le raccolte di esempio eliminate non ricompaiono più** — eliminando tutte e tre le raccolte
   predefinite (Paesaggi, Città, Natura) il seme iniziale ripartiva e le ricreava al riavvio della
@@ -335,7 +355,7 @@ Prossimi passi (in ordine): (1) **ROM con WebView su hardware reale** via GSI (f
 (piano dettagliato in **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**: Gradle +
 GeckoSession + WebExtension al posto di `addJavascriptInterface`, contenuta al livello
 contenitore), ~~(3) pulizia dei fallback WebView-specifici~~ (**fatta**: `js/bridge.js` è il punto
-di contatto unico e la shell non dipende più dai getter sincroni), (4) **ROM definitiva**
+di contatto unico e la shell non tocca più `window.NovaNative` in nessun punto), (4) **ROM definitiva**
 con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
 
 ### Ricompilare l'APK

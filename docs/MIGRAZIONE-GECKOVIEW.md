@@ -70,6 +70,13 @@ file continui a funzionare: è il contratto dello shim.
   chiamante. La cache **non viene mai letta mentre il nativo è raggiungibile**, quindi in WebView
   il comportamento è identico a prima per costruzione. `has()` è per-metodo, non «il nativo c'è»:
   un APK vecchio può non avere `shellWrite`.
+- **Comandi inoltrati dal ponte**: i 28 metodi *fire-and-forget* passano da `NovaBridge.cmd(nome, …)`,
+  che risponde `true` **solo se il comando è arrivato al nativo**. È il sostituto dei vecchi probe
+  sparsi `window.NovaNative && window.NovaNative.x` e dei `try/catch` che li avvolgevano: dove il
+  comando non parte, l'app prosegue con la simulazione come ha sempre fatto (Web Vibration API,
+  Web Share, anteprima in-app del Browser, `sms:`/`tel:`). **La shell non interroga più
+  `window.NovaNative` in nessun punto**: sotto Gecko quei rami useranno il ponte invece di cadere
+  in silenzio sulla simulazione.
 - **Niente snapshot al boot**: `os.js` costruisce `state` al **parsing** (non a `DOMContentLoaded`)
   e alcuni getter sono riletti di continuo (`sensorStates` a ogni `renderQuick()`,
   `currentCallState` ogni 400 ms). Congelarli in cache sarebbe un cambio di comportamento **anche
@@ -166,12 +173,12 @@ migrare un componente alla volta e tenere sempre un'istanza avviabile.
    con la gestione cache di Gecko.
 4. **Doppia build**: tenere vivi due percorsi di compilazione richiede disciplina; la shell comune
    limita il costo.
-5. **Comportamenti diversi**: `addJavascriptInterface` sincrono sparisce; i call-site che leggono
-   il ponte **in modo sincrono** sono già stati ricablati su `js/bridge.js`. Restano fuori (di
-   proposito) i ~41 comandi *fire-and-forget* e i **probe di presenza** del nativo, che continuano a
-   interrogare `window.NovaNative` direttamente: sotto Gecko quell'oggetto non esisterà, quindi
-   *quei probe* passeranno al ramo simulato invece di usare il ponte — vedi i punti aperti in §8.
-   Copertura finale tramite checklist dell'emulatore (fase 6–7).
+5. **Comportamenti diversi**: `addJavascriptInterface` sincrono sparisce; **tutti** i call-site della
+   shell sono stati ricablati su `js/bridge.js` — sia i getter sincroni, sia i comandi
+   *fire-and-forget*, sia i **probe di presenza** del nativo (che sono la parte più insidiosa: sotto
+   Gecko sarebbero caduti in silenzio sulla simulazione). La shell non tocca più
+   `window.NovaNative`. Restano da verificare sull'emulatore i percorsi che il test di equivalenza
+   non copre (fase 6–7).
 
 ## 8 · Punti aperti da confermare nello spike
 
@@ -183,10 +190,11 @@ migrare un componente alla volta e tenere sempre un'istanza avviabile.
   convivenza col percorso attuale.
 - [ ] Policy UA per la vista desktop del Browser.
 - [ ] Impatto di `?preview=1` / anteprime (nessuna differenza attesa).
-- [ ] **Probe di presenza del nativo** (`window.NovaNative && …`) nei comandi fire-and-forget e
-  nell'updater (`os.js` ramo APK: `installUpdate`/`openBrowser`). Sotto Gecko quell'oggetto non
-  esiste: quei rami cadrebbero sulla simulazione/percorso web invece del ponte. Da sciogliere
-  quando lo shim avrà forma definitiva (fase 2).
+- [x] **Probe di presenza del nativo** — risolto: la shell non interroga più `window.NovaNative`.
+  Tutti i comandi passano da `NovaBridge.cmd()` (che risponde `true` solo se inoltrato) e i getter
+  dagli accessori del ponte. Resta da **confermare la forma dello shim**: se lo shim espone
+  `window.NovaNative` (content script), `bridge.js` lo cattura da solo e `has()` continua a
+  funzionare; se invece parla a messaggi, è `bridge.js` l'unico punto da adattare.
 - [ ] **`saveDownload`**: sotto Gecko il percorso di destinazione non è restituibile in modo
   sincrono. Serve un push `NovaMsg("download.saved", path)`; senza, il backup riesce ma la notifica
   dice «non riuscito» (il valore di ritorno è già trattato come «ignoto» e non fa danni).

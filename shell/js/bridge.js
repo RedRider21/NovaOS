@@ -12,6 +12,11 @@
      altrimenti se in cache  → cache[nome]       solo quando il ponte sincrono manca
      altrimenti              → default del chiamante (null / "" / false)
 
+   I COMANDI (fire-and-forget) passano da cmd(nome, ...args): restituisce true
+   se il comando è stato inoltrato. È il sostituto dei probe sparsi
+   `window.NovaNative && window.NovaNative.x` — quando il comando non parte,
+   il chiamante prosegue con la simulazione come ha sempre fatto.
+
    La cache non viene MAI letta finché il ponte sincrono è
    raggiungibile: in WebView l'equivalenza col comportamento
    precedente è per costruzione, non per fortuna. Non esiste alcuno
@@ -88,6 +93,17 @@ window.NovaBridge = (() => {
     if (n in cache) return cache[n];
     return dflt === undefined ? null : dflt;
   }
+  // Comandi fire-and-forget (i 28 "cmd" della tabella): non c'è un valore di ritorno da
+  // interpretare, ma serve sapere SE il comando è stato inoltrato al nativo. Il valore
+  // restituito è esattamente questo, e sostituisce i vecchi probe sparsi
+  // `window.NovaNative && window.NovaNative.x`: dove il comando non parte, il chiamante
+  // prosegue con la simulazione (Web Vibration API, Web Share, window.open…) come oggi.
+  // Un comando che solleva un'eccezione conta come non inoltrato, come faceva il try/catch
+  // che avvolgeva ogni chiamata diretta.
+  function cmd(n, args) {
+    if (!has(n)) return false;
+    try { call(n, args); return true; } catch (e) { return false; }
+  }
 
   // ---- 5) preferenze: write-through sulla cache ----
   // prefGet restituisce la stringa JSON COSÌ COM'È (contratto Java: String|null):
@@ -154,6 +170,8 @@ window.NovaBridge = (() => {
   // ---- API pubblica ----
   return {
     has, CONTRACT, msg,
+    // comandi fire-and-forget: `cmd("vibrate", 40)` → true se inoltrato al nativo
+    cmd: (n, ...a) => cmd(n, a),
     // preferenze
     prefGet, prefSet, prefDel, prefKeys,
     get prefsPending() { return prefsPending; },
