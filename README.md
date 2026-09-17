@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.53** (build 55). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.54** (build 56). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -254,6 +254,14 @@ Fatto:
   Messaggi, Fotocamera, Browser) non riempiono più la cella: restano a **48px** centrate
   (come la griglia), così non appaiono più enormi né nel Drawer reale né nella simulazione
   del reale dello Studio (il modello in scala resta invariato).
+Ultime novità (0.1.54) — raccolte della Galleria:
+- **Le raccolte di esempio eliminate non ricompaiono più** — eliminando tutte e tre le raccolte
+  predefinite (Paesaggi, Città, Natura) il seme iniziale ripartiva e le ricreava al riavvio della
+  Galleria. Ora il seme si applica **solo se non è mai stata salvata una lista di raccolte**: una
+  lista vuota è la scelta di chi ha eliminato, e viene rispettata. Le installazioni nuove
+  continuano a trovare le tre raccolte, e una lista parziale (es. solo Paesaggi) non viene toccata.
+- Aggiornamento della sola interfaccia: **non richiede di reinstallare l'APK**.
+
 Ultime novità (0.1.53) — ponte unico pagina↔nativo:
 - **`js/bridge.js`, un solo punto di contatto con l'hardware** — la shell non chiama più
   `window.NovaNative` sparso nel codice: il ponte dichiara il **contratto** dei 53 metodi

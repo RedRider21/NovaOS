@@ -1078,7 +1078,10 @@ const NovaApps = (() => {
       // Eliminare una raccolta SGANCA le foto (album="") senza cancellarle: tornano in
       // Fotocamera, come Google Foto.
       const DEF_ALBUMS = ["Paesaggi", "Città", "Natura"];
-      const gallAlbums = () => { try { const a = os.store.get("gallAlbums", null); return Array.isArray(a) && a.length ? a.filter(Boolean) : DEF_ALBUMS.slice(); } catch (e) { return DEF_ALBUMS.slice(); } };
+      // Il seme si applica solo se la chiave non è MAI stata salvata (null): una lista
+      // vuota è una scelta dell'utente (ha eliminato le raccolte di esempio) e va
+      // rispettata. Con `&& a.length` l'ultima eliminazione faceva ripartire il seme.
+      const gallAlbums = () => { try { const a = os.store.get("gallAlbums", null); return Array.isArray(a) ? a.filter(Boolean) : DEF_ALBUMS.slice(); } catch (e) { return DEF_ALBUMS.slice(); } };
       const saveGallAlbums = a => os.store.set("gallAlbums", a);
       const escH = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
       const pickAlbumName = (title, ph) => new Promise(resolve => {
