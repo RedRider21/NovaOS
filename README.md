@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.52** (build 54). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.53** (build 55). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -254,6 +254,20 @@ Fatto:
   Messaggi, Fotocamera, Browser) non riempiono più la cella: restano a **48px** centrate
   (come la griglia), così non appaiono più enormi né nel Drawer reale né nella simulazione
   del reale dello Studio (il modello in scala resta invariato).
+Ultime novità (0.1.53) — ponte unico pagina↔nativo:
+- **`js/bridge.js`, un solo punto di contatto con l'hardware** — la shell non chiama più
+  `window.NovaNative` sparso nel codice: il ponte dichiara il **contratto** dei 53 metodi
+  (28 comandi fire-and-forget · 13 getter sincroni · 12 richieste/risposte) e inoltra al nativo
+  quando c'è, alla cache quando non c'è, al default del chiamante come ultima spiaggia.
+- **Predisposizione alla migrazione a GeckoView** — dove il ponte diventa asincrono a messaggi:
+  gli esiti ancora ignoti non fanno più prendere un ramo a caso (tri-stato `true`/`false`/`null`),
+  le coppie richiesta/risposta si **aspettano**, e i push nativo→pagina hanno un dispatcher unico
+  `NovaMsg`. Il caso critico è l'aggiornamento OTA: `shellWrite` che non risponde `true` **aborta
+  prima del commit**, invece di committare uno staging incompleto.
+- **Comportamento sul motore attuale invariato** — verificato con un test di equivalenza su 24
+  scenari eseguito sull'albero prima e dopo (stessi risultati); dettagli in
+  [docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md). Essendo un aggiornamento della sola
+  interfaccia, **non richiede di reinstallare l'APK**.
 
 Ultime novità (0.1.52) — fix ruolo dialer:
 - **Doppio intent-filter `ACTION_DIAL`** — il ruolo di telefono predefinito su Android 10+ richiede
@@ -312,7 +326,8 @@ Prossimi passi (in ordine): (1) **ROM con WebView su hardware reale** via GSI (f
 `system`, kernel e driver originali intatti), (2) **migrazione motore WebView → GeckoView**
 (piano dettagliato in **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**: Gradle +
 GeckoSession + WebExtension al posto di `addJavascriptInterface`, contenuta al livello
-contenitore), (3) pulizia dei fallback WebView-specifici, (4) **ROM definitiva**
+contenitore), ~~(3) pulizia dei fallback WebView-specifici~~ (**fatta**: `js/bridge.js` è il punto
+di contatto unico e la shell non dipende più dai getter sincroni), (4) **ROM definitiva**
 con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
 
 ### Ricompilare l'APK

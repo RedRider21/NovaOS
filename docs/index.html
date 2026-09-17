@@ -22,7 +22,7 @@
 
 <header class="topbar">
   <div class="container">
-    <a class="brand" href="index.html"><img src="img/logo.svg" alt=""><b>NovaOS</b><span class="tagline">0.1.52</span></a>
+    <a class="brand" href="index.html"><img src="img/logo.svg" alt=""><b>NovaOS</b><span class="tagline">0.1.53</span></a>
     <nav class="nav">
       <a href="index.html">Presentazione</a>
       <a href="manuale.html">Manuale</a>
@@ -45,7 +45,7 @@
       Open source, senza account e senza servizi cloud obbligatori.</p>
       <div class="hero-cta">
         <a class="btn grad" href="https://github.com/RedRider21/NovaOS/releases/latest" target="_blank" rel="noopener">
-          Scarica NovaOS 0.1.52</a>
+          Scarica NovaOS</a>
         <a class="btn outline" href="manuale.html">Leggi il manuale</a>
         <a class="btn outline" href="https://github.com/RedRider21/NovaOS" target="_blank" rel="noopener">Codice su GitHub</a>
       </div>
@@ -276,6 +276,10 @@
       con l'APK sono su GitHub; la shell si aggiorna da sola via OTA leggendo
       <code>shell/version.json</code>.</p>
     <ol class="road">
+      <li><span class="s">fatto</span><div><b>Release 0.1.53 — ponte pagina↔nativo</b><p>La shell parla
+        all'hardware attraverso un <b>unico punto di contatto</b> (<code>js/bridge.js</code>) con
+        contratto esplicito dei 53 metodi, esiti tri-stato e push unificati. Comportamento invariato:
+        è la predisposizione alla migrazione del motore. Aggiornamento della sola interfaccia via OTA.</p></div></li>
       <li><span class="s">fatto</span><div><b>Release 0.1.52 — telefonia</b><p>UI di chiamata ridisegnata,
         InCallService abilitato, doppio filtro ACTION_DIAL per il ruolo dialer su Android 10+, link
         <code>tel:</code> che precompilano il compositore, recupero della chiamata al boot.</p></div></li>
@@ -287,7 +291,8 @@
         intatti. Richiede un dispositivo di prova.</p></div></li>
       <li><span class="s">dopo</span><div><b>Motore WebView → GeckoView</b><p>Migrazione del motore
         (Gradle + GeckoSession al posto della WebView), contenuta a livello di contenitore: la shell
-        non cambia.</p></div></li>
+        non cambia — è già predisposta, parla all'hardware solo attraverso
+        <code>js/bridge.js</code>.</p></div></li>
       <li><span class="s">poi</span><div><b>ROM definitiva con GeckoView</b><p>NovaOS come UI di
         sistema con app firmata con chiave di piattaforma, whitelist e SELinux.</p></div></li>
     </ol>
@@ -348,7 +353,7 @@
       <a href="https://github.com/RedRider21/NovaOS/blob/main/docs/GUIDA-MAIL.md">Guida alla Mail</a>
       <a href="https://github.com/RedRider21/NovaOS" target="_blank" rel="noopener">GitHub</a>
     </nav>
-    <small>NovaOS 0.1.52 (build 54) · sistema operativo con interfacce web su base Android ·
+    <small>NovaOS 0.1.53 (build 55) · sistema operativo con interfacce web su base Android ·
       progetto open source, senza affiliazioni con Firefox OS o KaiOS.</small>
   </div>
 </footer>

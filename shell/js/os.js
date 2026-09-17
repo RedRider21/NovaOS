@@ -23,12 +23,15 @@ const OS = (() => {
   // Persistenza doppia: SharedPreferences native (se presente il bridge) + localStorage.
   // La localStorage della WebView su origine file:// NON è garantita tra i riavvii dell'app;
   // le preferenze native lo sono. Scrive su entrambe; legge prima dal nativo con fallback.
-  const _prefs = () => window.NovaNative || {};
+  // NB() è l'accessore difensivo al ponte (js/bridge.js): il ponte vero inoltra alla
+  // WebView e, sotto GeckoView, leggerà dalla cache. Se bridge.js non fosse caricato
+  // degrada verso la sola localStorage, invece di far esplodere la shell.
+  const NB = () => window.NovaBridge || { has: () => false, prefGet: () => null, prefKeys: () => null, prefSet() {}, prefDel() {} };
   const store = {
     get(k, d) {
       try {
         let v = null;
-        if (_prefs().prefGet) { try { v = _prefs().prefGet("nova:"+k); } catch {} }
+        try { v = NB().prefGet("nova:"+k); } catch {}
         if (v === null || v === undefined) v = localStorage.getItem("nova:"+k);
         return (v === null || v === undefined) ? d : JSON.parse(v);
       } catch { return d; }
@@ -36,11 +39,11 @@ const OS = (() => {
     set(k, v) {
       const s = JSON.stringify(v);
       try { localStorage.setItem("nova:"+k, s); } catch {}
-      try { if (_prefs().prefSet) _prefs().prefSet("nova:"+k, s); } catch {}
+      try { NB().prefSet("nova:"+k, s); } catch {}
     },
     del(k) {
       try { localStorage.removeItem("nova:"+k); } catch {}
-      try { if (_prefs().prefDel) _prefs().prefDel("nova:"+k); } catch {}
+      try { NB().prefDel("nova:"+k); } catch {}
     },
   };
   // migrazione una tantum: porta nelle preferenze native le impostazioni finora salvate
@@ -1551,8 +1554,8 @@ const OS = (() => {
 
   // ---- ponte sensori nativi (presente solo dentro l'app NovaOS) ----
   const NN = () => window.NovaNative || {};
-  const hasNativeSensors = () => !!(window.NovaNative && window.NovaNative.sensorStates);
-  function readNativeSensors() { try { return hasNativeSensors() ? JSON.parse(NN().sensorStates()) : null; } catch { return null; } }
+  const hasNativeSensors = () => NB().has("sensorStates");
+  function readNativeSensors() { try { const j = NB().sensorStates(); return j ? JSON.parse(j) : null; } catch { return null; } }
   function syncQuickSensors() { const ns = readNativeSensors(); if (!ns) return;
     ["wifi","bt","nfc","location","airplane"].forEach(k => { if (k in ns) state[k] = ns[k]; }); }
 
@@ -1566,7 +1569,7 @@ const OS = (() => {
   // ============================================================
   const Updater = (() => {
     const RAW = "https://raw.githubusercontent.com/RedRider21/NovaOS/main/shell/version.json";
-    const appInfo = () => { try { return JSON.parse(NN().appVersion()); } catch { return null; } };
+    const appInfo = () => { try { const j = NB().appVersion(); return j ? JSON.parse(j) : null; } catch { return null; } };
     let last = null;   // ultimo esito del controllo
 
     async function localInfo() {
@@ -1636,8 +1639,12 @@ const OS = (() => {
         const r = await fetch(RAWBASE + rel + "?t=" + Date.now(), { cache:"no-store" });
         if (!r.ok) return false;
         const b64 = toBase64(await r.arrayBuffer());
-        let ok = false; try { ok = NN().shellWrite(rel, b64); } catch {}
-        if (!ok) return false;
+        // await: oggi il ponte risponde subito (booleano), sotto GeckoView sarà una
+        // richiesta/risposta. `!== true` è identico a `!ok` con un booleano vero, ma
+        // non fa passare un esito ancora ignoto (null/undefined) — quello brickerebbe
+        // la shell al commit successivo.
+        let ok = false; try { ok = await NB().shellWrite(rel, b64); } catch {}
+        if (ok !== true) return false;
       }
       return true;
     }
@@ -1648,12 +1655,12 @@ const OS = (() => {
       //    build nativa installata è sufficiente per la nuova shell (minNative). La parte
       //    nativa (bridge Java) resta invariata: si aggiornano solo HTML/CSS/JS.
       const nativeOk = !info.minNative || (info.nativeBuild >= info.minNative);
-      if (nn && nn.shellWrite && nn.shellCommit && info.files.length && nativeOk) {
+      if (NB().has("shellWrite") && NB().has("shellCommit") && info.files.length && nativeOk) {
         try {
           if (await downloadShell(info.files)) {
             store.set("updAvailable", "");
-            let done = false; try { done = nn.shellCommit(); } catch {}
-            if (done) return { mode:"shell" };   // il bridge ricarica l'interfaccia
+            let done = false; try { done = await NB().shellCommit(); } catch {}
+            if (done === true) return { mode:"shell" };   // il bridge ricarica l'interfaccia
           }
         } catch {}
         // se qualcosa va storto si prosegue col fallback APK (nessun rischio: la shell
@@ -1735,9 +1742,12 @@ const OS = (() => {
     const k = el.dataset.q, isSensor = el.dataset.sensor === "1", act = el.dataset.act;
     if (act) { quickAct(act, k, el); return; }
     if (isSensor && native) {
-      let applied = false;
-      try { const fn = SETFN[k]; if (fn && NN()[fn]) applied = NN()[fn](!state[k]); } catch (e) {}
-      if (applied) { syncQuickSensors(); renderQuick(); }
+      // Esito a tre stati: true = commutato in-process (ridisegna) · false = rifiutato
+      // o non disponibile (chiude la tendina) · null = esito non ancora noto, perché il
+      // ponte a messaggi non risponde in modo sincrono → non decidiamo nulla qui.
+      let applied = null;
+      try { const fn = SETFN[k]; if (fn && NB().has(fn)) { const r = NB()[fn](!state[k]); applied = (r === true || r === false) ? r : null; } } catch (e) {}
+      if (applied === true) { syncQuickSensors(); renderQuick(); }
       else closeShade();
       return;
     }
@@ -1746,9 +1756,14 @@ const OS = (() => {
   }
   function quickAct(act, k, el) {
     if (act === "torch") {
-      const on = !state.torch; let applied = false;
-      try { if (NN().setTorch) applied = NN().setTorch(on); } catch {}
-      if (window.NovaNative && !applied) { notify({ app:"camera", title:"Torcia", text:"Torcia non disponibile su questo dispositivo." }); return; }
+      // Come sopra: true = accesa · false = il dispositivo l'ha rifiutata (avvisa)
+      // · null con ponte presente = esito ignoto (non decidiamo) · null senza ponte =
+      // nessun nativo, si simula come in anteprima.
+      const on = !state.torch;
+      let applied = null;
+      try { if (NB().has("setTorch")) { const r = NB().setTorch(on); applied = (r === true || r === false) ? r : null; } } catch {}
+      if (applied === false) { notify({ app:"camera", title:"Torcia", text:"Torcia non disponibile su questo dispositivo." }); return; }
+      if (applied === null && NB().has("setTorch")) return;
       set("torch", on); el.classList.toggle("on", state.torch); return;
     }
     if (act === "night")  { set("theme", state.theme === "dark" ? "light" : "dark"); renderQuick(); return; }
@@ -2073,7 +2088,7 @@ const OS = (() => {
     const d = {};
     try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf("nova:") === 0) d[k] = localStorage.getItem(k); } } catch {}
     // integra eventuali chiavi presenti solo nelle prefs native (se il bridge le elenca)
-    try { const nn = _prefs(); if (nn && nn.prefKeys) { const raw = nn.prefKeys(); const keys = raw ? JSON.parse(raw) : []; keys.forEach(k => { if (k && k.indexOf("nova:") === 0 && !(k in d)) { const v = nn.prefGet(k); if (v != null) d[k] = v; } }); } } catch {}
+    try { const bk = NB().prefKeys(); const keys = bk ? JSON.parse(bk) : []; keys.forEach(k => { if (k && k.indexOf("nova:") === 0 && !(k in d)) { const v = NB().prefGet(k); if (v != null) d[k] = v; } }); } catch {}
     return d;
   }
   function restoreData(d) {
@@ -2083,7 +2098,7 @@ const OS = (() => {
       if (k.indexOf("nova:") !== 0) continue;
       const v = String(d[k]);
       try { localStorage.setItem(k, v); } catch {}
-      try { if (_prefs().prefSet) _prefs().prefSet(k, v); } catch {}
+      try { NB().prefSet(k, v); } catch {}
       n++;
     }
     return n;
@@ -2379,17 +2394,16 @@ window.NovaDial = (num) => {
 /* Catch-up dello stato chiamata: se una chiamata è arrivata prima che la WebView
    fosse pronta (es. avvio da InCallService), la schermata la recupera al boot. */
 (() => {
-  const N = () => window.NovaNative || {};
+  const NB = () => window.NovaBridge || { has: () => false, currentCallState: () => null };
   let tries = 0;
-  const t = setInterval(() => {
+  const t = setInterval(async () => {
     tries++;
-    if (!window.NovaNative) { clearInterval(t); return; }
-    if (N().currentCallState) {
-      clearInterval(t);
-      try {
-        const s = JSON.parse(N().currentCallState());
-        if (s && s.state !== "ended") NovaCall.update(s.state, s.number || "", s.name || "");
-      } catch (_) {}
-    } else if (tries > 15) clearInterval(t);
+    if (!NB().has("currentCallState")) { clearInterval(t); return; }
+    clearInterval(t);
+    try {
+      const j = await NB().currentCallState();
+      const s = j ? JSON.parse(j) : null;
+      if (s && s.state !== "ended") NovaCall.update(s.state, s.number || "", s.name || "");
+    } catch (_) {}
   }, 400);
 })();

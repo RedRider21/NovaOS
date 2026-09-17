@@ -1,12 +1,12 @@
 {
-  "version": "0.1.52",
-  "build": 54,
+  "version": "0.1.53",
+  "build": 55,
   "minNative": 12,
-  "date": "2026-09-02",
-  "notes": "Fix ruolo dialer: doppio intent-filter ACTION_DIAL (con e senza scheme tel) richiesto da Android 10+ per l'assegnazione del ruolo.",
+  "date": "2026-09-17",
+  "notes": "Ponte unico pagina-nativo (js/bridge.js): un solo punto di contatto verso l'hardware, con contratto esplicito, cache di ripiego e push unificati (NovaMsg). Comportamento invariato; e' la predisposizione alla migrazione a GeckoView. Aggiornamento della sola interfaccia: nessuna reinstallazione dell'APK.",
   "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1.52/NovaOS-0.1.52.apk",
   "files": [
-    "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/icons.js",    "js/os.js",    "js/version.js",    "manifest.webmanifest",    "sw.js",
+    "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/bridge.js",    "js/icons.js",    "js/os.js",    "js/version.js",    "manifest.webmanifest",    "sw.js",
     "version.json"
   ]
 }

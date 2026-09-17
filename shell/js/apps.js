@@ -25,7 +25,9 @@ const NovaApps = (() => {
   /* ---------- Telefono (tastierino + preferiti + recenti + contatti + chiamata reale) ---------- */
   const phone = app({ id:"phone", name:"Telefono", icon:"📞", color:"#35c759", dock:true,
     render(root, os) {
-      const native = typeof window.NovaNative !== "undefined";
+      // Accessore difensivo al ponte pagina↔nativo (vedi js/bridge.js).
+      const NB = () => window.NovaBridge || { has: () => false };
+      const native = NB().has("call");
       let log = os.store.get("callLog", []);
       const saveLog = () => os.store.set("callLog", log);
       const contacts = () => os.store.get("contacts", CONTACTS_SEED);
@@ -483,12 +485,14 @@ const NovaApps = (() => {
       const micChip = root.querySelector("#mic-chip");
       const micTxt = root.querySelector("#mic-txt");
       const micBtn = root.querySelector("#mic-enable");
-      const micGranted = () => { try { return window.NovaNative && window.NovaNative.micGranted ? !!window.NovaNative.micGranted() : true; } catch { return true; } };
+      // Accessore difensivo al ponte pagina↔nativo (vedi js/bridge.js).
+      const NB = () => window.NovaBridge || { has: () => false, micGranted: () => true, micDiag: () => "granted", audioRecStart: () => false, audioRecStop: () => "" };
+      const micGranted = () => { try { return NB().has("micGranted") ? NB().micGranted() === true : true; } catch { return true; } };
       // aggiorna l'avviso microfono: nascosto se c'è audio; "Attiva" (Impostazioni)
       // se il permesso è negato; "Riprova" se il permesso c'è ma manca la traccia audio.
       // se c'è il fallback audio nativo del runtime, l'audio del video è comunque
       // registrabile (traccia separata sincronizzata in riproduzione): nessun avviso.
-      const nativeAudioAvail = !!(window.NovaNative && window.NovaNative.audioRecStart);
+      const nativeAudioAvail = NB().has("audioRecStart");
       const updateMicChip = () => {
         if (!wantAudio || hasAudioTrack || nativeAudioAvail) { micChip.style.display = "none"; return; }
         const granted = micGranted();
@@ -588,7 +592,7 @@ const NovaApps = (() => {
           // video stesso. Altrimenti, se la WebView non cattura il microfono, registra
           // l'audio col runtime nativo in parallelo -> traccia separata sincronizzata.
           if (!hasAudioTrack && nativeAudioAvail) {
-            try { nativeAudioRec = !!window.NovaNative.audioRecStart(); } catch { nativeAudioRec = false; }
+            try { nativeAudioRec = (await NB().audioRecStart()) === true; } catch { nativeAudioRec = false; }
           }
           const cand = ["video/webm;codecs=vp8,opus","video/webm;codecs=vp9,opus","video/webm;codecs=h264,opus","video/mp4;codecs=h264,aac","video/webm"];
           let mime = cand.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
@@ -608,12 +612,13 @@ const NovaApps = (() => {
           const clock = root.querySelector("#rec-clock"); clock.style.display = "inline-block";
           recTimer = setInterval(()=>{ const s=Math.floor((Date.now()-recStart)/1000); clock.textContent = "● "+String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); }, 500);
           os.vibrate && os.vibrate(20);
-        } catch (e) { if (nativeAudioRec) { try { window.NovaNative.audioRecStop(); } catch {} nativeAudioRec = false; } os.notify({ app:"camera", title:"Video", text:"Registrazione non supportata qui." }); }
+        } catch (e) { if (nativeAudioRec) { try { if (NB().has("audioRecStop")) await NB().audioRecStop(); } catch {} nativeAudioRec = false; } os.notify({ app:"camera", title:"Video", text:"Registrazione non supportata qui." }); }
       };
-      const stopRec = () => {
+      const stopRec = async () => {
         if (!rec) return;
-        // ferma prima l'audio nativo e conservane la traccia per onstop
-        if (nativeAudioRec) { try { pendingAudioTrack = window.NovaNative.audioRecStop() || null; } catch { pendingAudioTrack = null; } nativeAudioRec = false; }
+        // ferma prima l'audio nativo e conservane la traccia per onstop: l'ordine è
+        // obbligatorio (onstop legge pendingAudioTrack), quindi si aspetta la risposta.
+        if (nativeAudioRec) { try { pendingAudioTrack = (await NB().audioRecStop()) || null; } catch { pendingAudioTrack = null; } nativeAudioRec = false; }
         try { rec.stop(); } catch {}
         rec = null; clearInterval(recTimer); recTimer = null;
         shotBtn.classList.remove("recording");
@@ -1910,8 +1915,10 @@ const NovaApps = (() => {
       const clip = t => (t.split("\n")[0]||"").slice(0,60);
 
       // ---- bridge nativo: posta reale (SMTP/IMAP) quando NovaOS è installato ----
-      const nativeMail = !!(window.NovaNative && window.NovaNative.mailConfigure);
-      const acct = () => { try { return nativeMail ? JSON.parse(window.NovaNative.mailAccount()||"{}") : { configured:false }; } catch { return { configured:false }; } };
+      // Accessore difensivo al ponte pagina↔nativo (vedi js/bridge.js).
+      const NB = () => window.NovaBridge || { has: () => false, mailAccount: () => null, mailConfigure() {}, mailClear() {}, mailSend() {}, mailFetch() {} };
+      const nativeMail = NB().has("mailConfigure");
+      const acct = () => { try { return nativeMail ? JSON.parse(NB().mailAccount()||"{}") : { configured:false }; } catch { return { configured:false }; } };
       let syncing = false;
 
       // callback invocati dal MailBridge nativo al termine delle operazioni di rete
@@ -3116,23 +3123,27 @@ const NovaApps = (() => {
       const S = os.state;
       // ---- ponte hardware reale (presente solo dentro l'app NovaOS su Android) ----
       const NN = window.NovaNative || {};
-      const hasSensors = !!NN.sensorStates;
-      const readSensors = () => { try { return NN.sensorStates ? JSON.parse(NN.sensorStates()) : null; } catch { return null; } };
+      // Accessore difensivo al ponte pagina↔nativo (vedi js/bridge.js).
+      const NB = () => window.NovaBridge || { has: () => false, sensorStates: () => null, appVersion: () => null, isDialer: () => null };
+      const hasSensors = NB().has("sensorStates");
+      const readSensors = () => { try { const j = NB().sensorStates(); return j ? JSON.parse(j) : null; } catch { return null; } };
       // specchia nello stato della shell i valori VERI letti dall'hardware
       const syncSensors = () => { const ns = readSensors(); if (!ns) return null;
         ["wifi","bt","nfc","location","airplane"].forEach(k => { if (k in ns) S[k] = ns[k]; }); return ns; };
       // toggle sensori: prova l'azione reale (diretta se privilegiato nel ROM,
       // altrimenti apre il pannello) e ridisegna con lo stato aggiornato
       const SETFN = { wifi:"setWifi", bt:"setBluetooth", airplane:"setAirplane", location:"setLocation", nfc:"setNfc", mobileData:"setMobileData" };
-      const sensorAct = (k, redraw) => { let applied=false;
-        try { const fn = SETFN[k]; if (fn && NN[fn]) applied = NN[fn](!S[k]); } catch (e) {}
-        setTimeout(redraw, applied ? 300 : 800); };
+      // esito a tre stati: true = applicato · false = rifiutato · null = esito non ancora
+      // noto (ponte a messaggi) → si ridisegna col tempo lungo, come quando è rifiutato.
+      const sensorAct = (k, redraw) => { let applied = null;
+        try { const fn = SETFN[k]; if (fn && NB().has(fn)) { const r = NB()[fn](!S[k]); applied = (r === true || r === false) ? r : null; } } catch (e) {}
+        setTimeout(redraw, applied === true ? 300 : 800); };
       const isPriv = () => { const ns = readSensors(); return !!(ns && ns.privileged); };
       // versione REALE in esecuzione: la più recente tra l'APK nativo (PackageInfo) e la
       // shell aggiornata via OTA (window.__NOVA_SHELL). Senza questo, dopo un aggiornamento
       // della sola interfaccia le Info restavano ferme alla build dell'APK. Stessa logica
       // dell'updater (build effettiva = max(apk, shell)).
-      const appVer = (() => { try { return NN.appVersion ? JSON.parse(NN.appVersion()) : null; } catch { return null; } })();
+      const appVer = (() => { try { const j = NB().appVersion(); return j ? JSON.parse(j) : null; } catch { return null; } })();
       const shellVer = (() => { try { return (window.__NOVA_SHELL && window.__NOVA_SHELL.build) ? window.__NOVA_SHELL : null; } catch { return null; } })();
       const apkCode = (appVer && appVer.code) || 0;
       const shellBuild = (shellVer && shellVer.build) || 0;
@@ -3162,7 +3173,7 @@ const NovaApps = (() => {
           <div class="group">
             ${row("net","📶","#0a84ff","Rete e Internet", S.airplane?"Modalità aereo":(S.wifi?("Wi-Fi · "+S.wifiName):"Wi-Fi disattivato"))}
             ${row("connected","🔗","#0a84ff","Dispositivi connessi", (S.bt?"Bluetooth attivo":"Bluetooth off")+(S.nfc?" · NFC":""))}
-            ${row("tel","📞","#30d158","Telefono predefinito", (NN.isDialer&&NN.isDialer()) ? "NovaOS è il telefono predefinito" : "Non impostato")}
+            ${row("tel","📞","#30d158","Telefono predefinito", (NB().has("isDialer") && NB().isDialer() === true) ? "NovaOS è il telefono predefinito" : "Non impostato")}
           </div>
 
           <div class="section-label">Personalizzazione</div>
@@ -3301,7 +3312,7 @@ const NovaApps = (() => {
 
         // ---------------- Telefono predefinito ----------------
         tel: () => nav("Telefono predefinito", sec => {
-          const active = !!(NN.isDialer && NN.isDialer());
+          const active = NB().has("isDialer") && NB().isDialer() === true;
           sec.innerHTML = `
             <div class="group" style="padding:14px 16px;font-size:calc(13px*var(--fscale,1));line-height:1.55;color:${active?'var(--ok)':'var(--text-dim)'}">
               ${active ? "✓ NovaOS è il telefono predefinito: le chiamate in arrivo si aprono nella schermata di NovaOS (InCallService)."
@@ -3797,9 +3808,8 @@ const NovaApps = (() => {
             const up = info.hasUpdate;
             // aggiornamento della SOLA interfaccia (shell HTML/JS/CSS) applicabile a caldo,
             // senza reinstallare l'APK: serve il bridge nativo e una build nativa adeguata.
-            const nn = window.NovaNative;
             const otaShell = up && info.files && info.files.length
-              && nn && nn.shellWrite && nn.shellCommit
+              && NB().has("shellWrite") && NB().has("shellCommit")
               && (!info.minNative || info.nativeBuild >= info.minNative);
             const needsApk = up && !otaShell;
             sub.textContent = up ? `NovaOS ${info.currentName} · aggiornamento disponibile` : `NovaOS ${info.currentName} · aggiornato`;
@@ -3818,7 +3828,7 @@ const NovaApps = (() => {
             if (ins) ins.onclick = async () => {
               ins.disabled = true; ins.textContent = "Avvio aggiornamento…";
               if (os.updater.last && os.updater.last.files && os.updater.last.files.length
-                  && window.NovaNative && window.NovaNative.shellWrite
+                  && NB().has("shellWrite")
                   && (!os.updater.last.minNative || os.updater.last.nativeBuild >= os.updater.last.minNative)) {
                 panel.innerHTML = `<div style="color:var(--text-dim);font-size:calc(13px*var(--fscale,1));padding:6px 0"><span class="spin" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:8px"></span>Scarico e applico l'interfaccia aggiornata…</div>`;
               }
@@ -3843,9 +3853,8 @@ const NovaApps = (() => {
             const json = bkJson(); const n = Object.keys(os.backup()).length;
             // salva SEMPRE una copia interna → visibile/ripristinabile dal File Manager
             try { os.backupSaveInternal(bkName(), json); } catch {}
-            const nn = window.NovaNative;
-            if (nn && nn.saveDownload) {           // sul dispositivo: salva in Download
-              let path = ""; try { path = nn.saveDownload(bkName(), b64utf8(json)); } catch {}
+            if (NB().has("saveDownload")) {       // sul dispositivo: salva in Download
+              let path = ""; try { path = (await NB().saveDownload(bkName(), b64utf8(json))) || ""; } catch {}
               os.notify({ app:"settings", title:"Backup", text: path ? `Backup in ${path} e nel File Manager (${n} voci).` : "Backup non riuscito." });
             } else {                                // desktop/PWA: download del file
               try {
@@ -4050,7 +4059,9 @@ const NovaApps = (() => {
       };
 
       const setState = (txt) => { const e = root.querySelector("#rec-state"); if (e) e.textContent = txt; };
-      const micDiag = () => { try { return window.NovaNative && window.NovaNative.micDiag ? window.NovaNative.micDiag() : "granted"; } catch { return "granted"; } };
+      // Accessore difensivo al ponte pagina↔nativo (vedi js/bridge.js).
+      const NB = () => window.NovaBridge || { has: () => false, micDiag: () => "granted", audioRecStart: () => false, audioRecStop: () => "", openAppSettings() {}, requestMic() {} };
+      const micDiag = () => { try { return NB().has("micDiag") ? NB().micDiag() : "granted"; } catch { return "granted"; } };
       const showMicWarn = () => {
         const w = root.querySelector("#mic-warn"), txt = root.querySelector("#mic-warn-txt"), go = root.querySelector("#mic-go");
         if (!w) return;
@@ -4070,7 +4081,7 @@ const NovaApps = (() => {
 
       // su device usa il registratore audio NATIVO (la WebView spesso non cattura
       // il microfono via getUserMedia); in emulatore/browser ripiega su MediaRecorder web.
-      const nativeAudio = !!(window.NovaNative && window.NovaNative.audioRecStart);
+      const nativeAudio = NB().has("audioRecStart");
       const beginUI = () => {
         recording = true; t0 = Date.now();
         const btn = root.querySelector("#rec-btn"); if (btn) { btn.style.borderRadius = "20px"; btn.style.transform = "scale(.9)"; }
@@ -4113,8 +4124,8 @@ const NovaApps = (() => {
         // 2) ripiego sul layer del runtime (questa WebView non cattura il microfono):
         //    è lo stesso ruolo che avrebbe Gecko in Firefox OS, qui fornito da NovaNative.
         if (nativeAudio) {
-          let ok = false; try { ok = window.NovaNative.audioRecStart(); } catch {}
-          if (ok) { usedNative = true; beginUI(); return; }
+          let ok = false; try { ok = await NB().audioRecStart(); } catch {}
+          if (ok === true) { usedNative = true; beginUI(); return; }
         }
         showMicWarn(true);
       };
@@ -4124,7 +4135,7 @@ const NovaApps = (() => {
         endUI();
         if (usedNative) {
           let dataUrl = "";
-          try { dataUrl = window.NovaNative.audioRecStop() || ""; } catch {}
+          try { dataUrl = (await NB().audioRecStop()) || ""; } catch {}
           if (dataUrl) await saveRec(dataUrl, dur); else setState("Registrazione non riuscita");
           return;
         }

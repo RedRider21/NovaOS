@@ -60,6 +60,37 @@ Rilievo dal codice attuale (`MainActivity.java`, `CallHub.java`, `MailBridge.jav
 > sono i punti che richiederanno un adattamento nella shell (promise + valori «messi in cache»
 > all'avvio), oppure un'iniezione iniziale di un piccolo shim.
 
+**Stato: predisposizione fatta.** La shell non parla più direttamente col ponte: c'è un solo punto
+di contatto, `shell/js/bridge.js`, che oggi inoltra a `window.NovaNative` e domani parlerà a
+messaggi. Il resto di questo paragrafo descrive **cosa il ponte nuovo deve fornire** perché quel
+file continui a funzionare: è il contratto dello shim.
+
+- **Regola di lettura** (implementata in `bridge.js`):
+  `has(nome)` → si chiama `NovaNative[nome]` · altrimenti `cache[nome]` · altrimenti il default del
+  chiamante. La cache **non viene mai letta mentre il nativo è raggiungibile**, quindi in WebView
+  il comportamento è identico a prima per costruzione. `has()` è per-metodo, non «il nativo c'è»:
+  un APK vecchio può non avere `shellWrite`.
+- **Niente snapshot al boot**: `os.js` costruisce `state` al **parsing** (non a `DOMContentLoaded`)
+  e alcuni getter sono riletti di continuo (`sensorStates` a ogni `renderQuick()`,
+  `currentCallState` ogni 400 ms). Congelarli in cache sarebbe un cambio di comportamento **anche
+  in WebView**: la cache è solo un ripiego.
+- **Preferenze**: `prefGet` restituisce la **stringa JSON così com'è** (il `JSON.parse` resta in
+  `store.get`). Se lo shim restituisse un oggetto già decodificato, *tutte* le impostazioni
+  tornerebbero ai default in silenzio. `prefSet`/`prefDel` hanno il write-through su cache e nativo.
+- **Bootstrap delle preferenze**: se un content script inietta `window.__NOVA_PREFS` **a
+  `document_start`** (prima che `os.js` costruisca `state`), quelle chiavi entrano nella cache.
+  Altrimenti `NovaBridge.prefsPending` è vero e `onPrefsReady(cb)`/`hydratePrefs(obj)` permettono
+  la re-idratazione. In WebView il ramo non viene mai eseguito.
+- **Booleani tri-stato**: dove un bool decide un ramo si usa `=== true` / `!== true`, con `null` =
+  «esito non ancora noto» (solo a messaggi) → non decidere, non notificare, non cambiare stato.
+  Su un booleano Java vero `=== true` è identico a prima. Il caso critico è l'OTA: con un ponte
+  asincrono un `if (!ok)` sarebbe falso e l'updater committerebbe uno **staging incompleto**
+  (shell brickata); oggi `shellWrite` che non risponde `true` **aborta senza chiamare `shellCommit`**.
+- **Push**: i globali `NovaCall`/`NovaDial`/`NovaBack`/`__novaShot`/`__novaMic`/`__novaMicResume`
+  restano, ma esiste un dispatcher unico `window.NovaMsg(tipo, …)` che lo shim può chiamare per
+  tutti. Il gestore è risolto **pigramente** a ogni chiamata (sono definiti più avanti nel codice,
+  o ridescritti a ogni render). Un tipo sconosciuto restituisce `false` senza sollevare eccezioni.
+
 ## 4 · Architettura di destinazione
 
 ```
@@ -116,7 +147,7 @@ migrare un componente alla volta e tenere sempre un'istanza avviabile.
 | 0 | Spike minimo: progetto Gradle + `GeckoView` AAR + load della shell assets in una `GeckoSession` | La shell **boota** identica all'emulatore | APK + ~50 MB di motore; primo download Gradle+Maven lungo |
 | 1 | Interfaccia `Engine` comune; `WebViewEngine` attuale dentro; `GeckoEngine` per lo spike | Entrambe le varianti aprono la shell | Decisione build A/B (§5) |
 | 2 | WebExtension Nova: content script + shim `window.NovaNative`/`NovaCall` | I metodi *fire-and-forget* rispondono (toast, vibrate, share) | Usare il pattern ufficiale del native-messaging GeckoView |
-| 3 | Getter sincroni → asincroni con cache all'avvio | `appVersion`, `isDialer`, `currentCallState`, sensori, `mailAccount` tornano corretti nelle Impostazioni | Ritocco mirato in `shell/` dietro il solito fallback (se manca il nativo, simulazione) |
+| 3 | Getter sincroni → asincroni con cache all'avvio | `appVersion`, `isDialer`, `currentCallState`, sensori, `mailAccount` tornano corretti nelle Impostazioni | **Lato shell: fatto** (`shell/js/bridge.js` + ricablaggio dei call-site; comportamento in WebView invariato, verificato). Resta da scrivere lo **shim** lato Gecko e l'iniezione di `__NOVA_PREFS` a `document_start` |
 | 4 | Push chiamata: `NovaCall.update`/`NovaDial` da Java | Chiamata simulata (`adb emu gsm call`) mostra la schermata NovaOS | `session.evaluate` o port di messaggistica |
 | 5 | Permessi, file, download, UA, popup | Fotocamera scatta, Browser apre i siti, allegati Mail si aprono | Delegate GeckoSession dedicati |
 | 6 | Mail + telefonia + sensori end-to-end sul GeckoEngine | Suite di prova manuale su emulatore | JavaMail invariato |
@@ -126,28 +157,44 @@ migrare un componente alla volta e tenere sempre un'istanza avviabile.
 ## 7 · Rischi principali
 
 1. **Sincronia del ponte**: è il punto più delicato; mitigare con shim + cache all'avvio e
-   mantenendo sempre attivo il fallback di simulazione della shell.
+   mantenendo sempre attivo il fallback di simulazione della shell. Lato shell la mitigazione
+   **c'è già** (`js/bridge.js`: punto di contatto unico, tri-stato sugli esiti ignoti, `await` sulle
+   coppie richiesta/risposta) e il comportamento in WebView è verificato identico.
 2. **Dimensioni**: il motore GeckoView pesa decine di MB → APK molto più grande di oggi (546 KB);
    da accettare (l'APK è bootstrap, la shell resta OTA) e da documentare.
 3. **Service worker offline**: va verificata la compatibilità della strategia di cache della shell
    con la gestione cache di Gecko.
 4. **Doppia build**: tenere vivi due percorsi di compilazione richiede disciplina; la shell comune
    limita il costo.
-5. **Comportamenti diversi**: `addJavascriptInterface` sincrono sparisce; eventuali call-site
-   dimenticati nella shell si romperanno solo sul motore nuovo → copertura tramite checklist
-   dell'emulatore (fase 6–7).
+5. **Comportamenti diversi**: `addJavascriptInterface` sincrono sparisce; i call-site che leggono
+   il ponte **in modo sincrono** sono già stati ricablati su `js/bridge.js`. Restano fuori (di
+   proposito) i ~41 comandi *fire-and-forget* e i **probe di presenza** del nativo, che continuano a
+   interrogare `window.NovaNative` direttamente: sotto Gecko quell'oggetto non esisterà, quindi
+   *quei probe* passeranno al ramo simulato invece di usare il ponte — vedi i punti aperti in §8.
+   Copertura finale tramite checklist dell'emulatore (fase 6–7).
 
 ## 8 · Punti aperti da confermare nello spike
 
 - [ ] Rilascio AAR + Maven: versione GeckoView e requisiti (minSdk) da fissare.
 - [ ] Modalità migliore per lo shim in pagina: content script che espone `window.NovaNative`
-  (pattern ufficiale) oppure WebChannel.
+  (pattern ufficiale) oppure WebChannel. Lo shim deve soddisfare il contratto di `js/bridge.js`
+  (v. §3.2) e iniettare `__NOVA_PREFS` a `document_start`.
 - [ ] Persistenza dati shell (preferenze/IndexedDB) nello storage di GeckoView: migrazione o
   convivenza col percorso attuale.
 - [ ] Policy UA per la vista desktop del Browser.
 - [ ] Impatto di `?preview=1` / anteprime (nessuna differenza attesa).
+- [ ] **Probe di presenza del nativo** (`window.NovaNative && …`) nei comandi fire-and-forget e
+  nell'updater (`os.js` ramo APK: `installUpdate`/`openBrowser`). Sotto Gecko quell'oggetto non
+  esiste: quei rami cadrebbero sulla simulazione/percorso web invece del ponte. Da sciogliere
+  quando lo shim avrà forma definitiva (fase 2).
+- [ ] **`saveDownload`**: sotto Gecko il percorso di destinazione non è restituibile in modo
+  sincrono. Serve un push `NovaMsg("download.saved", path)`; senza, il backup riesce ma la notifica
+  dice «non riuscito» (il valore di ritorno è già trattato come «ignoto» e non fa danni).
+- [ ] **Push lato Java** (`MainActivity.java`, `MailBridge.java`): oggi usano `evaluateJavascript`
+  diretto; conviene farli passare da `NovaMsg`. Richiede build APK + emulatore per la verifica.
 
 ---
 
-*Documento di pianificazione — l'implementazione avviene su ramo isolato; la shell non cambia
-durante le fasi 0–5.*
+*Documento di pianificazione — l'implementazione avviene su ramo isolato. La shell è già stata
+predisposta (`js/bridge.js`) con comportamento invariato sul motore attuale, così le fasi 0–5
+lavorano su un'interfaccia stabile senza toccare l'app in uso.*
