@@ -57,6 +57,33 @@
     "prefSet", "prefDel",
   ];
 
+  // I getter sincroni di CONTRACT che questa spike sa leggere davvero. Lo stub li
+  // espone restituendo l'ultimo stato ricevuto dal nativo (vedi inviaStatoAllaShell).
+  //
+  // PERCHÉ ESPORLI, e non lasciarli solo nella cache di bridge.js:
+  //   has(n) è `CONTRACT[n] && raw && typeof raw[n] === "function"`. Se lo stub non
+  //   espone il getter, has() è falso: get() ripiega sulla cache e il valore arriva
+  //   — ma i punti della shell che scrivono `has("micDiag") ? micDiag() : default`
+  //   prendono il DEFAULT e non leggono mai la cache, perché has() è falso. Con
+  //   micDiag il default è "granted", quindi la shell credeva di avere il permesso
+  //   mentre il nativo diceva "blocked".
+  //   Esponendoli, has() torna vero come sotto WebView (dove tutti i 53 metodi
+  //   esistono davvero), e get() chiama lo stub, che risponde con il valore vero.
+  //
+  // Il valore è null finché lo stato non arriva (a pagina caricata): null è il
+  // default che i chiamanti già trattano come "non noto", quindi la finestra fra
+  // document_start e load è innocua.
+  //
+  // NON sono qui: i 14 comandi di richiesta/risposta (audioRec*, saveDownload,
+  // setWifi…): quelli devono restituire una Promise, e un metodo esposto che
+  // risponde undefined li farebbe sembrare falliti invece che "non noti".
+  // Né prefGet/prefKeys: con has() vero partirebbe la migrazione una tantum di
+  // os.js, che copierebbe la localStorage verso un nativo che non ha preferenze.
+  const GETTER = [
+    "sensorStates", "appVersion", "mailAccount", "isDialer", "currentCallState",
+    "micGranted", "micDiag", "batteryLevel", "micReady", "privileged", "shellSource",
+  ];
+
   const MARCA = "__novaGeo";
 
   // Marca distinta per il verso opposto. Due marche e non una perché i due
@@ -70,39 +97,94 @@
   // Se non parte (CSP restrittiva, per esempio), la shell degrada in simulazione
   // esattamente come sotto WebView senza nativo.
   //
-  // Lo stub fa DUE cose, una per verso:
-  //   uscita — definisce window.NovaNative, che la shell interroga all'avvio;
+  // Lo stub fa TRE cose:
+  //   uscita  — definisce window.NovaNative: i comandi postano verso il nativo,
+  //             i getter rispondono con l'ultimo stato ricevuto;
   //   ritorno — ascolta i messaggi del nativo e li consegna a window.NovaMsg,
   //             il dispatcher che la shell usa già per call.update, dial, back…
   //             (shell/js/bridge.js). Da lì in poi la shell non sa e non deve
-  //             sapere se il messaggio arriva da WebView o da GeckoView.
-  const sorgenteStub = "(() => {"
-    + "const C=" + JSON.stringify(COMANDI) + ";"
-    + "const p={};"
-    + "for (const n of C) p[n]=(...a)=>{try{window.postMessage({"
-    + JSON.stringify(MARCA) + ":{nova:n,args:a}},"
-    + "\"*\")}catch(e){}};"
-    + "window.NovaNative=p;"
-    + "window.addEventListener(\"message\",(ev)=>{"
-    + "if(ev.source!==window)return;"
-    + "const d=ev.data;"
-    + "if(!d||!d[" + JSON.stringify(MARCA_RITORNO) + "])return;"
-    + "const m=d[" + JSON.stringify(MARCA_RITORNO) + "];"
-    + "try{if(window.NovaMsg){window.NovaMsg(m.evento,...(m.args||[]));"
-    + "console.log(\"[nova-bridge] consegnato alla pagina: \"+m.evento);}"
-    + "else console.log(\"[nova-bridge] NovaMsg assente: \"+m.evento);}"
-    + "catch(e){console.log(\"[nova-bridge] consegna fallita: \"+e);}"
-    + "});"
-    + "console.log(\"[nova-bridge] stub di pagina installato: \"+C.length+\" comandi\");"
-    // Sonda: parte DAL CONTESTO DELLA PAGINA e attraversa tutti e tre i salti.
-    // Se il nativo la registra in logcat, il ponte è in piedi per davvero — non
-    // serve dedurlo, e non c'è modo di confonderla con una sonda del content script.
-    // Da questa versione la sonda ha anche una RISPOSTA: il nativo risponde sulla
-    // porta nativa, e se la risposta arriva fino a window.NovaMsg il ponte è
-    // verificato in entrambi i versi con un solo gesto.
-    + "window.postMessage({" + JSON.stringify(MARCA)
-    + ":{nova:\"__probe_stub\",args:[location.href]}},\"*\");"
-    + "})();";
+  //             sapere se il messaggio arriva da WebView o da GeckoView;
+  //   stato   — a pagina caricata chiede lo stato al nativo (__pagina_pronta) e lo
+  //             tiene in `stato`, che è ciò che i getter restituiscono.
+  //
+  // Un template literal e non una concatenazione: a questa lunghezza le virgolette
+  // sfuggite diventano illeggibili e sbagliarle costa un giro di build.
+  const sorgenteStub = `(() => {
+  const C = ${JSON.stringify(COMANDI)};
+  const G = ${JSON.stringify(GETTER)};
+  const MARCA = ${JSON.stringify(MARCA)};
+  const RITORNO = ${JSON.stringify(MARCA_RITORNO)};
+  const stato = {};
+
+  const ponte = {};
+  for (const n of C) {
+    ponte[n] = (...a) => {
+      try { window.postMessage({ [MARCA]: { nova: n, args: a } }, "*"); } catch (e) {}
+    };
+  }
+  for (const n of G) {
+    ponte[n] = () => (n in stato ? stato[n] : null);
+  }
+  window.NovaNative = ponte;
+
+  window.addEventListener("message", (ev) => {
+    if (ev.source !== window) return;
+    const d = ev.data;
+    if (!d || !d[RITORNO]) return;
+    const m = d[RITORNO];
+
+    if (m.evento === "shell.state") {
+      const s = (m.args && m.args[0]) || {};
+      Object.assign(stato, s);
+      try {
+        if (window.NovaBridge && window.NovaBridge.hydratePrefs) {
+          window.NovaBridge.hydratePrefs(s);
+        }
+      } catch (e) { console.log("[nova-bridge] idratazione fallita: " + e); }
+      console.log("[nova-bridge] stato ricevuto: " + Object.keys(s).join(","));
+      // Autodiagnosi: non basta sapere che lo stato e' arrivato, bisogna sapere che la
+      // SHELL lo legge. Queste tre righe interrogano NovaBridge esattamente come fa la
+      // shell, quindi dicono se il giro e' chiuso o se si e' fermato a meta'.
+      try {
+        const NB = window.NovaBridge;
+        if (!NB) { console.log("[nova-bridge] autodiagnosi: NovaBridge ASSENTE"); }
+        else {
+          console.log("[nova-bridge] autodiagnosi: has(micDiag)=" + NB.has("micDiag")
+            + " micDiag=" + JSON.stringify(NB.micDiag())
+            + " appVersion=" + JSON.stringify(NB.appVersion())
+            + " isDialer=" + JSON.stringify(NB.isDialer()));
+        }
+      } catch (e) { console.log("[nova-bridge] autodiagnosi fallita: " + e); }
+      return;
+    }
+
+    try {
+      if (window.NovaMsg) {
+        window.NovaMsg(m.evento, ...(m.args || []));
+        console.log("[nova-bridge] consegnato alla pagina: " + m.evento);
+      } else {
+        console.log("[nova-bridge] NovaMsg assente: " + m.evento);
+      }
+    } catch (e) { console.log("[nova-bridge] consegna fallita: " + e); }
+  });
+
+  // A pagina caricata, non prima: bridge.js è eseguito e la shell ha già letto le
+  // impostazioni. Lo stato serve alle app, che lo leggono quando si aprono.
+  window.addEventListener("load", () => {
+    try { window.postMessage({ [MARCA]: { nova: "__pagina_pronta", args: [location.href] } }, "*"); }
+    catch (e) { console.log("[nova-bridge] richiesta di stato fallita: " + e); }
+  });
+
+  console.log("[nova-bridge] stub di pagina installato: " + C.length + " comandi, " + G.length + " getter");
+
+  // Sonda: parte DAL CONTESTO DELLA PAGINA e attraversa tutti e tre i salti.
+  // Se il nativo la registra in logcat, il ponte è in piedi per davvero — non
+  // serve dedurlo, e non c'è modo di confonderla con una sonda del content script.
+  // Da questa versione la sonda ha anche una RISPOSTA: il nativo risponde sulla
+  // porta nativa, e se la risposta arriva fino a window.NovaMsg il ponte è
+  // verificato in entrambi i versi con un solo gesto.
+  window.postMessage({ [MARCA]: { nova: "__probe_stub", args: [location.href] } }, "*");
+})();`;
 
   let iniettato = false;
   try {

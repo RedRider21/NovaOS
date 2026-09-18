@@ -3,6 +3,12 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Senza la dichiarazione, requestPermissions non mostra alcun dialogo e
+         risponde «negato» all'istante: il comando requestMic sembrerebbe rotto
+         mentre invece è il modulo a essere incompleto. Nel modulo :app il
+         permesso c'è già (RECORD_AUDIO, richiesto dal registratore). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <application
         android:label="NovaOS Gecko (spike)"
         android:hardwareAccelerated="true"

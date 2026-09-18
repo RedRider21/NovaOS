@@ -1,7 +1,10 @@
 package os.nova.gecko;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
@@ -56,6 +59,9 @@ import java.io.OutputStream;
 public class MainActivity extends Activity {
 
     private static final String TAG = "NovaGeckoSpike";
+
+    /** Codice della richiesta di permesso microfono (requestMic). */
+    private static final int RICHIESTA_MIC = 4711;
 
     public static final String ORIGIN_ASSET = "asset";
     public static final String ORIGIN_INTERNAL = "internal";
@@ -300,6 +306,9 @@ public class MainActivity extends Activity {
             // completo in un solo gesto. Vedi rispondiAllaPagina().
             if ("__probe_stub".equals(nome)) rispondiAllaPagina();
 
+            // A pagina caricata si manda lo stato: vedi inviaStatoAllaShell().
+            if ("__pagina_pronta".equals(nome)) inviaStatoAllaShell();
+
             final String n2 = nome;
             final Object[] a2 = args;
             runOnUiThread(() -> esegui(n2, a2));
@@ -366,10 +375,17 @@ public class MainActivity extends Activity {
      *  {@code document_start}, quando la shell è ancora al boot. Una chiamata che arriva
      *  lì finisce dietro il lockscreen e il boot la cancella — provato: il log diceva
      *  «consegnato alla pagina» e sullo schermo non c'era nulla. Aspettando si verifica
-     *  il caso vero, cioè un evento che raggiunge una shell già viva. */
+     *  il caso vero, cioè un evento che raggiunge una shell già viva.
+     *
+     *  <p>Si attiva solo con {@code adb shell am start ... --ez prova true}: una chiamata
+     *  finta che compare da sola dopo 15 secondi intralcia qualsiasi altra prova — è
+     *  successo, il tocco su «Rifiuta» è finito sull'icona della Fotocamera sottostante
+     *  e ha aperto un'altra app. Come diagnostica vale solo se non si attiva quando non
+     *  serve. */
     private static final long ATTESA_PROVA_MS = 15000;
 
     private void rispondiAllaPagina() {
+        if (!getIntent().getBooleanExtra("prova", false)) return;
         if (portaNativa == null) {
             Log.w(TAG, "nessuna porta nativa aperta: risposta non inviata");
             return;
@@ -396,6 +412,24 @@ public class MainActivity extends Activity {
         }, ATTESA_PROVA_MS + 8000);
     }
 
+    /** Manda un evento alla shell sulla porta nativa.
+     *
+     *  <p>È il corrispettivo di ciò che sotto WebView faceva
+     *  {@code web.evaluateJavascript("window.NovaMsg('tipo', …)")}: stessa forma, stesso
+     *  dispatcher dall'altra parte (la mappa {@code MSG} di shell/js/bridge.js). */
+    private void inviaEvento(String tipo, Object... args) {
+        if (portaNativa == null) {
+            Log.w(TAG, "nessuna porta nativa aperta: evento non inviato: " + tipo);
+            return;
+        }
+        try {
+            portaNativa.postMessage(evento(tipo, args));
+            Log.i(TAG, "evento inviato alla pagina: " + tipo);
+        } catch (Exception e) {
+            Log.e(TAG, "evento non inviato: " + tipo, e);
+        }
+    }
+
     /** Il formato che lo stub si aspetta: {@code {evento, args: [...]}}.
      *  Non è la forma dei comandi in salita ({@code {nova, args}}) perché i due versi
      *  hanno semantiche diverse: in salita è una richiesta con un nome di metodo, in
@@ -409,6 +443,114 @@ public class MainActivity extends Activity {
             Log.e(TAG, "evento non costruito: " + tipo, e);
         }
         return o;
+    }
+
+    /** Manda alla shell i getter sincroni, che sotto Gecko non possono essere chiamati.
+     *
+     *  <p>Sotto WebView questi metodi rispondono <b>subito</b>: la pagina fa
+     *  {@code window.NovaNative.appVersion()} e riceve una stringa. Sotto Gecko la
+     *  comunicazione è a messaggi, quindi l'unico modo di avere il valore è che il
+     *  nativo lo mandi <b>prima</b> che la shell lo chieda. Lo stub consegna questo
+     *  oggetto a {@code NovaBridge.hydratePrefs(...)}, che lo mette nella cache di
+     *  bridge.js: {@code NovaBridge.appVersion()} lo trova lì.
+     *
+     *  <p>Perché non esporre i getter come metodi dello stub: {@code has(nome)}
+     *  diventerebbe vero, e {@code get()} restituirebbe {@code undefined} invece del
+     *  default del chiamante — un guasto peggiore del ponte assente, perché silenzioso.
+     *  La cache è l'unica via corretta.
+     *
+     *  <p>Qui sono cablati solo i getter che questa spike sa leggere <b>davvero</b>.
+     *  {@code sensorStates} è omesso di proposito: inventarlo farebbe credere alla shell
+     *  di poter commutare i sensori, che la spike non fa.
+     *
+     *  <p>Va detto che sotto Gecko <b>le preferenze non passano da qui</b>: {@code store}
+     *  in os.js legge prima il nativo e poi ripiega su {@code localStorage}, che su
+     *  {@code http://127.0.0.1} è affidabile e si legge a tempo di parsing. Questi
+     *  getter sono la parte che il ripiego non copre. */
+    private void inviaStatoAllaShell() {
+        if (portaNativa == null) {
+            Log.w(TAG, "nessuna porta nativa aperta: stato non inviato");
+            return;
+        }
+        org.json.JSONObject s = new org.json.JSONObject();
+        try {
+            // appVersion: il contratto è una stringa JSON, non un oggetto.
+            String nome = "?", codice = "0";
+            try {
+                android.content.pm.PackageInfo p =
+                        getPackageManager().getPackageInfo(getPackageName(), 0);
+                nome = p.versionName;
+                long c = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P
+                        ? p.getLongVersionCode() : p.versionCode;
+                codice = String.valueOf(c);
+            } catch (Exception e) {
+                Log.w(TAG, "versione non leggibile", e);
+            }
+            s.put("appVersion", "{\"name\":\"" + nome + "\",\"code\":" + codice + "}");
+
+            android.os.BatteryManager bm =
+                    (android.os.BatteryManager) getSystemService(BATTERY_SERVICE);
+            s.put("batteryLevel", bm == null ? -1
+                    : bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY));
+
+            boolean mic = checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            s.put("micGranted", mic);
+            s.put("micReady", mic);
+            boolean razionale = false;
+            try { razionale = shouldShowRequestPermissionRationale(
+                    android.Manifest.permission.RECORD_AUDIO); } catch (Exception ignored) {}
+            s.put("micDiag", mic ? "granted" : (razionale ? "askable" : "blocked"));
+
+            boolean dialer = false;
+            try {
+                android.telecom.TelecomManager tm =
+                        (android.telecom.TelecomManager) getSystemService(TELECOM_SERVICE);
+                dialer = tm != null && getPackageName().equals(tm.getDefaultDialerPackage());
+            } catch (Exception ignored) {}
+            s.put("isDialer", dialer);
+
+            // privileged: WRITE_SECURE_SETTINGS non è concedibile a un'app normale,
+            // quindi è una spia affidabile del fatto che si hanno poteri di sistema.
+            boolean priv = false;
+            try { priv = checkSelfPermission("android.permission.WRITE_SECURE_SETTINGS")
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED; } catch (Exception ignored) {}
+            s.put("privileged", priv);
+
+            s.put("shellSource", getIntent().getStringExtra("origin") == null
+                    ? ORIGIN_ASSET : getIntent().getStringExtra("origin"));
+
+            // Nessuna infrastruttura di telefonia in questa spike: lo stato onesto è
+            // "nessuna chiamata". La shell lo usa per il recupero della schermata al boot.
+            s.put("currentCallState", "{\"state\":\"ended\"}");
+        } catch (Exception e) {
+            Log.e(TAG, "stato non costruito", e);
+            return;
+        }
+        try {
+            portaNativa.postMessage(evento("shell.state", s));
+            Log.i(TAG, "stato inviato alla shell: " + s);
+        } catch (Exception e) {
+            Log.e(TAG, "stato non inviato", e);
+        }
+    }
+
+    /**
+     * Esito della richiesta di permesso microfono: risponde alla pagina e rinfresca lo
+     * stato in cache.
+     *
+     * <p>Il rinfresco non è un di più: dopo la risposta, {@code micDiag} e {@code micGranted}
+     * nella copia che la shell tiene in pagina sono quelli di prima. Se l'utente concede,
+     * la shell continuerebbe a credersi senza permesso (o viceversa) fino al prossimo avvio.
+     */
+    @Override
+    public void onRequestPermissionsResult(int codice, String[] permessi, int[] esiti) {
+        super.onRequestPermissionsResult(codice, permessi, esiti);
+        if (codice != RICHIESTA_MIC) return;
+        boolean concesso = esiti.length > 0 && esiti[0] == PackageManager.PERMISSION_GRANTED;
+        Log.i(TAG, "permesso microfono: " + (concesso ? "concesso" : "negato"));
+        inviaEvento("mic.result", concesso);
+        inviaStatoAllaShell();
     }
 
     /** I comandi cablati nella dimostrazione di fase 2. */
@@ -440,6 +582,37 @@ public class MainActivity extends Activity {
                 Intent i = new Intent(this, BrowserActivity.class);
                 i.putExtra("url", args.length > 0 ? String.valueOf(args[0]) : "");
                 startActivity(i);
+                break;
+            }
+            case "requestMic": {
+                // Primo comando cablato che NON finisce in un log: chiede il permesso e
+                // ne rimanda l'esito alla pagina. Sotto WebView lo faceva
+                // onPermissionRequest (:212-227) chiamando __novaMic(ok); qui la stessa
+                // risposta viaggia come evento mic.result sulla porta nativa, e lo stub
+                // la consegna a window.NovaMsg — che è la funzione da cui la shell
+                // appende __novaMic (shell/js/apps.js:4217). Il giro è identico.
+                //
+                // Se il permesso c'è già non c'è dialogo da mostrare e si risponde
+                // subito: senza questo ramo il primo tocco su «registra» non farebbe
+                // nulla e sembrerebbe rotto.
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                        == PackageManager.PERMISSION_GRANTED) {
+                    inviaEvento("mic.result", true);
+                } else {
+                    requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, RICHIESTA_MIC);
+                }
+                break;
+            }
+            case "openAppSettings": {
+                // Utile subito: dopo un diniego definitivo la shell manda l'utente qui.
+                try {
+                    Intent i = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.fromParts("package", getPackageName(), null));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                } catch (Exception e) {
+                    Log.w(TAG, "impostazioni app non apribili", e);
+                }
                 break;
             }
             default:
