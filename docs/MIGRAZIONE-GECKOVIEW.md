@@ -641,10 +641,14 @@ all'interfaccia senza che sia stata toccata una riga di `shell/`.
   e risponde «negato» all'istante: il comando sembra rotto mentre è il modulo a essere incompleto.
   Nel modulo `:app` il permesso c'è già. (È una precondizione nota di Android, non un guasto
   incontrato qui: la dichiarazione è stata aggiunta prima della build.)
-- **La richiesta parte già dal thread principale.** `requestPermissions` lo richiede, e `esegui`
-  gira sul thread di Gecko; la prova però è che il dialogo è comparso al primo tentativo utile,
-  senza `runOnUiThread`. Vale a dire che `MessageDelegate.onMessage` viene consegnato sul thread
-  principale. Se un domani il delegate cambiasse thread, questa è la prima riga da guardare.
+- **La richiesta parte dal thread principale, e la riga che lo garantisce è una sola.**
+  `requestPermissions` va chiamata dal thread UI, e `esegui` ci gira — ma **non** perché Gecko
+  consegni `MessageDelegate.onMessage` lì: lo consegna sul suo thread, e il salto è esplicito,
+  `runOnUiThread(() -> esegui(n2, a2, id2))` (`MainActivity.java:321`; stessa cosa per
+  `esegui` in `:203`). Detta com'era scritta prima — «il delegate viene consegnato sul thread
+  principale» — la frase era meccanicamente falsa e faceva sembrare una garanzia del motore
+  ciò che è una riga scritta a mano. Chi in futuro tocca quella riga deve sapere che senza di
+  essa `requestPermissions` fallisce.
 
 **Un errore di metodo, per la seconda volta lo stesso.** Il primo tentativo «non ha fatto nulla»:
 nessun dialogo, nessuna callback. La causa non era nel codice — l'emulatore si era riaddormentato
@@ -715,6 +719,119 @@ una svista del porting: è il comportamento da riprodurre, ed è bene saperlo pr
 
 **Regola da tenere per le fasi successive:** quando un'API del motore *sembra* fare la cosa giusta,
 il porting è finito solo se si è verificato **cosa fa dall'altra parte**, non se compila.
+
+---
+
+## 13 · Esito della fase 4 — il canale richiesta/risposta (2026-09-18)
+
+**Esito: il canale funziona, verificato end-to-end con `saveDownload`.** Il backup scrive davvero
+il file (216 byte in `Download/`), Java risponde col percorso, la pagina lo riceve **intatto**, la
+shell vibra — il suo ramo di successo. Nessuna riga di `shell/` modificata.
+
+### 13.1 · Perché serviva un canale a parte
+
+Le fasi 2 e 3 avevano costruito due versi che non si toccavano: la pagina **chiede** (28 comandi
+fire-and-forget) e riceve **eventi** (11 getter sincroni, più `mic.result` e `back`). Manca la
+forma che serve alla maggior parte dei 14 comandi di `CONTRACT` rimasti: una domanda che vuole una
+risposta. La shell li chiama con `await` — `await NB().audioRecStart()` — perché sotto WebView
+`NovaNative` li espone come metodi che restituiscono un valore.
+
+Il canale: lo stub espone il comando, gli assegna un **id progressivo** e restituisce una Promise;
+Java la scioglie postando `__novaRisposta` sulla porta nativa con lo stesso id. Un id e non il nome
+del comando: due richieste uguali in volo (due salvataggi insieme) devono poter ricevere risposte
+diverse.
+
+`await` su un valore semplice e `await` su una Promise sono la stessa cosa per il chiamante, quindi
+**la sostituzione è invisibile alla shell**. È il motivo per cui il canale si è potuto aggiungere
+senza toccare una riga di `shell/`.
+
+### 13.2 · La trappola simmetrica a `has()`
+
+§11.2 ha stabilito che `has()` è un interruttore, non una guardia: esporre un getter che il nativo
+non riempie fa prendere ai chiamanti un default ottimista invece del valore vero. Il canale
+richiesta/risposta ha lo stesso problema **rovesciato**, e peggiore:
+
+| | Getter (§11.2) | Richiesta/risposta (§13) |
+|---|---|---|
+| Esposto ma non risposto | `has()` vero → default ottimista, silenzioso | la Promise non si scioglie → **la shell si blocca su quel gesto** |
+| Sintomo | un valore sbagliato | nessun valore, per sempre |
+| Come si scopre | confrontando col nativo | non si scopre: nessun errore, nessuna scadenza |
+
+Un `await` che non torna non produce un'eccezione, non logga nulla e non ha scadenza: la shell
+resta appesa sul gesto. Perciò tre regole, tutte e tre necessarie:
+
+1. **L'elenco `RR` nello stub è la copia esatta di ciò che Java risponde.** Un nome in più è un
+   blocco. Non è un elenco «dei comandi che esisterebbero»: è l'elenco dei `case` realmente cablati.
+2. **`id >= 0` distingue una richiesta da un comando fire-and-forget.** Solo la prima va risolta;
+   il `default:` di Java risponde `null` invece di tacere, così un comando che qualcuno aggiunge a
+   `RR` senza cablarlo si scopre subito invece di bloccare la shell.
+3. **Un timeout di sicurezza nello stub (10 s)** che risolve comunque, e **lo dice in console**:
+   un timeout silenzioso sarebbe una bugia, e il chiamante deve poter distinguere «non riuscito»
+   da «il nativo non ha risposto». Scaduto, il valore è `null`, che i chiamanti già trattano come
+   «non riuscito».
+
+### 13.3 · Il difetto trovato durante la verifica, e cosa insegna
+
+Il primo giro è **sembrato** riuscito e non lo era. La risposta passava per l'array `{evento, args}`
+usato dagli eventi:
+
+```
+Java:   risposta inviata: id=1 valore=Download/novaos-backup-2026-09-18.json
+porta:  {"evento":"__novaRisposta","args":[1,0]}
+pagina: risposta per id 1: 0
+```
+
+L'id arrivava, la Promise si scioglieva, **il canale funzionava** — e il valore era `0`. La
+diagnosi: un `JSONArray` di **tipi misti** non sopravvive alla conversione `JSONObject` →
+`GeckoBundle` che sta dietro `WebExtension.Port.postMessage`. Il numero è passato, la stringa è
+diventata `0`. La correzione sono campi con un nome — `{"evento":"__novaRisposta","id":1,
+"valore":"…"}` — che non dipendono da come il motore serializza gli array.
+
+Tre cose da portare avanti:
+
+- **Gli eventi non se n'erano accorti per fortuna, non per disegno.** I loro array sono vuoti
+  (`back`) o contengono un solo elemento dello stesso tipo (`mic.result` con un booleano,
+  `shell.state` con un oggetto). Un array di un tipo solo passa; uno misto no. La regola generale
+  è di non contare sulla serializzazione degli array per trasportare valori di tipo imprevedibile.
+- **Un dato che attraversa un confine va guardato dall'altra parte.** Il log di Java diceva
+  `valore=Download/…json`, corretto. Se la verifica si fosse fermata lì — «Java ha inviato il
+  valore giusto» — il difetto sarebbe passato. La riga che conta è quella della pagina: *cosa è
+  arrivato*. È la stessa lezione di §12 in un'altra veste.
+- **Un id giusto non è una risposta giusta.** Il canale era corretto in ogni sua parte
+  meccanica; a essere sbagliato era solo il carico. Verificare che il meccanismo giri non dice
+  nulla su ciò che trasporta: vanno provati **entrambi**, e con un valore che si possa
+  riconoscere.
+
+### 13.4 · Un difetto preesistente, ora visibile
+
+Il file scritto è `Download/novaos-backup-2026-09-18 (1).json` mentre Java ha risposto
+`Download/novaos-backup-2026-09-18.json`: **MediaStore rinomina in caso di collisione** e il
+percorso che l'app comunica non è quello del file su disco. Non è una regressione di GeckoView —
+lo stesso identico codice sta in `:app` (`MainActivity.java:898`), quindi il comportamento è già
+quello dell'app pubblicata. La differenza è che sotto WebView questo valore finiva in un
+`JavascriptInterface` e la shell lo scriveva a schermo; qui finora diventava `0` e il difetto era
+invisibile. Da correggere quando si toccherà `saveDownload`: il nome vero si legge dall'URI
+restituito da MediaStore, non si presume da quello richiesto.
+
+### 13.5 · Stato dopo la fase 4
+
+| Cosa | Stato |
+|---|---|
+| Ponte pagina → nativo | ✅ verificato (§10) |
+| Ponte nativo → pagina, con evento vero | ✅ verificato: `mic.result` (§11.4), `back` (§12) |
+| Getter di stato (11) | ✅ cablati e verificati |
+| Preferenze | ✅ già funzionanti via `localStorage`, senza Java (§11.3) |
+| **Canale richiesta/risposta** | ✅ **verificato end-to-end** (§13) — ma con **1 comando su 14** |
+| Comandi cablati in Java | **5 su 53** (`toast`, `vibrate`, `openBrowser`, `requestMic`, `openAppSettings`) |
+| `BrowserActivity` | copiata da `:app`, **ancora basata su WebView**: il port è un passo a sé |
+| Tasto Indietro | ✅ cablato e verificato (§12) |
+
+Il canale è la parte difficile; i comandi che lo usano sono ora quasi tutti una riga in `RR` più
+un `case` in Java. L'ordine utile è: **`shellWrite`/`shellCommit`** (è il percorso dell'OTA sotto
+Gecko), poi **`audioRecStart`/`audioRecStop`** — che Gecko dovrebbe rendere superflui via
+`getUserMedia`, quindi vanno provati in quest'ordine, non cablati a scatola chiusa — e infine i
+sette `set*`, che **non sono lavoro di porting**: sotto Android stock rispondono già `false` oggi,
+anche nell'app pubblicata, perché richiedono `WRITE_SECURE_SETTINGS`. Sono lavoro della traccia B.
 
 ---
 

@@ -513,18 +513,35 @@ Prossimi passi (aggiornati al 2026-09-18, **due tracce** — vedi
    solo errore da nessuna parte. È il primo caso in cui l'API esiste ma significa **un'altra
    cosa**: la categoria più insidiosa del porting. Dettagli in
    **[docs/MIGRAZIONE-GECKOVIEW.md §12](docs/MIGRAZIONE-GECKOVIEW.md)**.
-6. **Completare il ponte** — in Java sono cablati 5 comandi su 53; restano da fare i 14 di
-   richiesta/risposta, che devono restituire una Promise e richiedono un disegno a parte.
-7. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
+6. ~~**Canale richiesta/risposta (fase 4)**~~ — **fatto (2026-09-18)**: il ponte ora regge anche la
+   forma che serve ai 14 comandi che restituiscono un valore. Lo stub assegna un id e restituisce
+   una Promise, Java la scioglie postando `__novaRisposta`. Verificato end-to-end con `saveDownload`:
+   il backup scrive il file, il percorso torna alla pagina intatto e la shell vibra. Il canale è
+   delicato per la trappola **simmetrica** a `has()`: esporre un comando che il nativo non risponde
+   significa un `await` che non si scioglie mai — la shell appesa su quel gesto, senza errore e
+   senza scadenza. Da qui tre regole (l'elenco è la copia esatta dei `case` cablati, il `default:`
+   di Java risponde `null`, un timeout di sicurezza che risolve *e lo dice*). Nel corso della
+   verifica è emerso un difetto che vale la pena ricordare: **un array di tipi misti non
+   sopravvive a `postMessage`** — la stringa arrivava come `0`, con l'id perfettamente corretto e
+   il canale che girava. Dettagli in
+   **[docs/MIGRAZIONE-GECKOVIEW.md §13](docs/MIGRAZIONE-GECKOVIEW.md)**.
+7. **Completare il ponte** — in Java sono cablati 5 comandi su 53 e **1 dei 14** di
+   richiesta/risposta. Il canale è la parte difficile: ogni comando in più è ora una riga
+   nell'elenco dello stub e un `case` in Java. Ordine utile: `shellWrite`/`shellCommit` (è il
+   percorso dell'OTA sotto Gecko), poi `audioRecStart`/`audioRecStop` — che Gecko dovrebbe rendere
+   superflui via `getUserMedia`, quindi vanno *provati* prima di cablarli. I sette `set*` **non
+   sono lavoro di porting**: sotto Android stock rispondono già `false` oggi, anche nell'app
+   pubblicata.
+8. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
    `addJavascriptInterface`, contenuta al livello contenitore (piano dettagliato in
    **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**). Va messo a piano che la
    traccia A **abbandona `build-apk.sh`**: la catena di GeckoView richiede Gradle (§9).
-8. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
+9. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
    doppia persistenza.
 
 **Traccia B — ROM su telefono secondario** *(differita)*
-9. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
-10. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
+10. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
+11. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
    Da fare **solo su un dispositivo secondario, preferibilmente Pixel**, mai sul telefono
    principale: il fusibile hardware è irreversibile.
 
