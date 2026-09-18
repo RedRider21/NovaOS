@@ -4,6 +4,12 @@ android-launcher/build/
 # Copia della shell impacchettata negli assets (generata: cp -r shell/* .../assets/www/)
 android-launcher/app/src/main/assets/www/
 
+# Modulo :gecko dello spike (il codice vive sul ramo gecko-spike: qui restano solo le
+# cartelle rigenerabili, che senza queste righe comparirebbero come non tracciate su main)
+android-launcher/gecko/build/
+android-launcher/gecko/src/main/assets/www/
+android-launcher/gecko/src/main/assets/extension/www/
+
 # File di test/harness temporanei
 shell/_t*.html
 _t*.html

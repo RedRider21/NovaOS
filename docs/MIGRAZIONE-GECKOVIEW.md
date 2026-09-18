@@ -5,10 +5,11 @@ che oggi fa da contenitore alla shell con **GeckoView** (il motore di Firefox), 
 invariata tutta la parte web. Questo documento è la base di lavoro per lo spike isolato sul
 ramo parallelo `novaos-rom/`; la shell (`shell/`) non deve cambiare.
 
-- Stato: **fase 0 (§9) e fase 2 (§10) verificate su emulatore il 2026-09-18**, in **entrambi i
-  versi**: i comandi della shell arrivano al nativo e gli eventi del nativo (es. chiamata in
-  arrivo) compaiono nella shell. Restano da cablare la maggior parte dei comandi e le fasi 3–8.
-  Nulla di quanto descritto qui è stato pubblicato: lo spike vive su un ramo isolato.
+- Stato: **fasi 0 (§9), 2 (§10) e 3 (§11) verificate su emulatore il 2026-09-18**, in **entrambi i
+  versi**: i comandi della shell arrivano al nativo, gli eventi del nativo (es. chiamata in
+  arrivo) compaiono nella shell, e i getter di stato rispondono con il valore vero. Restano da
+  cablare 50 comandi su 53 e le fasi 4–8. Nulla di quanto descritto qui è stato pubblicato: lo
+  spike vive su un ramo isolato.
 - Interessati: livello `android-launcher/` (contenitore + ponte), `shell/` (minimi ritocchi),
   `system/` (ROM definitiva)
 - **Il codice dello spike vive sul ramo `gecko-spike`** (non linkato di proposito: un link
@@ -24,6 +25,11 @@ ramo parallelo `novaos-rom/`; la shell (`shell/`) non deve cambiare.
 > privilegiata) invalidano il piano originale del §4 e sono il motivo per cui la shell è servita
 > da un server HTTP locale invece che dagli asset. Il verso nativo → pagina, che era il rischio
 > più serio del piano, è risolto e descritto in **§10.7**.
+
+> **Da leggere per primo se si riprende il lato getter:** §11.2. La semantica di `has()` rende
+> obbligatorio esporre i getter nello stub — non esporli non è prudenza, è un guasto silenzioso —
+> e lo `store` della shell ripiega già su `localStorage`, quindi le preferenze non hanno bisogno
+> del nativo.
 
 ---
 
@@ -458,7 +464,7 @@ computer non esiste. Il server locale invece è autosufficiente.
 | Ponte a tre salti, con sonda dalla pagina | ✅ verificato: `__probe_stub` arriva a Java |
 | `openBrowser` → `BrowserActivity` nativa | ✅ verificato dal dock |
 | Comandi cablati in Java | **3 su 53** (`toast`, `vibrate`, `openBrowser`): tutti gli altri arrivano e finiscono nel log |
-| Getter e richiesta/risposta (14 + 11) | ❌ da fare: sono asincroni, servono cache all'avvio (fase 3) |
+| Getter e richiesta/risposta (14 + 11) | ❌ in questa fase; **risolti in §11** (fase 3): gli 11 getter sono cablati, restano i 14 asincroni |
 | Ritorno nativo → pagina, con evento consegnato alla shell | ✅ verificato (§10.7) |
 | `BrowserActivity` | copiata da `:app`, **ancora basata su WebView**: il port a GeckoView è un passo a sé |
 | Pulizia | la fascia diagnostica è già stata tolta; le sonde `__probe_bg` / `__probe_stub` **restano** finché servono alla fase 3 come spia di canale vivo |
@@ -521,6 +527,149 @@ sono due affermazioni diverse**, e in un sistema a sei salti la prima non implic
 costringere a ripensare tutto» — è **chiuso**. Le fasi 0 e 2 sono verificate in entrambi i versi;
 quello che resta è lavoro noto e senza incognite: cablare i comandi (3 su 53), rendere asincroni i
 getter (fase 3), e le differenze di comportamento di fase 5.
+
+---
+
+## 11 · Esito della fase 3 — i getter e i primi eventi veri (2026-09-18)
+
+**Esito: verificato.** Lo stato del telefono (versione app, batteria, permessi, ruolo dialer, stato
+chiamata) parte da Java, attraversa la porta nativa, e la shell lo legge dai getter del contratto
+come se fosse sotto WebView. Un comando vero — `requestMic` — chiede il permesso di sistema e ne
+rimanda l'esito alla pagina, in entrambi gli esiti.
+
+### 11.1 · Perché i getter sono un problema diverso dai comandi
+
+Un comando è fire-and-forget: la pagina chiama, il nativo fa. Un getter **restituisce un valore che
+la pagina legge subito**, e questa differenza non è aggirabile: il ponte è asincrono per
+costruzione, quindi il valore non può essere la risposta della chiamata. Il nativo manda lo stato
+una volta, all'avvio; lo stub lo tiene in una variabile; il getter restituisce quella copia. La
+finestra fra `document_start` (quando lo stub esiste) e `load` (quando lo stato arriva) è coperta
+dal valore `null`, che i chiamanti già trattano come «non noto».
+
+Conseguenza sul contratto: **il valore può essere vecchio.** Sotto WebView `micDiag()` interrogava
+il sistema nel momento della chiamata; qui risponde con una fotografia. Da qui l'obbligo, in
+`onRequestPermissionsResult`, di rimandare lo stato aggiornato subito dopo aver risposto: senza,
+`micDiag` resterebbe quello di prima fino al riavvio successivo, e la shell crederebbe a
+un'informazione che il sistema ha già smentito.
+
+### 11.2 · `has()` è un interruttore, non una guardia
+
+Questa è la scoperta che ha deciso la forma della fase, e va letta prima di toccare lo stub.
+
+In `shell/js/bridge.js`:
+
+```js
+has(n)  = !!(CONTRACT[n] && raw && typeof raw[n] === "function")
+get(n)  = has(n) ? raw[n]() : cache[n] !== undefined ? cache[n] : default
+```
+
+Il chiamante però non usa `get()`. Scrive quasi sempre così:
+
+```js
+has("micDiag") ? micDiag() : "granted"
+```
+
+Il ragionamento istintivo è: «se il nativo non sa rispondere, `has()` è falso e la shell ripiega
+sul default — un degrado prudente». **È falso.** Il default di `micDiag` è `"granted"`: con
+`has()` falso la shell si dichiara con il permesso mentre il nativo dice `"blocked"`. Il ripiego
+non è prudente, è **ottimista**, e senza lo stub il ponte sembrerebbe assente mentre sta invece
+mentendo a favore del permesso.
+
+Non esporre i getter non era quindi una scelta conservativa, era **un guasto silenzioso**. La
+scelta giusta è esporli (come fa WebView, dove esistono tutti e 53 i metodi), e restituire il
+valore vero.
+
+**L'elenco non è tutto `CONTRACT`.** Sono cablati gli 11 getter puri:
+
+`sensorStates`, `appVersion`, `mailAccount`, `isDialer`, `currentCallState`, `micGranted`,
+`micDiag`, `batteryLevel`, `micReady`, `privileged`, `shellSource`.
+
+Restano fuori, deliberatamente, due gruppi:
+- i **14 di richiesta/risposta** (`audioRec*`, `saveDownload`, `setWifi`…): devono restituire una
+  Promise, e un metodo esposto che risponde `undefined` li farebbe sembrare *falliti* invece che
+  *non noti* — un guasto peggiore del degrado;
+- **`prefGet` / `prefKeys`**: con `has()` vero partirebbe la migrazione una tantum di `os.js`, che
+  copierebbe la `localStorage` verso un nativo che non ha preferenze. Cablarli senza implementarle
+  sarebbe stato distruttivo.
+
+### 11.3 · Le preferenze non hanno bisogno del nativo
+
+Scoperta che riduce di molto la fase 3, e che vale la pena fissare perché sembra controintuitiva.
+
+`shell/js/os.js` definisce `store` con **due livelli**: prima il nativo, e se il nativo non c'è,
+`localStorage`. Sotto Gecko su `http://127.0.0.1` la seconda via c'è, è affidabile ed è **sincrona
+al parse** — cioè le impostazioni sono già lette e applicate prima che qualunque getter asincrono
+possa rispondere.
+
+Quindi la fase 3 non deve cablare l'intera superficie dei getter: le preferenze funzionano già.
+Restano i getter che riguardano lo *stato del dispositivo*, che è esattamente la lista di §11.2.
+Nella ROM (traccia B) il discorso è diverso e va riaperto: lì l'origine cambia e la `localStorage`
+non è più la stessa cosa.
+
+### 11.4 · Il primo evento che non è una sonda
+
+Le fasi precedenti si erano verificate con sonde (`__probe_bg`, `__probe_stub`, una chiamata in
+arrivo finta). Una sonda prova che il canale è vivo; non prova che il canale **serva**. Il primo
+evento generato da un fatto vero è `mic.result`: il nativo chiede il permesso di sistema e rimanda
+l'esito.
+
+```java
+case "requestMic":
+  if (già concesso) inviaEvento("mic.result", true);
+  else requestPermissions(new String[]{RECORD_AUDIO}, RICHIESTA_MIC);
+```
+
+e in `onRequestPermissionsResult`: `inviaEvento("mic.result", concesso)` seguito da
+`inviaStatoAllaShell()`.
+
+Dall'altra parte non serve nulla di nuovo: `mic.result` è già nella mappa `MSG` di `bridge.js`, e
+la shell lo consegna a `window.__novaMic(ok)`, la funzione che `apps.js` usa per mostrare o
+nascondere l'avviso. **Verificato in entrambi gli esiti:**
+
+- **concesso** → `micGranted: true`, `micDiag` passa da `"blocked"` a `"granted"`, nessun avviso a
+  schermo (corretto: non c'è nulla da segnalare);
+- **negato** → `mic.result` con `false`, e il Registratore disegna «Serve il permesso del microfono
+  per registrare» con il pulsante «Consenti microfono». **Lo stesso avviso che disegna sotto
+  WebView**, perché entra dalla stessa porta.
+
+Il valore di questa prova non è il microfono: è che un fatto del sistema operativo arriva
+all'interfaccia senza che sia stata toccata una riga di `shell/`.
+
+**Due cose da sapere prima, che sembrano dettagli e non lo sono.**
+- **Il permesso va dichiarato nel manifest del modulo.** Senza `<uses-permission
+  android:name="android.permission.RECORD_AUDIO"/>` `requestPermissions` non mostra alcun dialogo
+  e risponde «negato» all'istante: il comando sembra rotto mentre è il modulo a essere incompleto.
+  Nel modulo `:app` il permesso c'è già. (È una precondizione nota di Android, non un guasto
+  incontrato qui: la dichiarazione è stata aggiunta prima della build.)
+- **La richiesta parte già dal thread principale.** `requestPermissions` lo richiede, e `esegui`
+  gira sul thread di Gecko; la prova però è che il dialogo è comparso al primo tentativo utile,
+  senza `runOnUiThread`. Vale a dire che `MessageDelegate.onMessage` viene consegnato sul thread
+  principale. Se un domani il delegate cambiasse thread, questa è la prima riga da guardare.
+
+**Un errore di metodo, per la seconda volta lo stesso.** Il primo tentativo «non ha fatto nulla»:
+nessun dialogo, nessuna callback. La causa non era nel codice — l'emulatore si era riaddormentato
+e il tocco era finito sul lockscreen, quindi `requestMic` non era mai partito. È esattamente la
+lezione di §10.7 in un'altra veste: **prima di attribuire un guasto al codice, verificare che
+l'azione sia arrivata.** La differenza è che qui il log lo diceva in modo netto — `requestMic` non
+compariva affatto — e questo avrebbe dovuto chiudere il sospetto in un minuto invece che in un
+giro di prove. Un comando che *non arriva* e un comando che *arriva e non fa nulla* sono due
+problemi diversi, e il log li distingue sempre.
+
+### 11.5 · Stato dopo la fase 3
+
+| Cosa | Stato |
+|---|---|
+| Ponte pagina → nativo | ✅ verificato (§10) |
+| Ponte nativo → pagina, con evento vero e non sonda | ✅ verificato: `mic.result` (§11.4) |
+| Getter di stato (11) | ✅ cablati e verificati: `has(micDiag)=true`, valore `"blocked"` |
+| Preferenze | ✅ già funzionanti via `localStorage`, senza Java (§11.3) |
+| Richiesta/risposta (14) | ❌ da fare: servono Promise, quindi un disegno a parte |
+| Comandi cablati in Java | **5 su 53** (`toast`, `vibrate`, `openBrowser`, `requestMic`, `openAppSettings`) |
+| `BrowserActivity` | copiata da `:app`, **ancora basata su WebView**: il port è un passo a sé |
+| Sonde `__probe_bg` / `__probe_stub` | restano: costano due righe di log e servono a distinguere «canale morto» da «comando sbagliato» |
+
+La fase 3 non ha richiesto **nessuna modifica a `shell/`**. È il segno che §8 aveva preparato bene
+il terreno: la shell non interroga più il motore, quindi cambiare motore non la tocca.
 
 ---
 

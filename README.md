@@ -499,18 +499,26 @@ Prossimi passi (aggiornati al 2026-09-18, **due tracce** — vedi
    `window.NovaMsg` — il dispatcher che la shell usa già. Provato sullo schermo: una chiamata in
    arrivo comandata da Java. Dettagli in
    **[docs/MIGRAZIONE-GECKOVIEW.md §10.7](docs/MIGRAZIONE-GECKOVIEW.md)**.
-4. **Completare il ponte** — in Java sono cablati 3 comandi su 53; i getter e le richiesta/risposta
-   (14 + 11) sono asincroni e richiedono una cache riempita all'avvio (fase 3).
-5. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
+4. ~~**Getter di stato e primi eventi veri (fase 3)**~~ — **fatto (2026-09-18)**: i getter del
+   contratto rispondono con il valore vero, e `requestMic` è il primo comando che non finisce in un
+   log — chiede il permesso di sistema e ne rimanda l'esito, che la shell disegna con il suo
+   avviso. Nessuna modifica a `shell/`. Due scoperte hanno deciso la forma: `has()` non è una
+   guardia ma un interruttore (non esporre un getter fa vincere il *default*, che per `micDiag` è
+   «granted» — un guasto silenzioso, non un degrado prudente), e le preferenze non servono dal
+   nativo perché lo `store` della shell ripiega già su `localStorage`. Dettagli in
+   **[docs/MIGRAZIONE-GECKOVIEW.md §11](docs/MIGRAZIONE-GECKOVIEW.md)**.
+5. **Completare il ponte** — in Java sono cablati 5 comandi su 53; restano da fare i 14 di
+   richiesta/risposta, che devono restituire una Promise e richiedono un disegno a parte.
+6. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
    `addJavascriptInterface`, contenuta al livello contenitore (piano dettagliato in
    **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**). Va messo a piano che la
    traccia A **abbandona `build-apk.sh`**: la catena di GeckoView richiede Gradle (§9).
-6. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
+7. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
    doppia persistenza.
 
 **Traccia B — ROM su telefono secondario** *(differita)*
-7. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
-8. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
+8. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
+9. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
    Da fare **solo su un dispositivo secondario, preferibilmente Pixel**, mai sul telefono
    principale: il fusibile hardware è irreversibile.
 
