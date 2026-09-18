@@ -84,7 +84,7 @@
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><rect x="5" y="3" width="14" height="18" rx="2.4"/><path d="M9 8.5h6M9 12h6M9 15.5h3"/></svg></div>
         <h4>Interfaccia 100% web</h4>
         <p>Home, blocco schermo, tendina rapida, notifiche e app sono HTML/CSS/JS: funzionano in un
-        browser, in una WebView o — in futuro — in un motore GeckoView, con lo stesso codice.</p>
+        browser, in una WebView o in un motore GeckoView, con lo stesso codice.</p>
       </div>
       <div class="value">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h.01M3 14h18"/></svg></div>
@@ -299,10 +299,14 @@
       <li><span class="s">in corso</span><div><b>ROM con WebView su hardware reale</b><p>Installazione
         via GSI flashando la sola partizione <code>system</code>: kernel e driver originali restano
         intatti. Richiede un dispositivo di prova.</p></div></li>
-      <li><span class="s">dopo</span><div><b>Motore WebView → GeckoView</b><p>Migrazione del motore
-        (Gradle + GeckoSession al posto della WebView), contenuta a livello di contenitore: la shell
-        non cambia — è già predisposta, parla all'hardware solo attraverso
-        <code>js/bridge.js</code>.</p></div></li>
+      <li><span class="s">in corso</span><div><b>Motore WebView → GeckoView</b><p>Migrazione del
+        motore (Gradle + GeckoSession al posto della WebView), contenuta a livello di contenitore: la
+        shell non cambia — è già predisposta, parla all'hardware solo attraverso
+        <code>js/bridge.js</code>. Verificate sull'emulatore le prime due fasi: la shell boota sotto
+        Gecko senza modifiche e il ponte verso il nativo regge <b>nei due versi</b>, comandi in salita
+        ed eventi in discesa. Il percorso di build cambia (<code>build-apk.sh</code> non regge le
+        dipendenze di GeckoView): il piano è in
+        <a href="MIGRAZIONE-GECKOVIEW.md">MIGRAZIONE-GECKOVIEW.md</a>.</p></div></li>
       <li><span class="s">poi</span><div><b>ROM definitiva con GeckoView</b><p>NovaOS come UI di
         sistema con app firmata con chiave di piattaforma, whitelist e SELinux.</p></div></li>
     </ol>
