@@ -950,9 +950,169 @@ chiusa — poi i comandi di telefonia e condivisione, e infine i sette `set*`, c
 di porting**: sotto Android stock rispondono già `false` oggi, anche nell'app pubblicata, perché
 richiedono `WRITE_SECURE_SETTINGS`. Sono lavoro della traccia B.
 
+## 15 · Esito della fase 6 — i permessi media (2026-09-18)
+
+La fase 6 non nasce da una voce della tabella dei comandi ma da una domanda: **sotto GeckoView
+`getUserMedia` cattura davvero?** La shell prova *prima* la via web (`getUserMedia` +
+`MediaRecorder`) e ripiega sul nativo solo se quella fallisce (`shell/js/apps.js:4111-4139`).
+Quindi la risposta decide due cose insieme: se il registratore funziona, e se i comandi
+`audioRecStart`/`audioRecStop` — il ripiego nativo, con l'audio che viaggia in base64 — servono
+ancora su questa traccia.
+
+### 15.1 · Senza `PermissionDelegate` Gecko non risponde, e non lo dice
+
+GeckoView non concede i media da solo: se la sessione non ha un `PermissionDelegate`, ogni
+`getUserMedia` viene **negata** e la pagina riceve un `NotAllowedError`. Il sintomo però non
+somiglia a un guasto del contenitore: `getUserMedia` fallisce, la shell ripiega sul registratore
+nativo (non cablato), e **mostra l'avviso sul microfono**. Chi guarda cerca il problema nel
+microfono, che non c'entra nulla.
+
+Da qui `PermessiMedia`, più `<uses-permission android:name="android.permission.CAMERA" />` nel
+manifest — la stessa assenza che con `RECORD_AUDIO` faceva rispondere «negato» all'istante, senza
+nemmeno mostrare un dialogo.
+
+L'ordine dentro `PermessiMedia` è deliberato: **prima il permesso di sistema, poi la risposta a
+Gecko**. Concedere a Gecko senza il permesso di Android darebbe alla pagina un microfono che non
+capta niente — di nuovo un guasto che non somiglia a un guasto.
+
+### 15.2 · L'audio è web-puro: `audioRecStart` e `audioRecStop` non vanno cablati
+
+Provato sull'emulatore con la shell servita dall'origine locale:
+
+```
+la pagina chiede i media: video=false audio=true
+permessi media per la pagina: concessi
+media già consentiti: concedo senza un secondo dialogo
+```
+
+Il registratore parte e resta in `Registrazione...`; fermato, salva in elenco una registrazione di
+**00:40**. E soprattutto: **`audioRecStart` e `audioRecStop` non sono mai stati chiamati** — nel log
+non c'è nessuna riga `comando dal ponte: audioRecStart`, e nessun `comando riconosciuto ma non
+ancora cablato`. La shell è passata interamente dalla via web.
+
+Conseguenza per la traccia A: **i due comandi non vanno cablati affatto**. Spariscono il ripiego
+nativo, l'audio in base64 su un canale di messaggi e due voci di richiesta/risposta. È la prima
+volta in questa migrazione che una fase *toglie* lavoro invece di aggiungerne, ed è esattamente
+quello che il §1 prometteva.
+
+> Il §14.5 li indicava come «la prossima cosa da fare, ma vanno provati prima di cablarli, non
+> cablati a scatola chiusa». Provati: non servono. Vale la pena notare che la prudenza era
+> giustificata nei due sensi — cablarli per abitudine avrebbe aggiunto codice morto e una seconda
+> strada per lo stesso risultato.
+
+### 15.3 · Anche il video
+
+La fotocamera chiede `video=true audio=false`, e dopo il consenso:
+
+```
+Camera2Session: Camera device successfully started.
+CameraStatistics: Camera fps: 9.
+```
+
+L'anteprima è dal vivo. Da notare che il percorso video chiede `{video:true, audio:true}` e ripiega
+su `{video:true, audio:false}` se il primo fallisce (`apps.js:550-552`): è la stessa impronta del
+registratore, e la ragione per cui valeva la pena cablare *entrambi* i rami del `PermissionDelegate`
+invece del solo microfono.
+
+### 15.4 · Il difetto trovato provando: due richieste di permesso in volo insieme
+
+La shell chiama `NB().cmd("requestMic")` **e 77 ms dopo** `getUserMedia` (`apps.js:4116-4117`).
+Due richieste di permessi Android in volo insieme, e Android ne accetta una per volta:
+
+```
+10:13:42.340  comando dal ponte: requestMic (0 argomenti)
+10:13:42.417  la pagina chiede i media: video=false audio=true
+              W Activity: Can request only one set of permissions at a time
+              permessi media per la pagina: negati        ← 2 ms dopo
+```
+
+Quel rifiuto è **tecnico, non dell'utente**. Ma è indistinguibile da un diniego: `getUserMedia`
+fallisce, la shell ripiega sul nativo e mostra l'avviso sul microfono. Il registratore falliva per
+una ragione che non aveva niente a che vedere con il registratore — la stessa forma di guasto delle
+trappole già catalogate (§10, §13.2), con in più che qui il sintomo accusava un componente sano.
+
+La correzione è una coda: `unPermessoAllaVolta(Runnable)` esegue subito se nessun dialogo è aperto,
+altrimenti accoda; il turno passa in `onRequestPermissionsResult`, che è **l'unico punto in cui un
+dialogo si chiude**, quindi l'unico in cui la coda può avanzare.
+
+Il corpo accodato **ricontrolla i permessi al proprio turno** invece di fidarsi di quelli calcolati
+prima di mettersi in coda. Non è ridondanza: se nel frattempo l'utente ha concesso il microfono dal
+dialogo di `requestMic`, alla richiesta media non resta niente da chiedere. Un secondo dialogo
+identico, subito dopo il primo, sembrerebbe un'app che non prende la risposta.
+
+La stessa sequenza di prima, ora:
+
+```
+10:13:42.340  comando dal ponte: requestMic (0 argomenti)
+10:13:42.417  la pagina chiede i media: video=false audio=true
+10:13:42.417  richiesta di permessi in coda: ce n'è già una aperta
+10:14:02.214  permesso microfono: concesso
+10:14:02.215  evento inviato alla pagina: mic.result
+10:14:02.247  media già consentiti: concedo senza un secondo dialogo
+10:14:02.537  comando dal ponte: vibrate
+```
+
+Un solo dialogo, zero occorrenze di `Can request only one set of permissions at a time`, e la shell
+che riprende da sola (`vibrate` è il registratore che parte). Da notare che i due rami di
+`onRequestPermissionsResult` devono **entrambi** finire con `turnoSuccessivoDeiPermessi()`: liberare
+il turno solo sul ramo del microfono lascerebbe la coda ferma per sempre al primo caso video.
+
+### 15.5 · La trappola dell'origine: il ponte che tace senza dirlo
+
+Questa non è un difetto del codice — è una trappola dell'ambiente di prova, e va scritta perché
+è costata un'ora di diagnosi sbagliata.
+
+Lo spike sceglie la shell con un extra dell'intent, `origin`. Omesso, il valore predefinito è
+**`asset`**: `resource://android/assets/www/index.html`. Quella è la provenienza da cui il motore
+carica la shell, e **i content script non possono agganciarla** (§10) — è la ragione per cui esiste
+il server locale.
+
+Con l'origine sbagliata la shell **boota benissimo**: si disegna, risponde ai tocchi, tutte le app
+si aprono in modalità simulata. Quello che non succede è qualunque cosa di nativo. `window.NovaNative`
+non esiste, `bridge.js` costruisce `window.NovaBridge` sul ripiego — `{has: () => false, cmd: () => false}`
+— e **ogni comando della shell restituisce `false` in silenzio**. Nessun errore, nessun avviso,
+nemmeno in console: la shell è *progettata* per degradare con grazia senza nativo (§8), e lo fa.
+
+Il modo affidabile per accorgersene è chiedere al ponte di parlare per primo. A pagina caricata lo
+stub manda due messaggi:
+
+```
+comando dal ponte: __probe_stub    … da=moz-extension://…/_generated_background_page.html
+comando dal ponte: __pagina_pronta … da=moz-extension://…/_generated_background_page.html
+```
+
+**Se queste due righe non compaiono nel log all'avvio della shell, il ponte è morto** — qualunque
+cosa sembri funzionare. È il controllo più economico che esista su questo spike, e va fatto prima di
+qualunque prova che riguardi il nativo.
+
+Utile sapere, dalla stessa diagnosi: GeckoView 155 non ha più `ContentDelegate.onConsoleMessage`
+(§10), ma `GeckoRuntimeSettings.consoleOutput(true)` esiste e manda la console della pagina in
+logcat sotto il tag `GeckoConsole`. Con il ponte morto è l'unico posto dove la shell può ancora
+dire cosa le sta succedendo.
+
+### 15.6 · Stato dopo la fase 6
+
+| Cosa | Stato |
+|---|---|
+| Ponte pagina → nativo | ✅ verificato (§10) |
+| Ponte nativo → pagina, con evento vero | ✅ verificato: `mic.result` (§11.4), `back` (§12) |
+| Getter di stato (11) | ✅ cablati e verificati |
+| Preferenze | ✅ già funzionanti via `localStorage`, senza Java (§11.3) |
+| Canale richiesta/risposta (14) | ✅ il canale è verificato (§13) — cablati **3 su 14** |
+| OTA della shell | ✅ **verificato nei tre momenti** (§14) |
+| **Permessi media** | ✅ **microfono e fotocamera, entrambi verificati** (§15) |
+| **`audioRecStart`/`audioRecStop`** | ⛔ **non vanno cablati**: `getUserMedia` li rende inutili (§15.2) |
+| Comandi cablati in Java | **10 su 53** — invariato, ma il totale utile è sceso di 2 |
+| `BrowserActivity` | copiata da `:app`, **ancora basata su WebView**: il port è un passo a sé |
+| Tasto Indietro | ✅ cablato e verificato (§12) |
+
+La fase 6 non ha aggiunto comandi cablati: ha **verificato una capacità** e **tolto due comandi dal
+lavoro**. Restano i comandi di telefonia e condivisione, il port di `BrowserActivity`, e i sette
+`set*` — che restano lavoro della traccia B (§14.5).
+
 ---
 
 *Documento di pianificazione — l'implementazione vive sul ramo `gecko-spike`. La shell è già stata
-predisposta (`js/bridge.js`) con comportamento invariato sul motore attuale, così le fasi 0–5
+predisposta (`js/bridge.js`) con comportamento invariato sul motore attuale, così le fasi 0–6
 lavorano su un'interfaccia stabile senza toccare l'app in uso. Finché la migrazione non è completa
 `main` resta la shell pubblicata: nessuna fase di questo documento, da sola, è un rilascio.*

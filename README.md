@@ -263,8 +263,9 @@ Entrambe portano lo stesso motore GeckoView, quindi lo **spike della fase 0** (v
 La traccia A ha un valore che **non dipende dalla ROM**: GeckoView conviene già dentro l'APK
 normale.
 
-- `getUserMedia` audio cattura davvero il microfono → spariscono i fallback nativi
-  `audioRecStart`/`audioRecStop`;
+- `getUserMedia` audio e video catturano davvero → spariscono i fallback nativi
+  `audioRecStart`/`audioRecStop` — **verificato il 2026-09-18** (§15 del documento di migrazione),
+  non più una previsione;
 - `window.confirm`/`alert` nativi → sparisce `os.confirm` in-app;
 - storage standard su `file://`, niente più doppia persistenza;
 - nessun tocco a bootloader, integrità, Google Wallet o DRM.
@@ -533,22 +534,32 @@ Prossimi passi (aggiornati al 2026-09-18, **due tracce** — vedi
    era, e con l'OTA sarebbe diventato «l'aggiornamento sparisce al riavvio successivo» — senza
    errori, e quindi senza modo di collegarlo al commit del giorno prima. Dettagli in
    **[docs/MIGRAZIONE-GECKOVIEW.md §14](docs/MIGRAZIONE-GECKOVIEW.md)**.
-8. **Completare il ponte** — in Java sono cablati 10 comandi su 53: 7 dei 28 fire-and-forget e
-   **3 dei 14** di richiesta/risposta. Il canale è la parte difficile: ogni comando in più è ora
-   una riga nell'elenco dello stub e un `case` in Java. Ordine utile: `audioRecStart`/`audioRecStop`
-   — che Gecko dovrebbe rendere superflui via `getUserMedia`, quindi vanno *provati* prima di
-   cablarli — poi telefonia e condivisione. I sette `set*` **non sono lavoro di porting**: sotto
+8. ~~**Permessi media (fase 6)**~~ — **fatto (2026-09-18)**: sotto GeckoView `getUserMedia`
+   **cattura davvero**, microfono e fotocamera. Il registratore registra e salva (provato con una
+   registrazione di 40 s) senza mai chiamare `audioRecStart`/`audioRecStop`: sulla traccia A quei
+   due comandi **non vanno cablati affatto**, e con loro spariscono il ripiego nativo e l'audio in
+   base64. La fotocamera apre il flusso a 9 fps. Serviva un `PermissionDelegate` — senza, Gecko
+   nega ogni richiesta e la shell mostra l'avviso sul microfono, accusando il componente sano. Nel
+   farlo è emerso un difetto vero: la shell chiede `requestMic` e `getUserMedia` a **77 ms** di
+   distanza, Android accetta **una** richiesta di permessi per volta e rifiutava la seconda
+   all'istante — un rifiuto tecnico indistinguibile da un diniego. Ora le richieste sono
+   serializzate da una coda. Dettagli in
+   **[docs/MIGRAZIONE-GECKOVIEW.md §15](docs/MIGRAZIONE-GECKOVIEW.md)**.
+9. **Completare il ponte** — in Java sono cablati 10 comandi su 53: 7 dei 28 fire-and-forget e
+   **3 dei 14** di richiesta/risposta, ma il totale utile è sceso di due (§15.2). Il canale è la
+   parte difficile: ogni comando in più è ora una riga nell'elenco dello stub e un `case` in Java.
+   Ordine utile: telefonia e condivisione. I sette `set*` **non sono lavoro di porting**: sotto
    Android stock rispondono già `false` oggi, anche nell'app pubblicata.
-9. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
-   `addJavascriptInterface`, contenuta al livello contenitore (piano dettagliato in
-   **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**). Va messo a piano che la
-   traccia A **abbandona `build-apk.sh`**: la catena di GeckoView richiede Gradle (§9).
-10. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
-   doppia persistenza.
+10. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
+    `addJavascriptInterface`, contenuta al livello contenitore (piano dettagliato in
+    **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**). Va messo a piano che la
+    traccia A **abbandona `build-apk.sh`**: la catena di GeckoView richiede Gradle (§9).
+11. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
+    doppia persistenza.
 
 **Traccia B — ROM su telefono secondario** *(differita)*
-11. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
-12. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
+12. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
+13. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
    Da fare **solo su un dispositivo secondario, preferibilmente Pixel**, mai sul telefono
    principale: il fusibile hardware è irreversibile.
 
