@@ -31,13 +31,21 @@
 
    QUALI METODI ESPONE
 
-   Dei 53 metodi del contratto (shell/js/bridge.js) qui compaiono
-   SOLO i 28 fire-and-forget. I getter e le richiesta/risposta
-   restituiscono un valore che la pagina legge subito, e un messaggio
-   non può darlo: esponendoli, `has()` risulterebbe vero e la shell
-   leggerebbe undefined — un guasto silenzioso. Non esponendoli,
-   `has()` è falso e la shell ripiega su cache e simulazione, che è
-   il degrado progettato. Diventeranno asincroni in fase 3.
+   Dei 53 metodi del contratto (shell/js/bridge.js) qui compaiono i
+   28 fire-and-forget, gli 11 getter puri e — dalla fase 4 — i comandi
+   di richiesta/risposta che il nativo sa davvero rispondere.
+
+   I GETTER restituiscono l'ultimo stato ricevuto dal nativo. Perché
+   vanno esposti, e non lasciati alla cache di bridge.js, è spiegato
+   sotto: è la lezione di has().
+
+   I RICHIESTA/RISPOSTA restituiscono una Promise, e qui sta il punto
+   delicato: la Promise va SEMPRE risolta. Se lo stub esponesse un nome
+   che il nativo non risponde, `has()` sarebbe vero e il `await` del
+   chiamante non tornerebbe mai — la shell resterebbe appesa, che è
+   PEGGIO del degrado simulato di oggi. Perciò l'elenco RR è la copia
+   esatta di ciò che Java risponde, e in più c'è un timeout di sicurezza
+   che risolve comunque (rumorosamente) invece di lasciare appeso.
 
    run_at: document_start è obbligatorio — lo stub deve precedere
    bridge.js, che cattura window.NovaNative una volta sola.
@@ -74,15 +82,32 @@
   // default che i chiamanti già trattano come "non noto", quindi la finestra fra
   // document_start e load è innocua.
   //
-  // NON sono qui: i 14 comandi di richiesta/risposta (audioRec*, saveDownload,
-  // setWifi…): quelli devono restituire una Promise, e un metodo esposto che
-  // risponde undefined li farebbe sembrare falliti invece che "non noti".
-  // Né prefGet/prefKeys: con has() vero partirebbe la migrazione una tantum di
-  // os.js, che copierebbe la localStorage verso un nativo che non ha preferenze.
+  // NON sono qui: prefGet/prefKeys. Con has() vero partirebbe la migrazione una
+  // tantum di os.js, che copierebbe la localStorage verso un nativo che non ha
+  // preferenze — distruttivo, non prudente.
   const GETTER = [
     "sensorStates", "appVersion", "mailAccount", "isDialer", "currentCallState",
     "micGranted", "micDiag", "batteryLevel", "micReady", "privileged", "shellSource",
   ];
+
+  // I comandi di richiesta/risposta di CONTRACT che Java risponde davvero.
+  //
+  // Questa lista deve restare la COPIA ESATTA di ciò che MainActivity sa rispondere.
+  // Esporne uno che Java ignora significa un `await` che non torna mai: la shell si
+  // blocca su quel gesto, senza errore e senza scadenza. È la trappola simmetrica a
+  // quella dei getter — là il guasto era un default ottimista, qui è un blocco.
+  //
+  // Oggi è corta di proposito: la fase 4 ha cablato il canale e un comando che lo
+  // dimostri. Ogni comando in più è una riga qui e un case in Java.
+  const RR = [
+    "saveDownload",
+  ];
+
+  // Quanto aspettare una risposta prima di arrendersi. Generoso: non è un timeout di
+  // rete, è la rete di sicurezza contro un nativo che non risponde. Scaduto, la
+  // Promise si risolve con null (che i chiamanti trattano come "non riuscito") e la
+  // console lo dice a chiare lettere, perché un timeout silenzioso è una bugia.
+  const ATTESA_RISPOSTA = 10000;
 
   const MARCA = "__novaGeo";
 
@@ -97,9 +122,11 @@
   // Se non parte (CSP restrittiva, per esempio), la shell degrada in simulazione
   // esattamente come sotto WebView senza nativo.
   //
-  // Lo stub fa TRE cose:
+  // Lo stub fa QUATTRO cose:
   //   uscita  — definisce window.NovaNative: i comandi postano verso il nativo,
   //             i getter rispondono con l'ultimo stato ricevuto;
+  //   attesa  — i comandi di richiesta/risposta postano con un id e restituiscono
+  //             una Promise, che si scioglie quando torna __novaRisposta;
   //   ritorno — ascolta i messaggi del nativo e li consegna a window.NovaMsg,
   //             il dispatcher che la shell usa già per call.update, dial, back…
   //             (shell/js/bridge.js). Da lì in poi la shell non sa e non deve
@@ -112,9 +139,13 @@
   const sorgenteStub = `(() => {
   const C = ${JSON.stringify(COMANDI)};
   const G = ${JSON.stringify(GETTER)};
+  const R = ${JSON.stringify(RR)};
   const MARCA = ${JSON.stringify(MARCA)};
   const RITORNO = ${JSON.stringify(MARCA_RITORNO)};
+  const ATTESA = ${ATTESA_RISPOSTA};
   const stato = {};
+  const attese = new Map();
+  let seq = 0;
 
   const ponte = {};
   for (const n of C) {
@@ -125,6 +156,25 @@
   for (const n of G) {
     ponte[n] = () => (n in stato ? stato[n] : null);
   }
+  // Richiesta/risposta: il comando porta un id, il nativo risponde con lo stesso id
+  // sull'evento __novaRisposta, e la Promise si risolve con quel valore.
+  // Un id progressivo e non il nome del comando: due richieste uguali in volo (due
+  // salvataggi insieme) devono poter ricevere risposte diverse.
+  for (const n of R) {
+    ponte[n] = (...a) => new Promise((risolvi) => {
+      const id = ++seq;
+      attese.set(id, risolvi);
+      try { window.postMessage({ [MARCA]: { nova: n, args: a, id: id } }, "*"); }
+      catch (e) { attese.delete(id); risolvi(null); return; }
+      setTimeout(() => {
+        if (!attese.has(id)) return;      // risposta arrivata: niente da fare
+        attese.delete(id);
+        console.log("[nova-bridge] NESSUNA RISPOSTA dal nativo per " + n
+                    + " (id " + id + ") dopo " + ATTESA + "ms");
+        risolvi(null);
+      }, ATTESA);
+    });
+  }
   window.NovaNative = ponte;
 
   window.addEventListener("message", (ev) => {
@@ -132,6 +182,26 @@
     const d = ev.data;
     if (!d || !d[RITORNO]) return;
     const m = d[RITORNO];
+
+    // Risposta a una richiesta: va intercettata PRIMA del dispatcher della shell,
+    // perché non è un evento del sistema ma la chiusura di una Promise di questa
+    // pagina. Passandola a NovaMsg non troverebbe nessun gestore e la Promise
+    // resterebbe appesa fino al timeout.
+    if (m.evento === "__novaRisposta") {
+      // Campi con un nome, non args[]: vedi inviaRisposta in MainActivity.java.
+      // Un array di tipi misti non sopravvive a postMessage — la stringa diventava 0.
+      const id = m.id;
+      const valore = ("valore" in m) ? m.valore : null;
+      const risolvi = attese.get(id);
+      if (risolvi) {
+        attese.delete(id);
+        console.log("[nova-bridge] risposta per id " + id + ": " + JSON.stringify(valore));
+        risolvi(valore);
+      } else {
+        console.log("[nova-bridge] risposta per una richiesta scaduta: id " + id);
+      }
+      return;
+    }
 
     if (m.evento === "shell.state") {
       const s = (m.args && m.args[0]) || {};
@@ -175,7 +245,8 @@
     catch (e) { console.log("[nova-bridge] richiesta di stato fallita: " + e); }
   });
 
-  console.log("[nova-bridge] stub di pagina installato: " + C.length + " comandi, " + G.length + " getter");
+  console.log("[nova-bridge] stub di pagina installato: " + C.length + " comandi, "
+              + G.length + " getter, " + R.length + " richiesta/risposta");
 
   // Sonda: parte DAL CONTESTO DELLA PAGINA e attraversa tutti e tre i salti.
   // Se il nativo la registra in logcat, il ponte è in piedi per davvero — non

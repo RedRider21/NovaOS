@@ -242,6 +242,10 @@ public class MainActivity extends Activity {
                                              WebExtension.MessageSender sender) {
             String nome = null;
             Object[] args = new Object[0];
+            // -1 = comando fire-and-forget, nessuna risposta da dare. Un id >= 0
+            // significa che la pagina sta aspettando una Promise: va risolta SEMPRE,
+            // anche in errore, altrimenti il chiamante resta appeso (v. content.js).
+            int idRichiesta = -1;
             // ATTENZIONE (scoperto il 2026-09-18): GeckoView consegna il messaggio come
             // org.mozilla.gecko.util.GeckoBundle, che implementa SOLO Parcelable — non
             // java.util.Map. Con un controllo `instanceof Map` il messaggio arrivava ma
@@ -262,6 +266,7 @@ public class MainActivity extends Activity {
                 // (verificato il 2026-09-18): un JSONObject, con "args" come JSONArray.
                 org.json.JSONObject o = (org.json.JSONObject) message;
                 nome = o.optString("nova", null);
+                idRichiesta = o.optInt("id", -1);
                 org.json.JSONArray a = o.optJSONArray("args");
                 if (a != null) {
                     args = new Object[a.length()];
@@ -298,6 +303,7 @@ public class MainActivity extends Activity {
                         ? "content-script" : "estensione";
             }
             Log.i(TAG, "comando dal ponte: " + nome + " (" + args.length + " argomenti)"
+                    + (idRichiesta >= 0 ? " id=" + idRichiesta : "")
                     + " ambiente=" + ambiente
                     + " da=" + (sender == null ? "?" : sender.url));
             if (nome == null) return GeckoResult.fromValue(null);
@@ -311,7 +317,8 @@ public class MainActivity extends Activity {
 
             final String n2 = nome;
             final Object[] a2 = args;
-            runOnUiThread(() -> esegui(n2, a2));
+            final int id2 = idRichiesta;
+            runOnUiThread(() -> esegui(n2, a2, id2));
             return GeckoResult.fromValue(null);
         }
 
@@ -553,8 +560,51 @@ public class MainActivity extends Activity {
         inviaStatoAllaShell();
     }
 
+    /**
+     * Risolve la Promise della pagina, sulla porta nativa.
+     *
+     * <p>È il gemello di {@code inviaEvento}, ma con un destinatario preciso invece che
+     * «tutte le pagine»: {@code id} è quello che la pagina ha messo nel comando, e lo
+     * stub lo usa per ritrovare la Promise giusta. Senza id non c'è risposta possibile.
+     *
+     * <p>Va chiamata <b>sempre</b>, anche quando il comando fallisce: il valore di
+     * errore è parte del contratto (i default documentati in {@code bridge.js}), mentre
+     * il silenzio lascia la shell appesa su un {@code await} che non torna.
+     */
+    private void inviaRisposta(int id, Object valore) {
+        if (id < 0) return;
+        if (portaNativa == null) {
+            Log.w(TAG, "nessuna porta nativa aperta: risposta " + id + " non inviata");
+            return;
+        }
+        try {
+            // Campi con un nome, NON l'array {evento, args} usato dagli eventi.
+            //
+            // Scoperto a spese di un giro di prove: un JSONArray di tipi misti non
+            // sopravvive alla conversione JSONObject → GeckoBundle che sta dietro
+            // postMessage. `{"args":[1,"Download/x.json"]}` arrivava alla pagina come
+            // `{"args":[1,0]}`: il numero passava, la stringa diventava 0, e la Promise
+            // si risolveva con 0 senza un errore da nessuna parte. Gli eventi non se
+            // n'erano accorti perché i loro array sono vuoti o contengono un solo
+            // elemento dello stesso tipo.
+            //
+            // Una risposta ha per natura un id e un valore di tipo imprevedibile:
+            // nominarli è più solido di contarli, e non dipende da come il motore
+            // serializza gli array.
+            org.json.JSONObject o = new org.json.JSONObject();
+            o.put("evento", "__novaRisposta");
+            o.put("id", id);
+            o.put("valore", valore == null ? org.json.JSONObject.NULL : valore);
+            Log.i(TAG, "risposta grezza: " + o);
+            portaNativa.postMessage(o);
+            Log.i(TAG, "risposta inviata: id=" + id + " valore=" + valore);
+        } catch (Exception e) {
+            Log.e(TAG, "risposta non inviata: id=" + id, e);
+        }
+    }
+
     /** I comandi cablati nella dimostrazione di fase 2. */
-    private void esegui(String nome, Object[] args) {
+    private void esegui(String nome, Object[] args, int idRichiesta) {
         switch (nome) {
             case "toast": {
                 String msg = args.length > 0 ? String.valueOf(args[0]) : "";
@@ -603,6 +653,53 @@ public class MainActivity extends Activity {
                 }
                 break;
             }
+            case "saveDownload": {
+                // Primo comando di richiesta/risposta: la pagina aspetta il percorso del
+                // file. Stessa costruzione di :app (MainActivity.java:898), ma il valore
+                // non torna con il `return` — torna con inviaRisposta, perché di mezzo c'è
+                // un confine di processo e un JSON.
+                //
+                // Il default di questo comando in bridge.js è "" (stringa vuota): qui è
+                // anche il valore di errore, quindi un fallimento e un rifiuto del
+                // sistema si comportano allo stesso modo, come sotto WebView.
+                String esito = "";
+                try {
+                    String nomeFile = args.length > 0 ? String.valueOf(args[0]) : "nova.json";
+                    String base64 = args.length > 1 ? String.valueOf(args[1]) : "";
+                    byte[] bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+                    if (android.os.Build.VERSION.SDK_INT >= 29) {
+                        android.content.ContentValues cv = new android.content.ContentValues();
+                        cv.put(android.provider.MediaStore.Downloads.DISPLAY_NAME, nomeFile);
+                        cv.put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json");
+                        cv.put(android.provider.MediaStore.Downloads.IS_PENDING, 1);
+                        Uri uri = getContentResolver().insert(
+                                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                        if (uri == null) throw new IOException("MediaStore insert nullo");
+                        OutputStream out = getContentResolver().openOutputStream(uri);
+                        out.write(bytes);
+                        out.close();
+                        cv.clear();
+                        cv.put(android.provider.MediaStore.Downloads.IS_PENDING, 0);
+                        getContentResolver().update(uri, cv, null, null);
+                        esito = "Download/" + nomeFile;
+                    } else {
+                        File dir = android.os.Environment
+                                .getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+                        if (!dir.exists()) dir.mkdirs();
+                        File f = new File(dir, nomeFile);
+                        FileOutputStream fo = new FileOutputStream(f);
+                        fo.write(bytes);
+                        fo.close();
+                        esito = f.getAbsolutePath();
+                    }
+                    Toast.makeText(this, "File salvato in Download", Toast.LENGTH_SHORT).show();
+                } catch (Exception e) {
+                    Log.e(TAG, "saveDownload non riuscito", e);
+                    Toast.makeText(this, "Salvataggio non riuscito", Toast.LENGTH_SHORT).show();
+                }
+                inviaRisposta(idRichiesta, esito);
+                break;
+            }
             case "openAppSettings": {
                 // Utile subito: dopo un diniego definitivo la shell manda l'utente qui.
                 try {
@@ -617,6 +714,15 @@ public class MainActivity extends Activity {
             }
             default:
                 Log.i(TAG, "comando riconosciuto ma non ancora cablato: " + nome);
+                // Se la pagina sta aspettando, va comunque risolta. Questo ramo non
+                // dovrebbe mai essere raggiunto con un id: lo stub espone solo i nomi
+                // che compaiono qui sopra. Se succede, è un elenco disallineato — e il
+                // sintomo, senza questa riga, sarebbe una shell appesa e nessun errore.
+                if (idRichiesta >= 0) {
+                    Log.w(TAG, "richiesta senza risposta cablata: " + nome
+                            + " — rispondo null per non lasciare la pagina appesa");
+                    inviaRisposta(idRichiesta, null);
+                }
         }
     }
 
