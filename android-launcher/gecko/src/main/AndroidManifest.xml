@@ -6,6 +6,7 @@
     <application
         android:label="NovaOS Gecko (spike)"
         android:hardwareAccelerated="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen">
 
         <activity
@@ -18,5 +19,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Il browser clone-Chrome. Nel modulo :app è la destinazione di
+             openBrowser; qui è la COPIA dello stesso file, per verificare che il
+             dock apra davvero il browser nativo invece dell'anteprima in-app
+             della shell. Resta basato su WebView: portarlo a GeckoView è un
+             passo a sé, e questo spike serve a provare il ponte, non il browser. -->
+        <activity
+            android:name=".BrowserActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@android:style/Theme.NoTitleBar" />
     </application>
 </manifest>

@@ -6,6 +6,8 @@ android-launcher/app/src/main/assets/www/
 
 # Idem per il modulo :gecko dello spike (rigenerata dal task Gradle syncShell)
 android-launcher/gecko/src/main/assets/www/
+android-launcher/gecko/src/main/assets/extension/www/
+android-launcher/gecko/build/
 
 # File di test/harness temporanei
 shell/_t*.html

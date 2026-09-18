@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  La shell è servita da un server HTTP dentro l'app, quindi in chiaro.
+
+  Il permesso è limitato a 127.0.0.1: il traffico non lascia il telefono e nessun
+  altro sito può approfittarne. Tutto il resto resta soggetto alla regola predefinita
+  (HTTPS obbligatorio), come è giusto che sia.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

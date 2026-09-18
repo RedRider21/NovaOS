@@ -476,7 +476,7 @@ Validazione ROM sull'emulatore (2026-08-27, Via A):
   `WRITE_SETTINGS` → i toggle dei sensori commutano in-process, banner «Sistema integrato»),
   permessi runtime concessi, **ruolo DIALER assegnato a NovaOS**.
 
-Prossimi passi (aggiornati al 2026-09-17, **due tracce** — vedi
+Prossimi passi (aggiornati al 2026-09-18, **due tracce** — vedi
 [App bancarie, attestazione e le due destinazioni](#app-bancarie-attestazione-e-le-due-destinazioni)):
 
 **Traccia A — GeckoView dentro l'APK** *(immediata)*
@@ -484,16 +484,33 @@ Prossimi passi (aggiornati al 2026-09-17, **due tracce** — vedi
    origini previste (`resource://android/assets/…` e `file://…/files/shell/`), senza modifiche al
    codice della shell. Esito, catena di build e comportamenti diversi dalla WebView sono in
    **[docs/MIGRAZIONE-GECKOVIEW.md §9](docs/MIGRAZIONE-GECKOVIEW.md)**.
-2. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
+2. ~~**Ponte verso il nativo (fase 2)**~~ — **fatto (2026-09-18)**: il ponte regge end-to-end,
+   provato dal tasto del browser del dock. Il percorso è a tre salti (stub iniettato nella pagina →
+   content script → background dell'estensione → Java) e la shell è servita da un server HTTP
+   locale dentro l'app. Costato quattro tentativi: `file://` non è più agganciabile dalle
+   estensioni, i content script vivono in un mondo isolato e non possono esporre
+   `window.NovaNative` alla pagina, e una pagina servita da `moz-extension://` non raggiunge il
+   nativo. Vincoli e soluzione in
+   **[docs/MIGRAZIONE-GECKOVIEW.md §10](docs/MIGRAZIONE-GECKOVIEW.md)**.
+3. ~~**Canale nativo → pagina**~~ — **fatto (2026-09-18)**: chiuso il rischio più serio del piano.
+   Sotto WebView tutto ciò che il sistema mandava alla shell passava da `evaluateJavascript`, che
+   in GeckoView non esiste. La via è la **porta nativa** (`WebExtension.Port.postMessage`): il
+   nativo parla per primo, il background la dirama alle pagine, lo stub la consegna a
+   `window.NovaMsg` — il dispatcher che la shell usa già. Provato sullo schermo: una chiamata in
+   arrivo comandata da Java. Dettagli in
+   **[docs/MIGRAZIONE-GECKOVIEW.md §10.7](docs/MIGRAZIONE-GECKOVIEW.md)**.
+4. **Completare il ponte** — in Java sono cablati 3 comandi su 53; i getter e le richiesta/risposta
+   (14 + 11) sono asincroni e richiedono una cache riempita all'avvio (fase 3).
+5. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
    `addJavascriptInterface`, contenuta al livello contenitore (piano dettagliato in
    **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**). Va messo a piano che la
    traccia A **abbandona `build-apk.sh`**: la catena di GeckoView richiede Gradle (§9).
-3. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
+6. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
    doppia persistenza.
 
 **Traccia B — ROM su telefono secondario** *(differita)*
-4. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
-5. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
+7. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
+8. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
    Da fare **solo su un dispositivo secondario, preferibilmente Pixel**, mai sul telefono
    principale: il fusibile hardware è irreversibile.
 

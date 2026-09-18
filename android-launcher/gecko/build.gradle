@@ -17,6 +17,12 @@ def syncShell = tasks.register('syncShell', Sync) {
     into("${projectDir}/src/main/assets/www")
 }
 
+// NOTA (2026-09-18): qui esisteva un secondo task che impacchettava la shell DENTRO
+// l'estensione, per servirla da moz-extension://. È stato rimosso perché quella via
+// è morta: una pagina servita da moz-extension:// non è un ambiente privilegiato e
+// sendNativeMessage da lì non raggiunge il nativo. Oggi la shell è servita da un
+// server HTTP locale (ShellServer.java) e il ponte passa da uno stub iniettato —
+// vedi docs/MIGRAZIONE-GECKOVIEW.md §10.
 tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.configureEach {
     dependsOn(syncShell)
 }
