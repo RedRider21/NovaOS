@@ -11,6 +11,13 @@ ramo parallelo `novaos-rom/`; la shell (`shell/`) non deve cambiare.
   Nulla di quanto descritto qui è stato pubblicato: lo spike vive su un ramo isolato.
 - Interessati: livello `android-launcher/` (contenitore + ponte), `shell/` (minimi ritocchi),
   `system/` (ROM definitiva)
+- **Il codice dello spike vive sul ramo `gecko-spike`** (non linkato di proposito: un link
+  relativo a un altro ramo si rompe, perché viene risolto a partire da questo file) — modulo
+  `android-launcher/gecko/`, con `ShellServer.java`, `MainActivity.java`, `BrowserActivity.java`
+  e l'estensione in `assets/extension/`. Su `main` non c'è: `main` porta la shell pubblicata e
+  questa documentazione. Il ramo esiste per non perdere il lavoro e per poterlo leggere accanto
+  al documento; **non è un ramo di rilascio** e non entra in `main` finché la migrazione non è
+  completa.
 
 > **Da leggere per primo se si riprende in mano il ponte:** §10. I vincoli scoperti lì
 > (`file://` non agganciabile, mondo isolato dei content script, pagina d'estensione non
@@ -517,6 +524,7 @@ getter (fase 3), e le differenze di comportamento di fase 5.
 
 ---
 
-*Documento di pianificazione — l'implementazione avviene su ramo isolato. La shell è già stata
+*Documento di pianificazione — l'implementazione vive sul ramo `gecko-spike`. La shell è già stata
 predisposta (`js/bridge.js`) con comportamento invariato sul motore attuale, così le fasi 0–5
-lavorano su un'interfaccia stabile senza toccare l'app in uso.*
+lavorano su un'interfaccia stabile senza toccare l'app in uso. Finché la migrazione non è completa
+`main` resta la shell pubblicata: nessuna fase di questo documento, da sola, è un rilascio.*
