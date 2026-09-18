@@ -117,6 +117,13 @@ public class ShellServer {
         String intestazioni = "HTTP/1.1 200 OK\r\n"
                 + "Content-Type: " + tipoDi(file.getName()) + "\r\n"
                 + "Content-Length: " + corpo.length + "\r\n"
+                // no-store, e non è una precauzione di principio: dopo un commit OTA la
+                // shell ricarica chiedendo gli stessi percorsi, con la stessa porta e la
+                // stessa origine. Senza questa riga il motore può servirli dalla cache e
+                // mostrare l'interfaccia VECCHIA con dentro il version.json nuovo — cioè
+                // un aggiornamento che sembra riuscito e non è applicato. Servendo pochi
+                // file da disco, la cache qui non guadagna nulla che valga il rischio.
+                + "Cache-Control: no-store\r\n"
                 + // senza questo il browser tiene la connessione aperta e il filo resta occupato
                 "Connection: close\r\n\r\n";
         out.write(intestazioni.getBytes("UTF-8"));

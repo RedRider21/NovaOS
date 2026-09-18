@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -219,7 +220,7 @@ public class MainActivity extends Activity {
      * l'avvio. È lo stesso degrado progettato della WebView senza nativo.
      */
     private String avviaServerLocale() {
-        File dir = copiaShellInInterno();
+        File dir = preparaShell();
         if (dir == null) return ASSET_INDEX;
         server = new ShellServer(dir, ShellServer.PORTA);
         String url = server.avvia();
@@ -712,6 +713,58 @@ public class MainActivity extends Activity {
                 }
                 break;
             }
+            case "shellStageBegin": {
+                // Fire-and-forget: la shell controlla solo che il comando esista, poi è
+                // il primo shellWrite a dire se si può scrivere. Ripulire qui è ciò che
+                // rende il commit atomico — senza, i residui di un tentativo fallito
+                // (un download a metà) finirebbero nella shell buona.
+                try {
+                    deleteRecursively(stageDir());
+                    if (!stageDir().mkdirs() && !stageDir().isDirectory()) {
+                        Log.w(TAG, "staging non creabile: " + stageDir().getAbsolutePath());
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "staging non ripulita", e);
+                }
+                break;
+            }
+            case "shellWrite": {
+                String rel = args.length > 0 ? String.valueOf(args[0]) : null;
+                String b64 = args.length > 1 ? String.valueOf(args[1]) : null;
+                boolean ok = scriviInStaging(rel, b64);
+                if (!ok) Log.w(TAG, "file rifiutato dalla staging: " + rel);
+                inviaRisposta(idRichiesta, ok);
+                break;
+            }
+            case "shellCommit": {
+                boolean ok = committaStaging();
+                // La risposta prima della ricarica, e non è un dettaglio: la shell scrive
+                // `done = await shellCommit()` e solo dopo si aspetta di essere ricaricata.
+                // Ricaricando mentre la Promise è in volo, il chiamante non riceverebbe mai
+                // l'esito — e resterebbe in attesa di un messaggio che la pagina nuova non
+                // può ricevere, perché la vecchia non esiste più.
+                inviaRisposta(idRichiesta, ok);
+                if (ok) {
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                        Log.i(TAG, "ricarico la shell dopo il commit");
+                        if (session != null) session.reload();
+                    }, 400);
+                }
+                break;
+            }
+            case "shellReset": {
+                // Torna alla shell dell'APK: si cancellano entrambe le cartelle e si
+                // ricopia dagli asset. In :app questo ramo caricava la shell online; qui
+                // la fonte di verità è l'APK, che è ciò che c'è di sicuro sul dispositivo.
+                deleteRecursively(new File(getFilesDir(), "shell"));
+                deleteRecursively(stageDir());
+                File ripristinata = preparaShell();
+                Log.i(TAG, "shell ripristinata dagli asset: " + (ripristinata != null));
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                    if (session != null) session.reload();
+                }, 200);
+                break;
+            }
             default:
                 Log.i(TAG, "comando riconosciuto ma non ancora cablato: " + nome);
                 // Se la pagina sta aspettando, va comunque risolta. Questo ramo non
@@ -731,27 +784,150 @@ public class MainActivity extends Activity {
      * NovaOS usa già per la shell aggiornata via OTA — e restituisce l'URL {@code file://}.
      */
     private String copyShellToInternalAndGetUrl() {
-        File dir = copiaShellInInterno();
+        File dir = preparaShell();
         if (dir == null) return ASSET_INDEX;
         return "file://" + new File(dir, "index.html").getAbsolutePath();
     }
 
-    /** Copia integrale della shell in {@code files/shell}; null se fallisce. */
-    private File copiaShellInInterno() {
+    /** La cartella di appoggio dell'aggiornamento OTA, prima del commit. */
+    private File stageDir() { return new File(getFilesDir(), "shell_stage"); }
+
+    /**
+     * Prepara {@code files/shell} e restituisce la cartella, oppure null se non c'è shell.
+     *
+     * <p><b>Perché non è più una copia incondizionata.</b> Finché la shell era solo quella
+     * dell'APK, ricopiarla a ogni avvio era la cosa giusta: si riparte da zero e non
+     * restano residui. Con l'OTA diventa un difetto silenzioso — {@code shellCommit}
+     * sostituisce {@code files/shell}, e la copia successiva la cancellerebbe, riportando
+     * l'interfaccia a quella dell'APK senza dirlo a nessuno. Un aggiornamento che sparisce
+     * al riavvio è peggio di uno che fallisce: fallisce in silenzio, e solo dopo.
+     *
+     * <p>La regola è quella che {@code :app} usa già in {@code resolveShellUrl()}: la shell
+     * interna si tiene solo se è più recente di quella negli asset. Il confronto è sulla
+     * {@code build} di {@code version.json}, non sulla data dei file — le date di una copia
+     * non significano nulla, e dopo un OTA sarebbero comunque «adesso» per entrambe.
+     *
+     * <p>Una cartella interna senza {@code index.html}, o con un {@code version.json}
+     * illeggibile, non è una shell: si ricopia. Il ripiego è sempre l'APK, quindi il caso
+     * peggiore di qualunque guasto qui è «si torna alla shell dell'APK», mai «niente shell».
+     */
+    private File preparaShell() {
+        File dir = new File(getFilesDir(), "shell");
+        int interna = buildDi(new File(dir, "version.json"));
+        int asset = buildDegliAsset();
+        if (interna >= 0 && interna > asset && new File(dir, "index.html").isFile()) {
+            Log.i(TAG, "shell interna tenuta: build " + interna + " > asset " + asset);
+            return dir;
+        }
         try {
-            File dir = new File(getFilesDir(), "shell");
-            // La copia è integrale: si riparte da zero, altrimenti i residui di un
-            // avvio precedente (o di una versione precedente della shell) restano lì.
             deleteRecursively(dir);
             copyAsset(ASSET_SHELL, dir);
             File index = new File(dir, "index.html");
-            Log.i(TAG, "shell interna: " + index.getAbsolutePath()
-                    + " esiste=" + index.exists() + " eFile=" + index.isFile());
+            Log.i(TAG, "shell dagli asset (interna=" + interna + " asset=" + asset + "): "
+                    + index.getAbsolutePath() + " eFile=" + index.isFile());
             return index.isFile() ? dir : null;
         } catch (Exception e) {
             Log.e(TAG, "copia in storage interno fallita: ripiego sugli asset", e);
             return null;
         }
+    }
+
+    /** La {@code build} dichiarata in un {@code version.json}; -1 se manca o è illeggibile. */
+    private int buildDi(File versionJson) {
+        try {
+            byte[] b = new byte[(int) versionJson.length()];
+            try (InputStream in = new FileInputStream(versionJson)) {
+                int letti = 0, n;
+                while (letti < b.length && (n = in.read(b, letti, b.length - letti)) > 0) letti += n;
+            }
+            return parseBuild(new String(b, "UTF-8"));
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    /** La {@code build} della shell negli asset; -1 se manca o è illeggibile. */
+    private int buildDegliAsset() {
+        try (InputStream in = getAssets().open(ASSET_SHELL + "/version.json")) {
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            return parseBuild(bo.toString("UTF-8"));
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    private int parseBuild(String json) {
+        try {
+            java.util.regex.Matcher m =
+                    java.util.regex.Pattern.compile("\"build\"\\s*:\\s*(\\d+)").matcher(json);
+            if (m.find()) return Integer.parseInt(m.group(1));
+        } catch (Exception ignored) {
+            // un version.json malformato non è un errore da propagare: vale -1
+        }
+        return -1;
+    }
+
+    /**
+     * Scrive un file nella staging dell'OTA. Rifiuta ogni percorso che esca da
+     * {@code shell_stage/}.
+     *
+     * <p>Stessa logica di {@code :app}: qui arrivano dati <b>dalla rete</b>, quindi il
+     * controllo su {@code ..} e sul percorso canonico non è pignoleria. Senza, un
+     * {@code ../../shared_prefs/…} scriverebbe fuori dalla staging, cioè dentro i dati
+     * privati dell'app.
+     */
+    private boolean scriviInStaging(String rel, String base64) {
+        try {
+            if (rel == null || base64 == null) return false;
+            rel = rel.replace("\\", "/");
+            if (rel.contains("..") || rel.startsWith("/")) return false;
+            File out = new File(stageDir(), rel);
+            if (!out.getCanonicalPath().startsWith(stageDir().getCanonicalPath())) return false;
+            File parent = out.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs()) return false;
+            byte[] dati = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+            try (OutputStream fo = new FileOutputStream(out)) {
+                fo.write(dati);
+            }
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "scrittura in staging fallita: " + rel, e);
+            return false;
+        }
+    }
+
+    /**
+     * Commit atomico: valida la staging e sostituisce {@code files/shell} con essa.
+     *
+     * <p>La validazione non è una formalità: {@code index.html} e {@code version.json}
+     * devono esserci entrambi. Senza il secondo, al riavvio successivo la build interna
+     * risulterebbe {@code -1} e {@link #preparaShell()} ricoprirebbe tutto dagli asset —
+     * cioè l'aggiornamento appena installato sparirebbe. Meglio rifiutare qui, quando la
+     * shell vecchia è ancora intatta e il chiamante può ripiegare sull'APK.
+     *
+     * <p>Se {@code renameTo} fallisce dopo che la vecchia cartella è stata cancellata, la
+     * shell interna non esiste più: non è un danno permanente, perché al prossimo avvio
+     * {@link #preparaShell()} la ricopia dagli asset. Il caso peggiore resta «si torna
+     * alla shell dell'APK».
+     */
+    private boolean committaStaging() {
+        File stage = stageDir();
+        File dir = new File(getFilesDir(), "shell");
+        if (!new File(stage, "index.html").isFile() || !new File(stage, "version.json").isFile()) {
+            Log.w(TAG, "commit rifiutato: staging incompleta in " + stage.getAbsolutePath());
+            return false;
+        }
+        deleteRecursively(dir);
+        if (!stage.renameTo(dir)) {
+            Log.e(TAG, "commit fallito: la staging non è stata spostata in " + dir.getAbsolutePath()
+                    + " — al prossimo avvio si riparte dagli asset");
+            return false;
+        }
+        Log.i(TAG, "commit eseguito: shell sostituita, build " + buildDi(new File(dir, "version.json")));
+        return true;
     }
 
     /**

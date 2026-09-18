@@ -97,10 +97,17 @@
   // blocca su quel gesto, senza errore e senza scadenza. È la trappola simmetrica a
   // quella dei getter — là il guasto era un default ottimista, qui è un blocco.
   //
-  // Oggi è corta di proposito: la fase 4 ha cablato il canale e un comando che lo
-  // dimostri. Ogni comando in più è una riga qui e un case in Java.
+  // Oggi ha tre nomi su quattordici: il canale è cablato e provato, e ogni comando in
+  // più è una riga qui e un `case` in Java. Non aggiungerne uno qui senza il `case`:
+  // vedi sopra, è il solo modo di rompere il ponte in modo invisibile.
+  // shellWrite/shellCommit sono il percorso dell'OTA: la shell scarica i file della
+  // nuova interfaccia, li scrive nella staging nativa e chiede il commit atomico.
+  // Entrambi devono restituire `true` VERO — `os.js` confronta con `ok !== true`,
+  // perché un esito ancora ignoto (null) brickerebbe la shell al commit successivo.
+  // shellStageBegin e shellReset restano fire-and-forget, come nel contratto.
   const RR = [
     "saveDownload",
+    "shellWrite", "shellCommit",
   ];
 
   // Quanto aspettare una risposta prima di arrendersi. Generoso: non è un timeout di
