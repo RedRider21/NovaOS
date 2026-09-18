@@ -9,6 +9,12 @@
          permesso c'è già (RECORD_AUDIO, richiesto dal registratore). -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Stessa ragione, per la fotocamera: senza la dichiarazione il
+         PermissionDelegate non può chiedere il permesso, la richiesta di
+         getUserMedia({video:true}) viene rifiutata e l'app Fotocamera mostra
+         l'anteprima nera — senza un errore che spieghi perché. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <application
         android:label="NovaOS Gecko (spike)"
         android:hardwareAccelerated="true"

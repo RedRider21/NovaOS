@@ -17,6 +17,7 @@ import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoRuntimeSettings;
 import org.mozilla.geckoview.GeckoSession;
+import org.mozilla.geckoview.GeckoSession.PermissionDelegate.MediaSource;
 import org.mozilla.geckoview.GeckoView;
 import org.mozilla.geckoview.WebExtension;
 import org.mozilla.gecko.util.GeckoBundle;
@@ -63,6 +64,8 @@ public class MainActivity extends Activity {
 
     /** Codice della richiesta di permesso microfono (requestMic). */
     private static final int RICHIESTA_MIC = 4711;
+    /** Richiesta dei permessi che la pagina chiede via {@code getUserMedia}. */
+    private static final int RICHIESTA_MEDIA = 4712;
 
     public static final String ORIGIN_ASSET = "asset";
     public static final String ORIGIN_INTERNAL = "internal";
@@ -132,6 +135,7 @@ public class MainActivity extends Activity {
         runtime = GeckoRuntime.create(this, settings);
 
         session = new GeckoSession();
+        session.setPermissionDelegate(new PermessiMedia());
         session.open(runtime);
 
         view = new GeckoView(this);
@@ -543,6 +547,52 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Vero mentre un dialogo di permessi è aperto: Android ne accetta uno per volta. */
+    private boolean permessiInCorso = false;
+    private final java.util.ArrayDeque<Runnable> permessiInCoda = new java.util.ArrayDeque<>();
+
+    /**
+     * Chiede i permessi adesso, oppure mette la richiesta in coda.
+     *
+     * <p><b>Perché una coda, e non due chiamate dirette.</b> Verificato il 2026-09-18:
+     * Android accetta <i>una sola</i> richiesta di permessi per volta. La shell però ne
+     * fa due a distanza di 40 ms — <code>NB().cmd("requestMic")</code> e subito dopo
+     * <code>getUserMedia</code>, che passa dal {@link PermessiMedia} — e la seconda
+     * veniva rifiutata all'istante:
+     *
+     * <pre>W Activity: Can request only one set of permissions at a time</pre>
+     *
+     * <p>Quel rifiuto è <b>tecnico, non dell'utente</b>, ma è indistinguibile da un
+     * diniego: {@code getUserMedia} fallisce, la shell ripiega sul registratore nativo
+     * (non cablato) e mostra l'avviso sul microfono. La diagnosi punta al microfono,
+     * che non c'entra nulla. Serializzando le richieste, il secondo dialogo arriva
+     * quando il primo si è chiuso — che è anche l'ordine in cui l'utente se li aspetta.
+     */
+    private void unPermessoAllaVolta(Runnable richiesta) {
+        if (permessiInCorso) {
+            Log.i(TAG, "richiesta di permessi in coda: ce n'è già una aperta");
+            permessiInCoda.add(richiesta);
+            return;
+        }
+        permessiInCorso = true;
+        richiesta.run();
+    }
+
+    /**
+     * Passa il turno alla prossima richiesta accodata. Va chiamata alla fine di ogni
+     * {@code onRequestPermissionsResult}: è l'unico momento in cui il turno si libera.
+     */
+    private void turnoSuccessivoDeiPermessi() {
+        // `permessiInCorso` resta vero quando c'è un'altra richiesta da fare: azzerarlo
+        // qui riaprirebbe la porta a una richiesta diretta mentre questa è già partita.
+        Runnable prossima = permessiInCoda.poll();
+        if (prossima == null) {
+            permessiInCorso = false;
+            return;
+        }
+        prossima.run();
+    }
+
     /**
      * Esito della richiesta di permesso microfono: risponde alla pagina e rinfresca lo
      * stato in cache.
@@ -550,15 +600,122 @@ public class MainActivity extends Activity {
      * <p>Il rinfresco non è un di più: dopo la risposta, {@code micDiag} e {@code micGranted}
      * nella copia che la shell tiene in pagina sono quelli di prima. Se l'utente concede,
      * la shell continuerebbe a credersi senza permesso (o viceversa) fino al prossimo avvio.
+     *
+     * <p>Da qui passa anche l'esito dei permessi media, e in entrambi i rami l'ultima riga
+     * libera il turno: è l'unico punto in cui un dialogo si chiude, quindi è l'unico punto
+     * in cui la coda di {@link #unPermessoAllaVolta} può avanzare.
      */
     @Override
     public void onRequestPermissionsResult(int codice, String[] permessi, int[] esiti) {
         super.onRequestPermissionsResult(codice, permessi, esiti);
-        if (codice != RICHIESTA_MIC) return;
-        boolean concesso = esiti.length > 0 && esiti[0] == PackageManager.PERMISSION_GRANTED;
-        Log.i(TAG, "permesso microfono: " + (concesso ? "concesso" : "negato"));
-        inviaEvento("mic.result", concesso);
-        inviaStatoAllaShell();
+        if (codice == RICHIESTA_MEDIA) {
+            // `tutti` e non il primo esito: una richiesta audio+video concede due
+            // permessi, e se solo uno passa il grant completo sarebbe una bugia.
+            boolean tutti = esiti.length > 0;
+            for (int e : esiti) if (e != PackageManager.PERMISSION_GRANTED) tutti = false;
+            Log.i(TAG, "permessi media per la pagina: " + (tutti ? "concessi" : "negati"));
+            rispondiAllaRichiestaMedia(tutti);
+            inviaStatoAllaShell();
+        } else if (codice == RICHIESTA_MIC) {
+            boolean concesso = esiti.length > 0 && esiti[0] == PackageManager.PERMISSION_GRANTED;
+            Log.i(TAG, "permesso microfono: " + (concesso ? "concesso" : "negato"));
+            inviaEvento("mic.result", concesso);
+            inviaStatoAllaShell();
+        }
+        turnoSuccessivoDeiPermessi();
+    }
+
+    /** La richiesta di {@code getUserMedia} che aspetta il consenso di Android. */
+    private GeckoSession.PermissionDelegate.MediaCallback mediaInAttesa;
+    private MediaSource[] videoInAttesa, audioInAttesa;
+
+    private void rispondiAllaRichiestaMedia(boolean concesso) {
+        GeckoSession.PermissionDelegate.MediaCallback cb = mediaInAttesa;
+        MediaSource[] v = videoInAttesa, a = audioInAttesa;
+        mediaInAttesa = null; videoInAttesa = null; audioInAttesa = null;
+        if (cb == null) return;
+        if (concesso) cb.grant(v != null && v.length > 0 ? v[0] : null,
+                              a != null && a.length > 0 ? a[0] : null);
+        else cb.reject();
+    }
+
+    /**
+     * I permessi che la pagina chiede al motore — oggi solo microfono e fotocamera.
+     *
+     * <p><b>Perché serve, e non è una formalità.</b> Senza un {@code PermissionDelegate},
+     * GeckoView nega ogni richiesta di {@code getUserMedia}: la pagina riceve un
+     * {@code NotAllowedError} e la shell ripiega sul registratore nativo — o, per la
+     * fotocamera, mostra l'anteprima nera. Il sintomo non porta da nessuna parte: sembra
+     * che il microfono non funzioni, mentre è il contenitore che non ha mai risposto.
+     *
+     * <p>Questo è il pezzo che decide se il registratore può essere <b>web-puro</b> sulla
+     * traccia A: se {@code getUserMedia} cattura davvero l'audio, {@code audioRecStart} e
+     * {@code audioRecStop} non vanno cablati affatto — e spariscono il fallback nativo,
+     * l'audio in base64 e un comando di richiesta/risposta. Non è una previsione: è ciò
+     * che questa classe esiste per verificare.
+     *
+     * <p>Il consenso si chiede ad Android con i suoi permessi, e solo dopo si risponde a
+     * Gecko. Concedere a Gecko senza il permesso di sistema darebbe alla pagina un
+     * microfono che non capta nulla: di nuovo un guasto che non somiglia a un guasto.
+     */
+    private class PermessiMedia implements GeckoSession.PermissionDelegate {
+
+        @Override
+        public void onMediaPermissionRequest(GeckoSession sessione, String uri,
+                                             MediaSource[] video, MediaSource[] audio,
+                                             MediaCallback callback) {
+            Log.i(TAG, "la pagina chiede i media: video=" + (video != null && video.length > 0)
+                    + " audio=" + (audio != null && audio.length > 0));
+            if (mediaInAttesa != null) {
+                // Due richieste di media insieme: la seconda non ha un posto dove stare,
+                // e tenerla in attesa dietro la prima significherebbe rispondere a una
+                // pagina che nel frattempo ha già rinunciato. Meglio un rifiuto subito.
+                Log.w(TAG, "richiesta media già in corso: rifiuto la seconda");
+                callback.reject();
+                return;
+            }
+            mediaInAttesa = callback;
+            videoInAttesa = video;
+            audioInAttesa = audio;
+            // Non si chiede subito: si chiede il turno. Se `requestMic` è appena partito
+            // (la shell lo chiama 40 ms prima di getUserMedia), questa richiesta aspetta
+            // che quel dialogo si chiuda invece di essere rifiutata da Android.
+            unPermessoAllaVolta(PermessiMedia.this::chiediAdesso);
+        }
+
+        /**
+         * Il corpo della richiesta, eseguito quando è il nostro turno.
+         *
+         * <p>Ricontrolla i permessi invece di usare quelli calcolati prima di mettersi in
+         * coda, e non è una ripetizione inutile: se nel frattempo l'utente ha concesso il
+         * microfono dal dialogo di {@code requestMic}, qui non c'è più niente da chiedere
+         * e si concede direttamente — senza un secondo dialogo identico, che sembrerebbe
+         * un'app che non prende la risposta.
+         */
+        private void chiediAdesso() {
+            if (mediaInAttesa == null) { turnoSuccessivoDeiPermessi(); return; }
+            boolean vuoleVideo = videoInAttesa != null && videoInAttesa.length > 0;
+            boolean vuoleAudio = audioInAttesa != null && audioInAttesa.length > 0;
+
+            java.util.ArrayList<String> mancanti = new java.util.ArrayList<>();
+            if (vuoleAudio && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                    != PackageManager.PERMISSION_GRANTED) {
+                mancanti.add(Manifest.permission.RECORD_AUDIO);
+            }
+            if (vuoleVideo && checkSelfPermission(Manifest.permission.CAMERA)
+                    != PackageManager.PERMISSION_GRANTED) {
+                mancanti.add(Manifest.permission.CAMERA);
+            }
+            if (mancanti.isEmpty()) {
+                // Caso tutt'altro che raro: `requestMic` ha appena chiesto il microfono e
+                // l'utente ha appena risposto sì. Qui non c'è niente da chiedere.
+                Log.i(TAG, "media già consentiti: concedo senza un secondo dialogo");
+                rispondiAllaRichiestaMedia(true);
+                turnoSuccessivoDeiPermessi();
+                return;
+            }
+            requestPermissions(mancanti.toArray(new String[0]), RICHIESTA_MEDIA);
+        }
     }
 
     /**
@@ -650,7 +807,12 @@ public class MainActivity extends Activity {
                         == PackageManager.PERMISSION_GRANTED) {
                     inviaEvento("mic.result", true);
                 } else {
-                    requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, RICHIESTA_MIC);
+                    // Il dialogo si apre al nostro turno, non subito: la shell chiama
+                    // questo comando e `getUserMedia` a 40 ms di distanza, e la seconda
+                    // richiesta verrebbe rifiutata da Android se la prima fosse ancora
+                    // aperta. Vedi unPermessoAllaVolta.
+                    unPermessoAllaVolta(() -> requestPermissions(
+                            new String[]{Manifest.permission.RECORD_AUDIO}, RICHIESTA_MIC));
                 }
                 break;
             }
