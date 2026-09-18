@@ -711,10 +711,30 @@ public class MainActivity extends Activity {
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
     }
 
+    /**
+     * Tasto Indietro: lo consuma la shell, non la cronologia del browser.
+     *
+     * <p>Sotto WebView era {@code web.evaluateJavascript("window.NovaBack && window.NovaBack()")}
+     * ({@code :app} {@code MainActivity.java:1084}). Gecko non ha {@code evaluateJavascript}:
+     * la stessa chiamata viaggia come evento {@code back} sulla porta nativa, e lo stub la
+     * consegna a {@code window.NovaBack} — la stessa funzione ({@code shell/js/os.js:1899}),
+     * che chiude lo shade se è aperto oppure esce dall'app se ce n'è una aperta.
+     *
+     * <p>{@code session.goBack()} — il comportamento che questo file aveva prima — è la
+     * navigazione <b>indietro del browser</b>, che con la shell non c'entra nulla: la shell è
+     * una pagina sola, quindi non c'è cronologia da percorrere e il tasto sembrava morto.
+     * È il primo caso in cui il porting non è stato «stessa cosa con un'altra API» ma
+     * «la stessa API qui significa un'altra cosa».
+     *
+     * <p>Il ripiego su {@code super.onBackPressed()} scatta solo a ponte spento (shell non
+     * servita, estensione non caricata): lì la shell non riceverebbe nulla e senza ripiego
+     * l'app diventerebbe impossibile da chiudere. A ponte vivo il comportamento è identico a
+     * {@code :app}, che inoltra sempre e non chiude mai l'Activity.
+     */
     @Override
     public void onBackPressed() {
-        if (session != null) {
-            session.goBack();
+        if (portaNativa != null) {
+            inviaEvento("back");
             return;
         }
         super.onBackPressed();
