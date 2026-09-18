@@ -15,6 +15,29 @@
          l'anteprima nera — senza un errore che spieghi perché. -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Telefonia. Come sopra, la dichiarazione non è una formalità: senza, il
+         permesso non è nemmeno chiedibile e `call` resterebbe per sempre sul
+         ramo ACTION_DIAL, cioè «sembra che chiami» invece di chiamare. Sono
+         permessi pericolosi e si concedono a runtime (o con pm grant). -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+
+    <!-- VIBRATE non è fra i permessi che si concedono a runtime (è «normale»), e
+         per questo è facile dimenticarlo: senza la riga, `vibrate` non fallisce in
+         silenzio — solleva SecurityException sul thread principale e PORTA GIÙ IL
+         PROCESSO. Scoperto così: la shell vibra prima di ogni chiamata
+         (apps.js:55), quindi il primo tentativo di chiamata uccideva la shell
+         invece di chiamare. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Necessario su Android 11+ per aprire il dialer e l'app SMS di sistema:
+         senza, startActivity fallisce con ActivityNotFoundException. -->
+    <queries>
+        <intent><action android:name="android.intent.action.DIAL" /></intent>
+        <intent><action android:name="android.intent.action.CALL" /></intent>
+        <intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="smsto" /></intent>
+    </queries>
+
     <application
         android:label="NovaOS Gecko (spike)"
         android:hardwareAccelerated="true"
@@ -30,7 +53,47 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- I quattro filtri che rendono NovaOS candidabile a telefono predefinito
+                 (ROLE_DIALER), copiati da :app. Non sono decorazione: il
+                 RoleController pretende DUE filtri DIAL — uno senza scheme e uno con
+                 scheme tel — e senza entrambi segnala "missing RequiredComponent" e
+                 il ruolo non è assegnabile. È il prerequisito di NovaInCallService:
+                 senza il ruolo quel servizio non viene mai legato. -->
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="tel" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="tel" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.CALL" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="tel" />
+            </intent-filter>
         </activity>
+
+        <!-- Servizio di chiamata: attivo solo quando NovaOS è il telefono predefinito.
+             Mostra la schermata di chiamata dentro NovaOS invece di quella di sistema.
+             La permission non è una richiesta ma un vincolo: solo il sistema può
+             legarlo, ed è ciò che impedisce a un'app qualsiasi di fingersi noi. -->
+        <service
+            android:name=".NovaInCallService"
+            android:permission="android.permission.BIND_INCALL_SERVICE"
+            android:exported="true">
+            <meta-data android:name="android.telecom.IN_CALL_SERVICE_UI" android:value="true"/>
+            <intent-filter>
+                <action android:name="android.telecom.InCallService"/>
+            </intent-filter>
+        </service>
 
         <!-- Il browser clone-Chrome. Nel modulo :app è la destinazione di
              openBrowser; qui è la COPIA dello stesso file, per verificare che il
@@ -42,5 +105,20 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@android:style/Theme.NoTitleBar" />
+
+        <!-- Condivisione verso le altre app (shareImage/shareFile). L'autorità deve
+             corrispondere carattere per carattere a ShareProvider.AUTHORITY: è il
+             nome con cui il sistema risolve content://os.nova.gecko.share/…, e se
+             diverge il provider non viene mai interpellato.
+             exported="false" perché non ha nulla da offrire al resto del sistema:
+             ci si arriva solo con un URI che abbiamo coniato noi, e
+             grantUriPermissions="true" è ciò che rende quel permesso trasferibile
+             all'app scelta nel chooser — senza, il file resterebbe nostro e
+             l'app che lo riceve non riuscirebbe ad aprirlo. -->
+        <provider
+            android:name=".ShareProvider"
+            android:authorities="os.nova.gecko.share"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

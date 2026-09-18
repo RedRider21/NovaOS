@@ -499,8 +499,12 @@ Prossimi passi (aggiornati al 2026-09-18, **due tracce** — vedi
    `window.NovaMsg` — il dispatcher che la shell usa già. Provato sullo schermo: una chiamata in
    arrivo comandata da Java. Dettagli in
    **[docs/MIGRAZIONE-GECKOVIEW.md §10.7](docs/MIGRAZIONE-GECKOVIEW.md)**.
-4. **Completare il ponte** — in Java sono cablati 3 comandi su 53; i getter e le richiesta/risposta
-   (14 + 11) sono asincroni e richiedono una cache riempita all'avvio (fase 3).
+4. **Completare il ponte** — in Java sono cablati 22 comandi su 53: dopo `toast`, `vibrate` e
+   `openBrowser` sono entrate la telefonia e la condivisione (chiamare, ricevere, rispondere,
+   riagganciare, muto, vivavoce, DTMF, SMS, condividere foto/file/testo), verificate
+   sull'emulatore — dettagli in
+   **[docs/MIGRAZIONE-GECKOVIEW.md §11](docs/MIGRAZIONE-GECKOVIEW.md)**. Restano i getter e le
+   richiesta/risposta (14 + 11), asincroni: richiedono una cache riempita all'avvio (fase 3).
 5. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
    `addJavascriptInterface`, contenuta al livello contenitore (piano dettagliato in
    **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**). Va messo a piano che la

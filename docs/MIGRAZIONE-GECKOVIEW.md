@@ -457,7 +457,7 @@ computer non esiste. Il server locale invece è autosufficiente.
 | Shell servita dal server locale, avvio e interattività | ✅ verificato |
 | Ponte a tre salti, con sonda dalla pagina | ✅ verificato: `__probe_stub` arriva a Java |
 | `openBrowser` → `BrowserActivity` nativa | ✅ verificato dal dock |
-| Comandi cablati in Java | **3 su 53** (`toast`, `vibrate`, `openBrowser`): tutti gli altri arrivano e finiscono nel log |
+| Comandi cablati in Java | **22 su 53** (aggiornato al passo di §11): gli altri arrivano e finiscono nel log |
 | Getter e richiesta/risposta (14 + 11) | ❌ da fare: sono asincroni, servono cache all'avvio (fase 3) |
 | Ritorno nativo → pagina, con evento consegnato alla shell | ✅ verificato (§10.7) |
 | `BrowserActivity` | copiata da `:app`, **ancora basata su WebView**: il port a GeckoView è un passo a sé |
@@ -521,6 +521,80 @@ sono due affermazioni diverse**, e in un sistema a sei salti la prima non implic
 costringere a ripensare tutto» — è **chiuso**. Le fasi 0 e 2 sono verificate in entrambi i versi;
 quello che resta è lavoro noto e senza incognite: cablare i comandi (3 su 53), rendere asincroni i
 getter (fase 3), e le differenze di comportamento di fase 5.
+
+---
+
+## 11 · Esito del passo: telefonia e condivisione (2026-09-18)
+
+Il gruppo più numeroso rimasto — 12 comandi su 53 — è cablato e verificato sull'emulatore. Sotto
+Gecko la shell adesso **chiama, riceve, risponde, riaggancia, muta, mette in vivavoce, manda DTMF,
+invia SMS e condivide foto, file e testo**: le stesse cose che fa l'APK WebView pubblicato.
+
+| Gruppo | Comandi | Esito |
+|---|---|---|
+| Uscita | `call`, `sms`, `sendSms` | ✅ tre livelli di `call`, `ACTION_SENDTO` per `sms`, `SmsManager` + `divideMessage` per `sendSms` |
+| Ruolo | `requestDialerRole` | ✅ apre il pannello di sistema, il ruolo si concede, `isDialer` diventa vero |
+| Dentro la chiamata | `callAnswer`, `callHangup`, `callMute`, `callSpeaker`, `callDtmf` | ✅ inoltro a `CallHub` |
+| Condivisione | `shareImage`, `shareFile`, `shareText` | ✅ chooser di Android, file leggibile dall'app scelta |
+
+**Classi portate** in `os.nova.gecko`: `CallHub`, `NovaInCallService`, `ShareProvider` (con
+l'autorità cambiata in `os.nova.gecko.share`). Nel manifest sono entrati i quattro intent-filter su
+`MainActivity` (DIAL, DIAL+`tel`, VIEW `tel`, CALL `tel`), il `<service>` con
+`BIND_INCALL_SERVICE` e il `<provider>`. La sonda di fase 2 (`ATTESA_PROVA_MS`,
+`rispondiAllaPagina`) è stata rimossa: l'evento `call.update` ora lo genera una chiamata vera.
+
+### Come è stato verificato
+
+```
+adb emu gsm call +393401234567                       # chiamata entrante: la schermata NovaOS compare da sola
+adb shell cmd role get-role-holders android.app.role.DIALER
+adb shell dumpsys telecom | grep InCallService       # os.nova.gecko/.NovaInCallService legato
+adb logcat | grep NovaGeckoSpike                     # comando dal ponte: … / evento inviato alla pagina: …
+adb shell run-as os.nova.gecko ls -l cache/share     # i file condivisi esistono davvero
+```
+
+Schermata di chiamata con numero giusto → `callAnswer` → `state=ACTIVE` e cronometro vivo →
+`callMute` (`changing microphone mute state to: true`) → `callDtmf` (`START_DTMF`/`STOP_DTMF`) →
+`callHangup` → `DISCONNECTED` e schermata che si chiude. Per la condivisione: galleria → Condividi
+→ chooser di **Android** → l'app scelta mostra l'anteprima dell'immagine (cioè ha letto il
+`content://` attraverso il provider: è il `setClipData` che rende trasferibile il permesso);
+note → Condividi (testo); registratore → Condividi → file audio. Nessun `SecurityException`, nessun
+`FileNotFoundException`.
+
+### Il difetto più serio trovato, e perché vale più della prova
+
+Provando il recupero al riavvio — processo ucciso in background, chiamata in arrivo, telecom che ci
+riavvia — la shell si è aperta **senza ponte**: `origine=asset`. `NovaInCallService` avviava
+l'Activity con un Intent nudo, e il default era l'origine `asset`, quella che il content script non
+aggancia. Su un telefono vero: la chiamata arriva, NovaOS si apre, la schermata di chiamata non
+compare — e niente lo spiega. Corretto su entrambi i lati (`NovaInCallService` passa
+`ORIGIN_LOCAL`, e `local` è diventato il default anche per l'avvio dall'icona). **La lezione: i
+valori predefiniti silenziosi sono un guasto che aspetta il caso giusto**, e il caso giusto era uno
+che nessuna prova a mano avrebbe incontrato.
+
+### Limiti, dichiarati
+
+- **L'SMS è ottimistico.** `cmd()` è fire-and-forget: la shell scrive «inviato» appena il comando
+  parte, senza sapere se è partito. Valeva identico sotto WebView — non è una regressione, ma non è
+  nemmeno una verifica.
+- **Sull'emulatore non c'è SIM.** `adb emu gsm` simula la chiamata; l'invio vero non è provabile
+  qui, e non è stato dato per riuscito.
+- **Il vivavoce non è provabile su questo emulatore.** `dumpsys telecom` riporta
+  `supportedRouteMask: SPEAKER` e nessun auricolare: la richiesta arriva (`USER_SWITCH_EARPIECE`) e
+  il sistema la scarta con «Not available». È una limite dell'immagine, non del codice.
+- **`requestDialerRole` richiede un gesto in più** nella finestra di sistema: il pulsante «Set as
+  default» è disabilitato finché non si tocca la riga dell'app. Non è nostro, ma va saputo da chi
+  prova, altrimenti sembra che il comando non funzioni.
+- **Il registratore produce `.webm`**, non `.m4a`: i nomi dei file condivisi seguono il mime del
+  data URL, quindi la tabella delle estensioni in `estensione()` è quella che decide.
+
+### Residui noti, non toccati
+
+- Le sonde `__probe_bg` / `__probe_stub` **continuano a partire** ma Java non risponde più: nel log
+  compaiono come «comando riconosciuto ma non ancora cablato», affermazione ormai falsa. Vanno
+  tolte (o riscritte) nel passo di pulizia.
+- Il comando `vibrate` resta l'unico punto in cui un permesso mancante uccideva il processo
+  (`VIBRATE`): è la ragione per cui `esegui` avvolge tutto in `try/catch(Throwable)`.
 
 ---
 

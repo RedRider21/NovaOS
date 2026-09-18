@@ -43,8 +43,9 @@ import java.io.OutputStream;
  *       che sopravvive alla ROM, dove non esiste alcun computer di sviluppo.</li>
  *   <li>{@code http} &rarr; il server di sviluppo sul computer
  *       ({@code http://10.0.2.2:8091}), comodo per iterare sulla shell senza reinstallare.</li>
- *   <li>{@code asset} (predefinita) &rarr; {@code resource://android/assets/www/index.html}:
- *       la shell gira, ma senza ponte — serve come riferimento di fase 0.</li>
+ *   <li>{@code asset} &rarr; {@code resource://android/assets/www/index.html}: la shell
+ *       gira, ma <b>senza ponte</b> — resta come riferimento di fase 0 e come ripiego di
+ *       {@link #avviaServerLocale()}, non più come origine predefinita (v. {@link #onCreate}).</li>
  *   <li>{@code internal} &rarr; {@code file://…/files/shell/index.html}: idem, e la shell
  *       <b>non</b> è agganciabile dal content script (v. sotto).</li>
  *   <li>{@code extension} &rarr; {@code moz-extension://…/www/index.html}: via abbandonata,
@@ -66,6 +67,13 @@ public class MainActivity extends Activity {
     private static final int RICHIESTA_MIC = 4711;
     /** Richiesta dei permessi che la pagina chiede via {@code getUserMedia}. */
     private static final int RICHIESTA_MEDIA = 4712;
+    /** Richiesta del permesso SEND_SMS, fatta da {@code sendSms} quando manca.
+     *
+     *  <p>L'esito non viene letto: non c'è niente da rispondere alla pagina, che ha
+     *  già ricevuto il suo «inoltrato». Serve solo a far comparire il dialogo, così
+     *  la <b>prossima</b> chiamata a {@code sendSms} trova il permesso e invia
+     *  davvero invece di riaprire l'app SMS. */
+    private static final int RICHIESTA_SMS = 4713;
 
     public static final String ORIGIN_ASSET = "asset";
     public static final String ORIGIN_INTERNAL = "internal";
@@ -105,7 +113,7 @@ public class MainActivity extends Activity {
 
     /** La porta nativa: l'unico canale con cui il nativo può parlare per primo
      *  alla shell. Arriva da {@link WebExtension.MessageDelegate#onConnect} e resta
-     *  aperta finché l'estensione non la chiude. Vedi {@link #rispondiAllaPagina}. */
+     *  aperta finché l'estensione non la chiude. Vedi {@link #inviaEvento}. */
     private WebExtension.Port portaNativa;
 
     private static final String ASSET_SHELL = "www";      // src/main/assets/www
@@ -119,8 +127,17 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // L'origine predefinita è `local`, non più `asset`. Scoperto così: lanciando
+        // l'app dall'icona (o lasciando che sia NovaInCallService ad avviarla per una
+        // chiamata in arrivo) l'intent non porta extra, si finiva su
+        // `resource://android/assets/…` — l'origine su cui il content script NON viene
+        // iniettato — e la shell partiva senza ponte. Cioè: un telefono che si apre
+        // dall'icona era un telefono che non telefona, non condivide e non aggiorna,
+        // senza che nulla lo dicesse. `asset` resta raggiungibile con
+        // `--es origin asset` per il confronto di fase 0, ma non è più la porta
+        // d'ingresso.
         String origin = getIntent().getStringExtra("origin");
-        if (origin == null) origin = ORIGIN_ASSET;
+        if (origin == null) origin = ORIGIN_LOCAL;
 
         // Diagnostica: la console della pagina finisce in logcat (tag "GeckoConsole"),
         // così si vede subito se la shell fallisce all'avvio e perché.
@@ -313,10 +330,6 @@ public class MainActivity extends Activity {
                     + " da=" + (sender == null ? "?" : sender.url));
             if (nome == null) return GeckoResult.fromValue(null);
 
-            // La sonda from-page innesca la risposta nativo → pagina: è il giro
-            // completo in un solo gesto. Vedi rispondiAllaPagina().
-            if ("__probe_stub".equals(nome)) rispondiAllaPagina();
-
             // A pagina caricata si manda lo stato: vedi inviaStatoAllaShell().
             if ("__pagina_pronta".equals(nome)) inviaStatoAllaShell();
 
@@ -366,62 +379,36 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Prova che il nativo può raggiungere la pagina: manda un evento sulla porta
-     *  nativa e lo fa comparire sullo schermo.
+    /** Manda alla shell lo stato della chiamata corrente: chiamata in arrivo, stato
+     *  cambiato, chiamata chiusa.
      *
-     *  <p>Il percorso è tutto in discesa e ogni salto è già stato verificato separatamente:
-     *  <ol>
-     *    <li>Java → {@code Port.postMessage(JSONObject)}</li>
-     *    <li>background.js ricopia il messaggio su ogni porta "nova-pagina"</li>
-     *    <li>content.js lo rimette in pagina con {@code window.postMessage}</li>
-     *    <li>lo stub lo consegna a {@code window.NovaMsg(evento, ...args)}</li>
-     *  </ol>
+     *  <p>Sostituisce la sonda di fase 2, che mandava un {@code call.update} finto
+     *  dopo 15 secondi per provare che l'evento arrivasse. Ora l'evento arriva da
+     *  {@link CallHub}, cioè da una chiamata vera, quindi la sonda non ha più niente
+     *  da dimostrare — e il suo difetto era proprio quello che la rendeva utile: una
+     *  chiamata che compare da sola mentre si prova altro.
      *
-     *  <p>L'evento scelto non è neutro di proposito: {@code call.update} con stato
-     *  {@code incoming} fa apparire la schermata di chiamata in arrivo, cioè la stessa
-     *  che sotto WebView disegna l'InCallService. Se compare, il ponte regge in
-     *  entrambi i versi e la prova è visibile senza leggere un log. Dopo 8 secondi
-     *  arriva {@code ended}, così l'emulatore non suona all'infinito.
+     *  <p>Chiamata da {@link CallHub} a ogni cambio di stato (che avviene sul thread
+     *  di telecom, non sul nostro) e da {@link #onResume}: il {@code post} sul thread
+     *  principale non è una precauzione di stile, perché la porta nativa appartiene al
+     *  thread che l'ha aperta.
      *
-     *  <p>L'attesa prima dell'invio non è un dettaglio di comodo: la sonda parte a
-     *  {@code document_start}, quando la shell è ancora al boot. Una chiamata che arriva
-     *  lì finisce dietro il lockscreen e il boot la cancella — provato: il log diceva
-     *  «consegnato alla pagina» e sullo schermo non c'era nulla. Aspettando si verifica
-     *  il caso vero, cioè un evento che raggiunge una shell già viva.
-     *
-     *  <p>Si attiva solo con {@code adb shell am start ... --ez prova true}: una chiamata
-     *  finta che compare da sola dopo 15 secondi intralcia qualsiasi altra prova — è
-     *  successo, il tocco su «Rifiuta» è finito sull'icona della Fotocamera sottostante
-     *  e ha aperto un'altra app. Come diagnostica vale solo se non si attiva quando non
-     *  serve. */
-    private static final long ATTESA_PROVA_MS = 15000;
-
-    private void rispondiAllaPagina() {
-        if (!getIntent().getBooleanExtra("prova", false)) return;
-        if (portaNativa == null) {
-            Log.w(TAG, "nessuna porta nativa aperta: risposta non inviata");
-            return;
-        }
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+     *  <p>Il {@code try} attorno alla lettura dello stato rispecchia quello di
+     *  {@code inviaStatoAllaShell}: fra il momento in cui il framework ci avvisa e
+     *  quello in cui leggiamo, la chiamata può essere già sparita. «Nessuna
+     *  chiamata» invece non è un'anomalia e non arriva qui: la assorbe
+     *  {@link CallHub#stato()}, che risponde {@code ended}. */
+    public void pushCall() {
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            String stato = "ended", numero = "";
             try {
-                if (portaNativa != null) {
-                    portaNativa.postMessage(evento("call.update", "incoming", "+39 340 1234567", "Anna Rossi"));
-                    Log.i(TAG, "risposta inviata alla pagina: call.update incoming");
-                }
+                stato = CallHub.stato();
+                numero = CallHub.numero();
             } catch (Exception e) {
-                Log.e(TAG, "risposta non inviata", e);
+                Log.w(TAG, "stato della chiamata non leggibile", e);
             }
-        }, ATTESA_PROVA_MS);
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            try {
-                if (portaNativa != null) {
-                    portaNativa.postMessage(evento("call.update", "ended"));
-                    Log.i(TAG, "risposta inviata alla pagina: call.update ended");
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "chiusura non inviata", e);
-            }
-        }, ATTESA_PROVA_MS + 8000);
+            inviaEvento("call.update", stato, numero, "");
+        });
     }
 
     /** Manda un evento alla shell sulla porta nativa.
@@ -514,12 +501,12 @@ public class MainActivity extends Activity {
                     android.Manifest.permission.RECORD_AUDIO); } catch (Exception ignored) {}
             s.put("micDiag", mic ? "granted" : (razionale ? "askable" : "blocked"));
 
+            // isDialer() invece del controllo ripetuto qui: lo stesso valore decide
+            // anche il ramo di `call`, e due copie divergerebbero. Il try/catch resta
+            // perché questo giro costruisce TUTTO lo stato: un'eccezione qui farebbe
+            // saltare l'invio, non solo questo campo.
             boolean dialer = false;
-            try {
-                android.telecom.TelecomManager tm =
-                        (android.telecom.TelecomManager) getSystemService(TELECOM_SERVICE);
-                dialer = tm != null && getPackageName().equals(tm.getDefaultDialerPackage());
-            } catch (Exception ignored) {}
+            try { dialer = isDialer(); } catch (Exception ignored) {}
             s.put("isDialer", dialer);
 
             // privileged: WRITE_SECURE_SETTINGS non è concedibile a un'app normale,
@@ -530,11 +517,21 @@ public class MainActivity extends Activity {
             s.put("privileged", priv);
 
             s.put("shellSource", getIntent().getStringExtra("origin") == null
-                    ? ORIGIN_ASSET : getIntent().getStringExtra("origin"));
+                    ? ORIGIN_LOCAL : getIntent().getStringExtra("origin"));
 
-            // Nessuna infrastruttura di telefonia in questa spike: lo stato onesto è
-            // "nessuna chiamata". La shell lo usa per il recupero della schermata al boot.
-            s.put("currentCallState", "{\"state\":\"ended\"}");
+            // Lo stato VERO della chiamata, non più il finto onesto di prima. La shell
+            // lo legge una volta sola, all'avvio (os.js, recupero della schermata di
+            // chiamata): con il valore fisso quella schermata non poteva mai comparire
+            // dopo un riavvio di NovaOS a conversazione in corso.
+            //
+            // Il ripiego a "ended" quando non c'è chiamata non è un doppione del
+            // controllo dentro CallHub: quel metodo risponde null per dire «nessuna
+            // chiamata», e alla shell serve comunque un JSON valido.
+            String chiamata = null;
+            try { chiamata = CallHub.statoJson(); } catch (Exception e) {
+                Log.w(TAG, "stato della chiamata non leggibile", e);
+            }
+            s.put("currentCallState", chiamata == null ? "{\"state\":\"ended\"}" : chiamata);
         } catch (Exception e) {
             Log.e(TAG, "stato non costruito", e);
             return;
@@ -761,8 +758,180 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** I comandi cablati nella dimostrazione di fase 2. */
+    /** L'argomento {@code i}-esimo di un comando, o stringa vuota se non c'è.
+     *
+     *  <p>La pagina manda sempre stringhe per i comandi di telefonia, ma il ponte le
+     *  consegna come {@code Object} senza tipo: leggerle con un cast diretto
+     *  significherebbe un {@code ClassCastException} per un argomento mancante, che
+     *  dalla parte della shell arriva come «comando fallito» senza indizi. */
+    private static String argomento(Object[] args, int i) {
+        return (args != null && args.length > i && args[i] != null) ? String.valueOf(args[i]) : "";
+    }
+
+    /** Un argomento booleano del ponte ({@code callMute}, {@code callSpeaker}).
+     *
+     *  <p>La pagina manda un booleano vero, ma attraversando lo stub, il content
+     *  script e il JSON di Gecko può arrivare come {@code Boolean}, come
+     *  {@code Double} o perfino come la stringa {@code "true"} — e un cast diretto a
+     *  {@code Boolean} lancerebbe {@code ClassCastException} su due di questi tre.
+     *  Qui non lancia mai, e il verso del dubbio è quello giusto per un interruttore:
+     *  ciò che non si capisce è spento. */
+    private static boolean booleano(Object[] args, int i) {
+        if (args == null || args.length <= i || args[i] == null) return false;
+        Object v = args[i];
+        if (v instanceof Boolean) return (Boolean) v;
+        if (v instanceof Number) return ((Number) v).doubleValue() != 0;
+        return "true".equals(String.valueOf(v));
+    }
+
+    /** Avvia un Intent verso un'app di sistema.
+     *
+     *  <p>L'eccezione viene trattenuta qui e non lasciata salire, per una ragione che
+     *  vale la pena scrivere perché è controintuitiva: sotto Gecko {@code cmd()} è
+     *  <b>asincrono</b>, quindi non può osservare un fallimento del nativo — la shell
+     *  crede di aver aperto qualcosa in ogni caso. Lasciar salire l'eccezione non le
+     *  farebbe prendere il ripiego: le farebbe perdere il processo (vedi
+     *  {@link #esegui}). Che l'apertura sia riuscita resta quindi ignoto alla pagina;
+     *  è il limite noto del ponte, e sta nel log. */
+    private void apri(Intent i) {
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(i);
+        } catch (Exception e) {
+            Log.w(TAG, "nessuna app per " + i.getAction() + " " + i.getData(), e);
+        }
+    }
+
+    /** Apre l'app di messaggistica di sistema col numero e il testo già pronti. */
+    private void apriSms(String numero, String testo) {
+        Intent i = new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + numero));
+        i.putExtra("sms_body", testo == null ? "" : testo);
+        apri(i);
+    }
+
+    /** L'estensione da dare al file, dedotta dal mime del data URL.
+     *
+     *  <p>Serve solo quando il nome non ne porta già una: la galleria e il
+     *  registratore mandano un data URL e nient'altro, e un file senza estensione
+     *  molte app lo rifiutano prima ancora di guardarne il contenuto. */
+    private static String estensione(String mime) {
+        if (mime.contains("png"))  return ".png";
+        if (mime.contains("jpeg") || mime.contains("jpg")) return ".jpg";
+        if (mime.contains("webp")) return ".webp";
+        if (mime.contains("gif"))  return ".gif";
+        if (mime.contains("mp4") || mime.contains("m4a") || mime.contains("aac")) return ".m4a";
+        if (mime.contains("mpeg")) return ".mp3";
+        if (mime.contains("webm")) return ".webm";
+        if (mime.contains("ogg"))  return ".ogg";
+        if (mime.contains("wav"))  return ".wav";
+        if (mime.contains("pdf"))  return ".pdf";
+        // Un'immagine non riconosciuta resta un'immagine: .jpg è la scelta di :app,
+        // che per shareImage aveva solo questo ramo.
+        if (mime.startsWith("image/")) return ".jpg";
+        return ".bin";
+    }
+
+    /** Scrive un data URL nella cache dell'app e apre il chooser di sistema.
+     *
+     *  <p>Unifica {@code shareImage} e {@code shareFile} di
+     *  {@code :app/MainActivity.java:538-598}, che differivano solo nel nome da dare
+     *  al file — la foto lo prende dal timestamp, il file dal suo nome vero — mentre
+     *  decodifica, estensione e chooser erano copiati. Porta anche le due righe che
+     *  nel modulo :app hanno un commento proprio perché sembrano dettagli:
+     *
+     *  <ul>
+     *  <li>{@code setClipData}: senza, {@code FLAG_GRANT_READ_URI_PERMISSION} non
+     *      raggiunge l'app scelta nel chooser. Il permesso su un URI viaggia con
+     *      l'Intent, ma quando l'Intent passa dal chooser quello che arriva alla
+     *      destinazione è ricostruito dal ClipData: l'app riceverebbe l'URI e non
+     *      potrebbe aprirlo — una condivisione che «non funziona» senza un errore.</li>
+     *  <li>l'autorità: {@code "content://" + ShareProvider.AUTHORITY} deve
+     *      corrispondere alla voce {@code <provider>} del manifest. Se diverge,
+     *      nessuno solleva: il sistema semplicemente non trova il provider.</li>
+     *  </ul>
+     *
+     *  <p>Un fallimento non può tornare alla shell — sotto Gecko il ponte è
+     *  asincrono, {@code cmd()} non osserva l'esito — quindi l'unico segnale è il
+     *  Toast, come in :app, più la traccia nel log.
+     *
+     *  @param nome nome proposto per il file; vuoto per le immagini, che non ne hanno.
+     */
+    private void condividi(String dataUrl, String nome, String etichetta) {
+        try {
+            int comma = dataUrl.indexOf(',');
+            if (comma < 0) throw new IllegalArgumentException("data URL senza virgola");
+            String mime = dataUrl.substring(dataUrl.indexOf(':') + 1, comma).split(";")[0];
+            byte[] bytes = android.util.Base64.decode(dataUrl.substring(comma + 1),
+                    android.util.Base64.DEFAULT);
+
+            File dir = new File(getCacheDir(), "share");
+            dir.mkdirs();
+            // Il nome arriva dalla pagina, quindi non è fidato: le barre e i due punti
+            // verrebbero interpretati come percorso, e scriveremmo fuori dalla cache.
+            String pulito = (nome == null || nome.trim().isEmpty())
+                    ? "novaos-" + System.currentTimeMillis()
+                    : nome.replaceAll("[^A-Za-z0-9._ -]", "_");
+            if (pulito.indexOf('.') < 0) pulito = pulito + estensione(mime);
+            File f = new File(dir, pulito);
+            FileOutputStream fos = new FileOutputStream(f);
+            fos.write(bytes);
+            fos.close();
+
+            Uri uri = Uri.parse("content://" + ShareProvider.AUTHORITY + "/" + f.getName());
+            Intent send = new Intent(Intent.ACTION_SEND).setType(mime)
+                    .putExtra(Intent.EXTRA_STREAM, uri)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            send.setClipData(android.content.ClipData.newUri(getContentResolver(), f.getName(), uri));
+            apri(Intent.createChooser(send, etichetta)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
+        } catch (Exception e) {
+            Log.w(TAG, "condivisione non riuscita", e);
+            Toast.makeText(this, "Condivisione non riuscita", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** NovaOS è il telefono predefinito (ROLE_DIALER)?
+     *
+     *  <p>Da lì {@code NovaInCallService} riceve le chiamate vere: senza il ruolo il
+     *  servizio non viene mai legato e i cinque comandi di dentro-chiamata non hanno
+     *  su cosa agire. Stessa forma di {@code :app/MainActivity.java:302-310}. */
+    private boolean isDialer() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            android.app.role.RoleManager rm =
+                    (android.app.role.RoleManager) getSystemService(ROLE_SERVICE);
+            return rm != null && rm.isRoleHeld(android.app.role.RoleManager.ROLE_DIALER);
+        }
+        android.telecom.TelecomManager tm =
+                (android.telecom.TelecomManager) getSystemService(TELECOM_SERVICE);
+        return tm != null && getPackageName().equals(tm.getDefaultDialerPackage());
+    }
+
+    /** Smistamento dei comandi, con la rete di sicurezza attorno.
+     *
+     *  <p>Il try/catch non è difensivismo: sotto Gecko il ponte è <b>asincrono</b>, e
+     *  un'eccezione qui non torna alla pagina come «comando fallito» — risale il thread
+     *  principale e <b>uccide il processo</b>. Verificato a spese di una prova:
+     *  {@code vibrate} senza il permesso VIBRATE dichiarato faceva esattamente questo,
+     *  e la shell moriva prima di poter usare il proprio ripiego. Sotto WebView non
+     *  succedeva perché la chiamata era sincrona e {@code cmd()} poteva intercettare
+     *  l'errore: questo try/catch sostituisce la protezione che il ponte vecchio
+     *  aveva gratis. Va tenuto per quanto è largo — un comando su 53 che lancia non
+     *  deve costare la shell intera. */
     private void esegui(String nome, Object[] args, int idRichiesta) {
+        try {
+            eseguiComando(nome, args, idRichiesta);
+        } catch (Throwable t) {
+            Log.e(TAG, "comando fallito: " + nome, t);
+            // Se la pagina aspettava una risposta va comunque data: un `await` che non
+            // torna è peggio di un valore di errore, che il contratto già prevede.
+            if (idRichiesta >= 0) {
+                try { inviaRisposta(idRichiesta, null); } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    /** I comandi cablati nella dimostrazione di fase 2. */
+    private void eseguiComando(String nome, Object[] args, int idRichiesta) {
         switch (nome) {
             case "toast": {
                 String msg = args.length > 0 ? String.valueOf(args[0]) : "";
@@ -792,6 +961,124 @@ public class MainActivity extends Activity {
                 startActivity(i);
                 break;
             }
+            case "call": {
+                // Tre livelli, e il primo non è una scorciatoia: se NovaOS è il
+                // telefono predefinito si compone dal framework telecom, così la
+                // chiamata esce <b>e</b> il nostro InCallService mostra la schermata
+                // NovaOS. Con ACTION_CALL la richiesta ricadrebbe su NovaOS stessa —
+                // un ciclo che non chiama nessuno. Porta
+                // {@code :app/MainActivity.java:360-378}.
+                Uri uri = Uri.parse("tel:" + String.valueOf(argomento(args, 0)));
+                if (isDialer() && checkSelfPermission(Manifest.permission.CALL_PHONE)
+                        == PackageManager.PERMISSION_GRANTED) {
+                    android.telecom.TelecomManager tm =
+                            (android.telecom.TelecomManager) getSystemService(TELECOM_SERVICE);
+                    if (tm != null) {
+                        try {
+                            tm.placeCall(uri, null);
+                            Log.i(TAG, "call: compongo dal framework telecom (" + uri + ")");
+                            break;
+                        } catch (Exception e) {
+                            Log.w(TAG, "placeCall non riuscito: ripiego sull'Intent", e);
+                        }
+                    }
+                }
+                boolean puoChiamare = checkSelfPermission(Manifest.permission.CALL_PHONE)
+                        == PackageManager.PERMISSION_GRANTED;
+                // Quale dei tre livelli scatta dipende dai permessi, che cambiano da
+                // dispositivo a dispositivo: senza questa riga, un ACTION_DIAL al posto
+                // di un ACTION_CALL non dice se è la scelta voluta o un permesso mancante.
+                Log.i(TAG, "call: dialer=" + isDialer() + " CALL_PHONE=" + puoChiamare
+                        + " → " + (puoChiamare ? "ACTION_CALL" : "ACTION_DIAL"));
+                apri(new Intent(puoChiamare ? Intent.ACTION_CALL : Intent.ACTION_DIAL, uri));
+                break;
+            }
+            case "sms":
+                // Non manda nulla: apre l'app di messaggistica col testo pronto. È il
+                // comportamento di :app, ed è anche il ripiego di sendSms.
+                apriSms(String.valueOf(argomento(args, 0)), String.valueOf(argomento(args, 1)));
+                break;
+            case "sendSms": {
+                String numero = String.valueOf(argomento(args, 0));
+                String testo = String.valueOf(argomento(args, 1));
+                if (numero.isEmpty()) break;
+                if (checkSelfPermission(Manifest.permission.SEND_SMS)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    // Si chiede il permesso e Intanto si apre l'app SMS: la shell non
+                    // saprebbe cosa farsene di un «aspetta», e il suo ramo di ripiego
+                    // è identico a questo.
+                    requestPermissions(new String[]{Manifest.permission.SEND_SMS}, RICHIESTA_SMS);
+                    apriSms(numero, testo);
+                    break;
+                }
+                try {
+                    android.telephony.SmsManager sm = android.telephony.SmsManager.getDefault();
+                    sm.sendMultipartTextMessage(numero, null, sm.divideMessage(testo), null, null);
+                    Log.i(TAG, "SMS inviato direttamente (parti: "
+                            + sm.divideMessage(testo).size() + ")");
+                } catch (Exception e) {
+                    Log.w(TAG, "invio diretto non riuscito: ripiego sull'app SMS", e);
+                    apriSms(numero, testo);
+                }
+                break;
+            }
+
+            // ---- dentro la chiamata ------------------------------------------
+            //
+            // Questi cinque non fanno nulla da soli: inoltrano a CallHub, che agisce
+            // sulla chiamata tenuta da NovaInCallService. Se NovaOS non è il telefono
+            // predefinito quel servizio non è mai stato legato, CallHub.call è null e
+            // i comandi non hanno effetto — che è esattamente ciò che deve succedere,
+            // perché la shell mostra la schermata di chiamata solo quando è il dialer.
+
+            case "requestDialerRole": {
+                // Il prerequisito dei cinque qui sotto, non un extra: senza il ruolo
+                // NovaInCallService non riceve mai una chiamata, e i comandi non
+                // avrebbero su cosa agire. Porta :app/MainActivity.java:313-324.
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    android.app.role.RoleManager rm =
+                            (android.app.role.RoleManager) getSystemService(ROLE_SERVICE);
+                    if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_DIALER)
+                            && !rm.isRoleHeld(android.app.role.RoleManager.ROLE_DIALER)) {
+                        // L'esito non viene letto: il ruolo concesso si riflette da solo
+                        // in isDialer(), che la shell rilegge a ogni invio di stato.
+                        startActivityForResult(
+                                rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_DIALER), 2);
+                    }
+                } else {
+                    apri(new Intent(android.telecom.TelecomManager.ACTION_CHANGE_DEFAULT_DIALER)
+                            .putExtra(android.telecom.TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME,
+                                    getPackageName()));
+                }
+                break;
+            }
+            case "callAnswer":  CallHub.answer();  break;
+            case "callHangup":  CallHub.hangup();  break;
+            case "callMute":    CallHub.mute(booleano(args, 0));    break;
+            case "callSpeaker": CallHub.speaker(booleano(args, 0)); break;
+            case "callDtmf":    CallHub.dtmf(String.valueOf(argomento(args, 0))); break;
+
+            // ---- condivisione ------------------------------------------------
+            //
+            // Tutti e tre finiscono nello stesso posto — il chooser di sistema — e
+            // sono l'altra metà di questo passo. Il loro effetto si vede anche fuori
+            // dalla condivisione: os.share() (shell/js/os.js:1463-1496) prova il
+            // nativo, poi la Web Share API, poi la clipboard, poi una notifica; con
+            // `has()` vero per questi comandi la catena si ferma al primo gradino,
+            // quindi galleria, note, contatti, registratore e impostazioni passano
+            // dal «condividi» della pagina a quello di Android.
+
+            case "shareImage": condividi(argomento(args, 0), "", "Condividi foto"); break;
+            case "shareFile":  condividi(argomento(args, 0), argomento(args, 1), "Condividi"); break;
+            case "shareText": {
+                // Il solo che non passa da un file: nessun permesso da trasferire,
+                // nessun provider di mezzo. Porta :app/MainActivity.java:601-606.
+                Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain")
+                        .putExtra(Intent.EXTRA_TEXT, argomento(args, 0));
+                apri(Intent.createChooser(send, "Condividi"));
+                break;
+            }
+
             case "requestMic": {
                 // Primo comando cablato che NON finisce in un log: chiede il permesso e
                 // ne rimanda l'esito alla pagina. Sotto WebView lo faceva
@@ -1175,6 +1462,24 @@ public class MainActivity extends Activity {
      * l'app diventerebbe impossibile da chiudere. A ponte vivo il comportamento è identico a
      * {@code :app}, che inoltra sempre e non chiude mai l'Activity.
      */
+    /** Ricollega questa Activity a {@link CallHub} a ogni ripresa.
+     *
+     *  <p>In {@code :app} il collegamento si fa una volta sola in {@code onCreate}, e
+     *  basterebbe anche qui — l'Activity è {@code singleTask} e non viene ricreata.
+     *  Il motivo per farlo qui è un altro: {@code setActivity} chiama
+     *  {@link #pushCall()}, quindi ogni volta che NovaOS torna in primo piano la
+     *  schermata di chiamata riceve lo stato corrente. È il caso vero di una chiamata
+     *  in corso mentre l'utente è passato da un'altra app: senza, la schermata
+     *  resterebbe com'era quando è stata lasciata.
+     *
+     *  <p>A shell non ancora caricata l'evento non parte e resta nel log come
+     *  «nessuna porta nativa aperta»: è il primo avvio, non un guasto. */
+    @Override
+    protected void onResume() {
+        super.onResume();
+        CallHub.setActivity(this);
+    }
+
     @Override
     public void onBackPressed() {
         if (portaNativa != null) {
