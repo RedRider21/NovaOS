@@ -7,9 +7,9 @@ ramo parallelo `novaos-rom/`; la shell (`shell/`) non deve cambiare.
 
 - Stato: **fasi 0 (§9), 2 (§10) e 3 (§11) verificate su emulatore il 2026-09-18**, in **entrambi i
   versi**: i comandi della shell arrivano al nativo, gli eventi del nativo (es. chiamata in
-  arrivo) compaiono nella shell, e i getter di stato rispondono con il valore vero. Restano da
-  cablare 50 comandi su 53 e le fasi 4–8. Nulla di quanto descritto qui è stato pubblicato: lo
-  spike vive su un ramo isolato.
+  arrivo) compaiono nella shell, e i getter di stato rispondono con il valore vero. Il tasto
+  Indietro è già ricablato (§12). Restano da cablare 48 comandi su 53 e le fasi 4–8. Nulla di
+  quanto descritto qui è stato pubblicato: lo spike vive su un ramo isolato.
 - Interessati: livello `android-launcher/` (contenitore + ponte), `shell/` (minimi ritocchi),
   `system/` (ROM definitiva)
 - **Il codice dello spike vive sul ramo `gecko-spike`** (non linkato di proposito: un link
@@ -666,10 +666,55 @@ problemi diversi, e il log li distingue sempre.
 | Richiesta/risposta (14) | ❌ da fare: servono Promise, quindi un disegno a parte |
 | Comandi cablati in Java | **5 su 53** (`toast`, `vibrate`, `openBrowser`, `requestMic`, `openAppSettings`) |
 | `BrowserActivity` | copiata da `:app`, **ancora basata su WebView**: il port è un passo a sé |
+| Tasto Indietro | ✅ cablato e verificato (§12) |
 | Sonde `__probe_bg` / `__probe_stub` | restano: costano due righe di log e servono a distinguere «canale morto» da «comando sbagliato» |
 
 La fase 3 non ha richiesto **nessuna modifica a `shell/`**. È il segno che §8 aveva preparato bene
 il terreno: la shell non interroga più il motore, quindi cambiare motore non la tocca.
+
+---
+
+## 12 · Il tasto Indietro: quando la stessa API significa un'altra cosa (2026-09-18)
+
+**Esito: corretto e verificato.** Da Impostazioni, Indietro riporta alla home. Prima non faceva
+nulla.
+
+Questo è il primo difetto del porting che **non** è «l'API non esiste». È la categoria più
+insidiosa, e vale la pena isolarla perché ne incontreremo altre.
+
+Lo spike aveva scritto:
+
+```java
+public void onBackPressed() {
+    if (session != null) { session.goBack(); return; }
+    super.onBackPressed();
+}
+```
+
+`GeckoSession.goBack()` esiste, compila, e fa esattamente ciò che il nome promette: la navigazione
+**indietro del browser**. Il launcher però intende un'altra cosa — «chiudi lo shade, oppure esci
+dall'app aperta» — ed è ciò che `:app` faceva con
+`web.evaluateJavascript("window.NovaBack && window.NovaBack()")` (`:app` `MainActivity.java:1084`).
+
+Il guasto non somiglia a un guasto: nessuna eccezione, nessun log, **nessun errore da nessuna
+parte**. Il tasto risponde (il tocco arriva, l'Activity lo riceve) e semplicemente non succede
+niente di visibile, perché la shell è una pagina sola e la sua cronologia ha un elemento. Da qui
+la diagnosi è difficile: sembra che il tasto sia rotto a livello di sistema, mentre sta facendo
+con scrupolo una cosa che non è quella richiesta.
+
+**La correzione non aggiunge un'API: cambia il destinatario.** Il nativo manda l'evento `back`
+sulla porta nativa — lo stesso canale di `mic.result` — e dall'altra parte non serve nulla:
+`back` è già nella mappa `MSG` di `bridge.js` e arriva a `window.NovaBack` (`shell/js/os.js:1899`),
+la stessa funzione che chiamava WebView.
+
+Il ripiego su `super.onBackPressed()` scatta **solo a ponte spento** (shell non servita, estensione
+non caricata): lì la shell non riceverebbe nulla, e senza ripiego l'app diventerebbe impossibile
+da chiudere. A ponte vivo il comportamento è identico a `:app`, che inoltra sempre e non chiude mai
+l'Activity — quindi anche `:app`, sulla home senza app aperte e senza shade, ingoia il tasto. Non è
+una svista del porting: è il comportamento da riprodurre, ed è bene saperlo prima di «correggerlo».
+
+**Regola da tenere per le fasi successive:** quando un'API del motore *sembra* fare la cosa giusta,
+il porting è finito solo se si è verificato **cosa fa dall'altra parte**, non se compila.
 
 ---
 

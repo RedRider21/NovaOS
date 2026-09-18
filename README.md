@@ -507,18 +507,24 @@ Prossimi passi (aggiornati al 2026-09-18, **due tracce** — vedi
    «granted» — un guasto silenzioso, non un degrado prudente), e le preferenze non servono dal
    nativo perché lo `store` della shell ripiega già su `localStorage`. Dettagli in
    **[docs/MIGRAZIONE-GECKOVIEW.md §11](docs/MIGRAZIONE-GECKOVIEW.md)**.
-5. **Completare il ponte** — in Java sono cablati 5 comandi su 53; restano da fare i 14 di
+5. ~~**Tasto Indietro**~~ — **fatto (2026-09-18)**: lo consuma la shell, non il browser. Il modulo
+   chiamava `GeckoSession.goBack()`, cioè la cronologia del browser — che con la shell non c'entra
+   nulla, perché la shell è una pagina sola. Il tasto rispondeva e non succedeva niente, senza un
+   solo errore da nessuna parte. È il primo caso in cui l'API esiste ma significa **un'altra
+   cosa**: la categoria più insidiosa del porting. Dettagli in
+   **[docs/MIGRAZIONE-GECKOVIEW.md §12](docs/MIGRAZIONE-GECKOVIEW.md)**.
+6. **Completare il ponte** — in Java sono cablati 5 comandi su 53; restano da fare i 14 di
    richiesta/risposta, che devono restituire una Promise e richiedono un disegno a parte.
-6. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
+7. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
    `addJavascriptInterface`, contenuta al livello contenitore (piano dettagliato in
    **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**). Va messo a piano che la
    traccia A **abbandona `build-apk.sh`**: la catena di GeckoView richiede Gradle (§9).
-7. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
+8. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
    doppia persistenza.
 
 **Traccia B — ROM su telefono secondario** *(differita)*
-8. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
-9. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
+9. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
+10. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
    Da fare **solo su un dispositivo secondario, preferibilmente Pixel**, mai sul telefono
    principale: il fusibile hardware è irreversibile.
 
