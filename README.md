@@ -525,23 +525,30 @@ Prossimi passi (aggiornati al 2026-09-18, **due tracce** — vedi
    sopravvive a `postMessage`** — la stringa arrivava come `0`, con l'id perfettamente corretto e
    il canale che girava. Dettagli in
    **[docs/MIGRAZIONE-GECKOVIEW.md §13](docs/MIGRAZIONE-GECKOVIEW.md)**.
-7. **Completare il ponte** — in Java sono cablati 5 comandi su 53 e **1 dei 14** di
-   richiesta/risposta. Il canale è la parte difficile: ogni comando in più è ora una riga
-   nell'elenco dello stub e un `case` in Java. Ordine utile: `shellWrite`/`shellCommit` (è il
-   percorso dell'OTA sotto Gecko), poi `audioRecStart`/`audioRecStop` — che Gecko dovrebbe rendere
-   superflui via `getUserMedia`, quindi vanno *provati* prima di cablarli. I sette `set*` **non
-   sono lavoro di porting**: sotto Android stock rispondono già `false` oggi, anche nell'app
-   pubblicata.
-8. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
+7. ~~**OTA della shell (fase 5)**~~ — **fatto (2026-09-18)**: il percorso di aggiornamento della
+   sola interfaccia — quello che permette a NovaOS di aggiornarsi senza reinstallare l'APK —
+   funziona sotto Gecko e è verificato nei **tre momenti che contano**: commit, sopravvivenza al
+   riavvio, ripristino. Con una correzione che vale più delle tre: la shell copiata dagli asset
+   in `files/shell` **non viene più ricopiata a ogni avvio** se la sua build è più alta. Prima lo
+   era, e con l'OTA sarebbe diventato «l'aggiornamento sparisce al riavvio successivo» — senza
+   errori, e quindi senza modo di collegarlo al commit del giorno prima. Dettagli in
+   **[docs/MIGRAZIONE-GECKOVIEW.md §14](docs/MIGRAZIONE-GECKOVIEW.md)**.
+8. **Completare il ponte** — in Java sono cablati 10 comandi su 53: 7 dei 28 fire-and-forget e
+   **3 dei 14** di richiesta/risposta. Il canale è la parte difficile: ogni comando in più è ora
+   una riga nell'elenco dello stub e un `case` in Java. Ordine utile: `audioRecStart`/`audioRecStop`
+   — che Gecko dovrebbe rendere superflui via `getUserMedia`, quindi vanno *provati* prima di
+   cablarli — poi telefonia e condivisione. I sette `set*` **non sono lavoro di porting**: sotto
+   Android stock rispondono già `false` oggi, anche nell'app pubblicata.
+9. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
    `addJavascriptInterface`, contenuta al livello contenitore (piano dettagliato in
    **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**). Va messo a piano che la
    traccia A **abbandona `build-apk.sh`**: la catena di GeckoView richiede Gradle (§9).
-9. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
+10. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
    doppia persistenza.
 
 **Traccia B — ROM su telefono secondario** *(differita)*
-10. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
-11. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
+11. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
+12. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
    Da fare **solo su un dispositivo secondario, preferibilmente Pixel**, mai sul telefono
    principale: il fusibile hardware è irreversibile.
 

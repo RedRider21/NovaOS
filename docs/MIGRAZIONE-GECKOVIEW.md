@@ -5,11 +5,13 @@ che oggi fa da contenitore alla shell con **GeckoView** (il motore di Firefox), 
 invariata tutta la parte web. Questo documento è la base di lavoro per lo spike isolato sul
 ramo parallelo `novaos-rom/`; la shell (`shell/`) non deve cambiare.
 
-- Stato: **fasi 0 (§9), 2 (§10) e 3 (§11) verificate su emulatore il 2026-09-18**, in **entrambi i
-  versi**: i comandi della shell arrivano al nativo, gli eventi del nativo (es. chiamata in
-  arrivo) compaiono nella shell, e i getter di stato rispondono con il valore vero. Il tasto
-  Indietro è già ricablato (§12). Restano da cablare 48 comandi su 53 e le fasi 4–8. Nulla di
-  quanto descritto qui è stato pubblicato: lo spike vive su un ramo isolato.
+- Stato: **fasi 0 (§9), 2 (§10), 3 (§11), 4 (§13) e 5 (§14) verificate su emulatore il
+  2026-09-18**, più il tasto Indietro (§12). In concreto: i comandi della shell arrivano al
+  nativo, gli eventi del nativo (es. chiamata in arrivo) compaiono nella shell, i getter di stato
+  rispondono con il valore vero, il canale richiesta/risposta si scioglie con il valore giusto, e
+  **l'aggiornamento OTA della shell funziona nei tre momenti che contano** — commit, sopravvivenza
+  al riavvio, ripristino. Restano da cablare 43 comandi su 53 e le fasi 6–8. Nulla di quanto
+  descritto qui è stato pubblicato: lo spike vive su un ramo isolato.
 - Interessati: livello `android-launcher/` (contenitore + ponte), `shell/` (minimi ritocchi),
   `system/` (ROM definitiva)
 - **Il codice dello spike vive sul ramo `gecko-spike`** (non linkato di proposito: un link
@@ -30,6 +32,11 @@ ramo parallelo `novaos-rom/`; la shell (`shell/`) non deve cambiare.
 > obbligatorio esporre i getter nello stub — non esporli non è prudenza, è un guasto silenzioso —
 > e lo `store` della shell ripiega già su `localStorage`, quindi le preferenze non hanno bisogno
 > del nativo.
+
+> **Da leggere per primo se si tocca l'avvio o l'OTA:** §14.1. La copia degli asset in
+> `files/shell` non è più incondizionata, ed è deliberato: una ricopiatura a ogni avvio cancella
+> l'aggiornamento e lo fa sparire **al riavvio successivo**, senza errori. È il guasto peggiore
+> incontrato finora proprio perché sembra un successo.
 
 ---
 
@@ -832,6 +839,116 @@ Gecko), poi **`audioRecStart`/`audioRecStop`** — che Gecko dovrebbe rendere su
 `getUserMedia`, quindi vanno provati in quest'ordine, non cablati a scatola chiusa — e infine i
 sette `set*`, che **non sono lavoro di porting**: sotto Android stock rispondono già `false` oggi,
 anche nell'app pubblicata, perché richiedono `WRITE_SECURE_SETTINGS`. Sono lavoro della traccia B.
+
+---
+
+## 14 · Esito della fase 5 — l'OTA sotto Gecko (2026-09-18)
+
+**Esito: il percorso di aggiornamento della shell funziona, verificato nei tre momenti che
+contano** — commit, sopravvivenza al riavvio, ripristino. È il passo senza il quale la migrazione
+non starebbe in piedi: l'aggiornamento della sola interfaccia è il modo con cui NovaOS si aggiorna
+senza reinstallare l'APK, e sotto WebView passava da `addJavascriptInterface` e da `loadUrl`.
+
+### 14.1 · Il difetto che avrebbe reso tutto inutile, in silenzio
+
+`copiaShellInInterno()` ricopiava gli asset in `files/shell` **a ogni avvio**. Finché la shell era
+solo quella dell'APK era la cosa giusta — si riparte da zero, nessun residuo di un avvio
+precedente. Con l'OTA diventa un guasto silenzioso:
+
+1. `shellCommit` sostituisce `files/shell` con la shell scaricata;
+2. l'utente riavvia l'app (o il telefono);
+3. la copia incondizionata cancella la shell nuova e rimette quella dell'APK.
+
+Il sintomo è il peggiore possibile: **l'aggiornamento sembra riuscito** — e lo è, fino al riavvio
+successivo — poi sparisce senza un errore, senza un log, senza che nessuno possa collegare la
+cosa al commit di ieri. Un aggiornamento che fallisce subito è molto meglio di uno che riesce e
+poi si disfa.
+
+La correzione non inventa nulla: è la regola che `:app` usa già in `resolveShellUrl()` — la shell
+interna si tiene solo se la sua `build` è più alta di quella degli asset, confrontata sul
+`version.json`, non sulle date dei file (le date di una copia non significano nulla, e dopo un OTA
+sarebbero «adesso» per entrambe). La funzione ora si chiama `preparaShell()`, perché non è più una
+copia.
+
+**Il caso peggiore di qualunque guasto qui è «si torna alla shell dell'APK»**, mai «niente shell»:
+una cartella interna senza `index.html`, o con un `version.json` illeggibile, non è una shell e
+viene ricopiata. È il degrado progettato del resto del ponte.
+
+### 14.2 · I tre comandi
+
+| Comando | Tipo | Cosa fa |
+|---|---|---|
+| `shellStageBegin` | fire-and-forget | svuota e ricrea `files/shell_stage` |
+| `shellWrite(rel, base64)` | richiesta/risposta → `boolean` | scrive un file nella staging |
+| `shellCommit()` | richiesta/risposta → `boolean` | valida la staging, sostituisce `files/shell`, ricarica |
+| `shellReset` | fire-and-forget | cancella tutto e ricopia dagli asset |
+
+Tre cose non ovvie, tutte con lo stesso schema — *un errore qui non si vede subito*:
+
+- **La risposta parte prima della ricarica.** `os.js` fa `done = await NB().shellCommit()` e solo
+  dopo si aspetta di essere ricaricata: il commit vero è la ricarica, ma l'esito è la Promise.
+  Ricaricando mentre la Promise è in volo, il chiamante non riceverebbe mai la risposta — e non
+  potrebbe riceverla dopo, perché la pagina che l'aspettava non esiste più. Da qui i 400 ms fra
+  la risposta e `session.reload()`.
+- **`true` vero, non un valore qualsiasi.** `os.js` confronta con `ok !== true`, non con `!ok`:
+  un esito ancora ignoto (`null`) brickerebbe la shell al commit successivo. I tre comandi devono
+  quindi rispondere un booleano, e il `default:` di Java che risponde `null` resta la rete di
+  sicurezza, non un comportamento accettabile.
+- **Il controllo di path-traversal non è pignoleria.** `rel` arriva **dalla rete**, e senza il
+  controllo su `..` e sul percorso canonico un `../../shared_prefs/…` scriverebbe dentro i dati
+  privati dell'app. È la stessa logica di `:app`, e va tenuta identica.
+
+### 14.3 · La cache del server locale, e perché `no-store`
+
+Dopo un commit la shell ricarica chiedendo **gli stessi percorsi, sulla stessa porta, dalla stessa
+origine**. Le risposte di `ShellServer` non avevano intestazioni di cache: il motore poteva
+servirle dalla propria e mostrare l'**interfaccia vecchia con dentro il `version.json` nuovo** —
+di nuovo un aggiornamento che sembra riuscito e non è applicato, con l'aggravante che stavolta la
+versione dichiarata sarebbe quella giusta.
+
+Aggiunto `Cache-Control: no-store`. Servendo pochi file da disco, la cache qui non guadagna nulla
+che valga il rischio.
+
+### 14.4 · Come è stato provato senza pubblicare nulla
+
+Il percorso vero si prova solo con una `version.json` su GitHub con `build` più alta — cioè
+**pubblicando**, e attivando l'aggiornamento su tutti i dispositivi. Non è una prova, è un rilascio.
+
+La prova è stata fatta con una **sonda temporanea nello stub** (rimossa nello stesso commit che
+l'ha introdotta) che esercita i tre comandi con una shell finta, contando i giri in `localStorage`
+per distinguere i momenti dentro un solo avvio:
+
+| Momento | Come | Esito |
+|---|---|---|
+| **Commit** | giro 0: `shellStageBegin`, due `shellWrite`, `shellCommit` | `commit eseguito: shell sostituita, build 999`; la pagina a schermo è davvero quella nuova; `commit=true` |
+| **Sopravvivenza** | `force-stop` + riavvio dell'app | `shell interna tenuta: build 999 > asset 57` — **la riga che prima non esisteva** |
+| **Ripristino** | giro 2: `shellReset` | `shell dagli asset (interna=-1 asset=57)`, la shell torna NovaOS |
+
+La sonda ha anche sbagliato una volta, ed è l'unico difetto banale della giornata: `btoa` rifiuta i
+caratteri sopra `0xFF`, e la pagina finta conteneva un trattino lungo. È il tipo di errore che si
+corregge in un minuto — ma vale la pena notarlo perché la sonda era codice vero, non una
+simulazione: **una prova che non passa dal percorso reale va comunque scritta bene**, altrimenti
+non sta provando quello che dice.
+
+### 14.5 · Stato dopo la fase 5
+
+| Cosa | Stato |
+|---|---|
+| Ponte pagina → nativo | ✅ verificato (§10) |
+| Ponte nativo → pagina, con evento vero | ✅ verificato: `mic.result` (§11.4), `back` (§12) |
+| Getter di stato (11) | ✅ cablati e verificati |
+| Preferenze | ✅ già funzionanti via `localStorage`, senza Java (§11.3) |
+| Canale richiesta/risposta (14) | ✅ il canale è verificato (§13) — cablati **3 su 14** |
+| **OTA della shell** | ✅ **verificato nei tre momenti** (§14) |
+| Comandi cablati in Java | **10 su 53** — 7 dei 28 fire-and-forget, 3 dei 14 di richiesta/risposta |
+| `BrowserActivity` | copiata da `:app`, **ancora basata su WebView**: il port è un passo a sé |
+| Tasto Indietro | ✅ cablato e verificato (§12) |
+
+Resta da fare, in ordine di utilità: **`audioRecStart`/`audioRecStop`** — che Gecko dovrebbe rendere
+superflui via `getUserMedia`, quindi vanno *provati* prima di cablarli, non cablati a scatola
+chiusa — poi i comandi di telefonia e condivisione, e infine i sette `set*`, che **non sono lavoro
+di porting**: sotto Android stock rispondono già `false` oggi, anche nell'app pubblicata, perché
+richiedono `WRITE_SECURE_SETTINGS`. Sono lavoro della traccia B.
 
 ---
 
