@@ -545,21 +545,32 @@ Prossimi passi (aggiornati al 2026-09-18, **due tracce** — vedi
    all'istante — un rifiuto tecnico indistinguibile da un diniego. Ora le richieste sono
    serializzate da una coda. Dettagli in
    **[docs/MIGRAZIONE-GECKOVIEW.md §15](docs/MIGRAZIONE-GECKOVIEW.md)**.
-9. **Completare il ponte** — in Java sono cablati 10 comandi su 53: 7 dei 28 fire-and-forget e
-   **3 dei 14** di richiesta/risposta, ma il totale utile è sceso di due (§15.2). Il canale è la
-   parte difficile: ogni comando in più è ora una riga nell'elenco dello stub e un `case` in Java.
-   Ordine utile: telefonia e condivisione. I sette `set*` **non sono lavoro di porting**: sotto
-   Android stock rispondono già `false` oggi, anche nell'app pubblicata.
-10. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
+9. ~~**Telefonia e condivisione (fase 7)**~~ — **fatto (2026-09-18)**: sotto Gecko la shell
+   **chiama, riceve, risponde, riaggancia, muta, mette in vivavoce, manda DTMF, invia SMS e
+   condivide foto, file e testo**. Portate da `:app` le classi `CallHub`, `NovaInCallService` e
+   `ShareProvider` (autorità `os.nova.gecko.share`); la schermata di chiamata compare da sola su
+   una chiamata in arrivo, anche se il processo è stato riavviato — `currentCallState` non è più
+   un valore fisso. Corretto un difetto che sarebbe stato invisibile fino al primo telefono vero:
+   `NovaInCallService` avviava l'Activity senza dichiarare l'origine, e il valore predefinito era
+   quella che il content script non aggancia — la chiamata arrivava e la schermata non compariva.
+   Dettagli in **[docs/MIGRAZIONE-GECKOVIEW.md §16](docs/MIGRAZIONE-GECKOVIEW.md)**.
+10. **Completare il ponte** — in Java sono cablati **22 comandi su 53**: dopo `toast`, `vibrate`,
+   `openBrowser`, `requestMic` e `openAppSettings` sono entrate telefonia e condivisione —
+   chiamare, ricevere, rispondere, riagganciare, muto, vivavoce, DTMF, SMS e la condivisione di
+   foto/file/testo — verificate sull'emulatore (§16). Restano i comandi minori (mail,
+   `screenshot`, `installUpdate`, `openSetting`, `prefSet`/`prefDel`) e il port di
+   `BrowserActivity`. I sette `set*` **non sono lavoro di porting**: sotto Android stock
+   rispondono già `false` oggi, anche nell'app pubblicata.
+11. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
     `addJavascriptInterface`, contenuta al livello contenitore (piano dettagliato in
     **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**). Va messo a piano che la
     traccia A **abbandona `build-apk.sh`**: la catena di GeckoView richiede Gradle (§9).
-11. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
+12. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
     doppia persistenza.
 
 **Traccia B — ROM su telefono secondario** *(differita)*
-12. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
-13. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
+13. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
+14. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
    Da fare **solo su un dispositivo secondario, preferibilmente Pixel**, mai sul telefono
    principale: il fusibile hardware è irreversibile.
 
