@@ -3137,14 +3137,24 @@ const NovaApps = (() => {
       const readSensors = () => { try { const j = NB().sensorStates(); return j ? JSON.parse(j) : null; } catch { return null; } };
       // specchia nello stato della shell i valori VERI letti dall'hardware
       const syncSensors = () => { const ns = readSensors(); if (!ns) return null;
-        ["wifi","bt","nfc","location","airplane"].forEach(k => { if (k in ns) S[k] = ns[k]; }); return ns; };
+        // mobileData come gli altri: senza, la riga «Dati mobili» di questa sezione
+        // mostrava ciò che la shell credeva invece di ciò che fa il telefono.
+        ["wifi","bt","nfc","location","airplane","mobileData"].forEach(k => { if (k in ns) S[k] = ns[k]; }); return ns; };
       // toggle sensori: prova l'azione reale (diretta se privilegiato nel ROM,
       // altrimenti apre il pannello) e ridisegna con lo stato aggiornato
       const SETFN = { wifi:"setWifi", bt:"setBluetooth", airplane:"setAirplane", location:"setLocation", nfc:"setNfc", mobileData:"setMobileData" };
-      // esito a tre stati: true = applicato · false = rifiutato · null = esito non ancora
-      // noto (ponte a messaggi) → si ridisegna col tempo lungo, come quando è rifiutato.
-      const sensorAct = (k, redraw) => { let applied = null;
-        try { const fn = SETFN[k]; if (fn && NB().has(fn)) { const r = NB()[fn](!S[k]); applied = (r === true || r === false) ? r : null; } } catch (e) {}
+      // esito a tre stati: true = applicato · false = rifiutato · null = esito ignoto
+      // (nessun ponte) → si ridisegna col tempo lungo, come quando è rifiutato.
+      // L'`await` è obbligatorio, come nella tendina: sotto WebView il comando torna
+      // un booleano, sotto GeckoView una Promise, e senza attenderla `applied` restava
+      // sempre `null` — cioè ogni interruttore si ridisegnava col tempo del rifiuto
+      // (800 ms) anche quando la commutazione era riuscita davvero.
+      const sensorAct = async (k, redraw) => { const voluto = !S[k]; let applied = null;
+        try { const fn = SETFN[k]; if (fn && NB().has(fn)) { const r = await NB()[fn](voluto); applied = (r === true || r === false) ? r : null; } } catch (e) {}
+        // Riuscito, lo stato si scrive qui: rileggerlo adesso darebbe ancora quello
+        // vecchio (il telefono lo rimanda dopo il broadcast) e la riga tornerebbe
+        // indietro per un istante prima di aggiornarsi.
+        if (applied === true) S[k] = voluto;
         setTimeout(redraw, applied === true ? 300 : 800); };
       const isPriv = () => { const ns = readSensors(); return !!(ns && ns.privileged); };
       // versione REALE in esecuzione: la più recente tra l'APK nativo (PackageInfo) e la

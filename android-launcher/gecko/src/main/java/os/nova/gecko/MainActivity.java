@@ -2,7 +2,10 @@ package os.nova.gecko;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
@@ -168,6 +171,13 @@ public class MainActivity extends Activity {
 
         Log.i(TAG, "origine=" + origin + " uri=" + uri);
         installaPonteECarica(uri);
+
+        // Da qui lo stato dei sensori non è più una fotografia dell'avvio.
+        ascoltaISensori();
+        // La torcia per una via sua: non un broadcast, un callback. Registrarlo qui
+        // e non alla prima accensione è ciò che le permette di sapere, al primo
+        // disegno della tendina, se una torcia su questo dispositivo esiste.
+        ascoltaLaTorcia();
 
         immersive();
     }
@@ -511,10 +521,19 @@ public class MainActivity extends Activity {
 
             // privileged: WRITE_SECURE_SETTINGS non è concedibile a un'app normale,
             // quindi è una spia affidabile del fatto che si hanno poteri di sistema.
+            // Da privilegiato() e non da un controllo ripetuto qui: lo stesso valore
+            // decide anche il ramo diretto dei set*, e due copie divergerebbero.
             boolean priv = false;
-            try { priv = checkSelfPermission("android.permission.WRITE_SECURE_SETTINGS")
-                    == android.content.pm.PackageManager.PERMISSION_GRANTED; } catch (Exception ignored) {}
+            try { priv = privilegiato(); } catch (Exception ignored) {}
             s.put("privileged", priv);
+
+            // Lo stato dei sensori. Sotto WebView la pagina lo chiamava quando
+            // voleva (window.NovaNative.sensorStates()); qui non può, perché non
+            // esiste alcuna chiamata sincrona — quindi glielo si manda, e lo stub lo
+            // restituisce dalla copia che tiene in pagina. La shell lo rilegge a ogni
+            // disegno della tendina, quindi la freschezza dipende da chi lo rimanda:
+            // vedi ripubblicaStato() e ascoltaISensori().
+            s.put("sensorStates", statoSensori());
 
             s.put("shellSource", getIntent().getStringExtra("origin") == null
                     ? ORIGIN_LOCAL : getIntent().getStringExtra("origin"));
@@ -809,6 +828,454 @@ public class MainActivity extends Activity {
         apri(i);
     }
 
+    // ============================================================
+    //  Sensori e connettività: stato reale e commutazione
+    // ============================================================
+
+    /** Apre il pannello o la schermata di sistema di un sensore.
+     *
+     *  <p>Non è una comodità dell'interfaccia, è la via obbligata: da Android 10
+     *  un'app normale <b>non può</b> accendere o spegnere Wi-Fi, Bluetooth, dati e
+     *  modalità aereo in silenzio. Passare di qui è anche ciò che rende onesto il
+     *  ritorno dei {@code set*}: {@code false} significa «l'ho delegato al sistema»,
+     *  non «non ho fatto niente».
+     *
+     *  <p>Porta {@code :app/MainActivity.java:776-822} con le stesse azioni, compresa
+     *  la scelta di {@link android.provider.Settings.Panel} per il Wi-Fi da Android 10
+     *  (un pannello a scomparsa invece di una schermata intera). */
+    private void openSetting(String which) {
+        Intent i = new Intent();
+        String etichetta;
+        switch (which == null ? "" : which) {
+            case "wifi":
+                i.setAction(android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
+                        ? android.provider.Settings.Panel.ACTION_WIFI
+                        : android.provider.Settings.ACTION_WIFI_SETTINGS);
+                etichetta = "Wi-Fi"; break;
+            case "bluetooth":
+                i.setAction(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS);
+                etichetta = "Bluetooth"; break;
+            case "airplane":
+                i.setAction(android.provider.Settings.ACTION_AIRPLANE_MODE_SETTINGS);
+                etichetta = "Modalità aereo"; break;
+            case "nfc":
+                i.setAction(android.provider.Settings.ACTION_NFC_SETTINGS);
+                etichetta = "NFC"; break;
+            case "location":
+                i.setAction(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+                etichetta = "Posizione"; break;
+            case "data":
+                i.setAction(android.provider.Settings.ACTION_DATA_ROAMING_SETTINGS);
+                etichetta = "Dati mobili"; break;
+            case "hotspot":
+                i.setClassName("com.android.settings", "com.android.settings.TetherSettings");
+                etichetta = "Hotspot"; break;
+            case "date":
+                i.setAction(android.provider.Settings.ACTION_DATE_SETTINGS);
+                etichetta = "Data e ora"; break;
+            case "locale":
+                i.setAction(android.provider.Settings.ACTION_LOCALE_SETTINGS);
+                etichetta = "Lingua"; break;
+            case "appdetails":
+                i.setAction(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                        .setData(Uri.parse("package:" + getPackageName()));
+                etichetta = "Permessi app"; break;
+            default:
+                i.setAction(android.provider.Settings.ACTION_SETTINGS);
+                etichetta = "Impostazioni";
+        }
+        Log.i(TAG, "apro il pannello di sistema: " + etichetta);
+        apri(i);
+    }
+
+    /** Vero se NovaOS ha poteri di sistema (firma di piattaforma o priv-app nel ROM).
+     *
+     *  <p>{@code WRITE_SECURE_SETTINGS} non è concedibile a un'app normale, quindi è
+     *  una spia affidabile: se c'è, i {@code set*} commutano in-process e non aprono
+     *  nulla; se non c'è, delegano al pannello. Stesso ruolo di
+     *  {@code :app/MainActivity.java:630-636}, e alimenta anche la voce
+     *  {@code privileged} che la shell già legge. */
+    private boolean privilegiato() {
+        try {
+            return checkSelfPermission("android.permission.WRITE_SECURE_SETTINGS")
+                    == PackageManager.PERMISSION_GRANTED;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // ---- lettura dello stato ----
+    //
+    // I lettori restituiscono Boolean, non boolean: il null è il terzo valore,
+    // «non lo so», e serve. Senza di esso resterebbe solo false, e false è
+    // un'*affermazione* — «spento» — che finisce dritta nell'interruttore della
+    // tendina. Il caso concreto: da Android 12 BluetoothAdapter.isEnabled() chiede
+    // BLUETOOTH_CONNECT, che si concede a runtime, e finché nessuno l'ha chiesto
+    // solleva SecurityException; con due valori la tendina mostrerebbe il Bluetooth
+    // spento su un telefono che ce l'ha acceso. Con tre, il campo si omette e
+    // l'interruttore resta quello che la shell credeva di sapere.
+    //
+    // La regola vale per tutti: ciò che non si può leggere si omette, non si
+    // indovina. Un dato che manca si vede; un dato falso no.
+
+    private Boolean leggiWifi() {
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager)
+                    getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            return wm == null ? null : wm.isWifiEnabled();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Boolean leggiBt() {
+        try {
+            android.bluetooth.BluetoothAdapter a = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            return a == null ? null : a.isEnabled();
+        } catch (Exception e) {
+            return null;   // BLUETOOTH_CONNECT non concesso: non si sa, non «spento»
+        }
+    }
+
+    private Boolean leggiNfc() {
+        try {
+            android.nfc.NfcAdapter a = android.nfc.NfcAdapter.getDefaultAdapter(this);
+            return a == null ? null : a.isEnabled();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Boolean leggiPosizione() {
+        try {
+            android.location.LocationManager lm = (android.location.LocationManager)
+                    getSystemService(Context.LOCATION_SERVICE);
+            if (lm == null) return null;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                return lm.isLocationEnabled();
+            }
+            return lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
+                    || lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Boolean leggiAereo() {
+        try {
+            return android.provider.Settings.Global.getInt(getContentResolver(),
+                    android.provider.Settings.Global.AIRPLANE_MODE_ON, 0) != 0;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Boolean leggiDatiMobili() {
+        try {
+            android.telephony.TelephonyManager tm = (android.telephony.TelephonyManager)
+                    getSystemService(Context.TELEPHONY_SERVICE);
+            if (tm == null) return null;
+            // isDataEnabled non è nell'API pubblica: reflection, come in :app.
+            java.lang.reflect.Method m = tm.getClass().getMethod("isDataEnabled");
+            Object r = m.invoke(tm);
+            return r instanceof Boolean ? (Boolean) r : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Lo stato della torcia, come gli altri: acceso, spento, o «non noto».
+     *
+     *  <p>Non si legge a richiesta, si riceve. CameraManager non annuncia la torcia
+     *  con un Intent ma con un callback, e il valore cambia anche senza di noi —
+     *  un'altra app può accenderla e spegnerla. Perciò si tiene l'ultimo annuncio
+     *  invece di interrogare il sistema a ogni disegno della tendina.
+     *
+     *  <p>{@code null} significa «non c'è una torcia», non «è spenta», ed è la
+     *  distinzione che rende vera la frase che la shell mostra in quel caso
+     *  («Torcia non disponibile su questo dispositivo»). Vale anche quando la
+     *  fotocamera è occupata: {@code onTorchModeUnavailable} non dice che la
+     *  torcia è spenta, dice che non è comandabile, e affermare «spenta» sarebbe
+     *  una risposta inventata. */
+    private volatile Boolean torciaAccesa = null;
+    private android.hardware.camera2.CameraManager.TorchCallback callbackTorcia;
+
+    private Boolean leggiTorcia() { return torciaAccesa; }
+
+    /** Registra l'ascolto della torcia. Il primo annuncio arriva subito, con lo
+     *  stato attuale, quindi questo metodo è anche l'inizializzazione di
+     *  {@link #torciaAccesa}. */
+    private void ascoltaLaTorcia() {
+        try {
+            android.hardware.camera2.CameraManager cm =
+                    (android.hardware.camera2.CameraManager) getSystemService(CAMERA_SERVICE);
+            if (cm == null) return;
+            callbackTorcia = new android.hardware.camera2.CameraManager.TorchCallback() {
+                @Override public void onTorchModeChanged(String id, boolean acceso) {
+                    // Arriva dal sistema, e con questo Handler sul thread principale:
+                    // qui si copia soltanto, a rimandare lo stato è ripubblicaStato().
+                    torciaAccesa = acceso;
+                    ripubblicaStato();
+                }
+                @Override public void onTorchModeUnavailable(String id) {
+                    torciaAccesa = null;
+                    ripubblicaStato();
+                }
+            };
+            cm.registerTorchCallback(callbackTorcia,
+                    new android.os.Handler(android.os.Looper.getMainLooper()));
+        } catch (Exception e) {
+            // Come per gli altri sensori: senza ascolto si perde la freschezza
+            // dell'interruttore, non l'avvio. La torcia resta comandabile via setTorch.
+            Log.w(TAG, "la torcia non è osservabile", e);
+        }
+    }
+
+    /** Lo stato dei sensori come lo legge la shell: una stringa JSON.
+     *
+     *  <p>Stringa e non oggetto, perché è così che la shell lo consuma
+     *  ({@code JSON.parse(NB().sensorStates())}, come sotto WebView): un oggetto
+     *  arriverebbe alla pagina come {@code [object Object]} e il parse fallirebbe
+     *  in silenzio, lasciando gli interruttori fermi su ciò che la shell credeva.
+     *
+     *  <p>{@code native:true} non è decorazione: è il segnale che fa scegliere alla
+     *  shell i {@code set*} nativi invece dei suoi interruttori software
+     *  ({@code apps.js:3136}). */
+    private String statoSensori() {
+        org.json.JSONObject o = new org.json.JSONObject();
+        try {
+            Boolean wifi = leggiWifi();           if (wifi != null)       o.put("wifi", wifi);
+            Boolean bt = leggiBt();               if (bt != null)         o.put("bt", bt);
+            Boolean nfc = leggiNfc();             if (nfc != null)        o.put("nfc", nfc);
+            Boolean pos = leggiPosizione();       if (pos != null)        o.put("location", pos);
+            Boolean aereo = leggiAereo();         if (aereo != null)      o.put("airplane", aereo);
+            Boolean dati = leggiDatiMobili();     if (dati != null)       o.put("mobileData", dati);
+            Boolean torcia = leggiTorcia();       if (torcia != null)     o.put("torch", torcia);
+            o.put("privileged", privilegiato());
+            o.put("native", true);
+        } catch (Exception e) {
+            Log.w(TAG, "stato dei sensori non costruito", e);
+        }
+        return o.toString();
+    }
+
+    // ---- commutazione ----
+    //
+    // Ogni metodo restituisce true se ha cambiato lo stato DAVVERO e in-process
+    // (nessuna interfaccia esterna), false se ha dovuto delegare al pannello di
+    // sistema. Lo stesso APK quindi si comporta in due modi: da app normale apre i
+    // pannelli, nel ROM definitivo (privilegiato) commuta direttamente senza uscire
+    // da NovaOS. Porta :app/MainActivity.java:684-775.
+
+    private boolean setWifi(boolean on) {
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager)
+                    getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm != null && (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q
+                    || privilegiato())) {
+                wm.setWifiEnabled(on);
+                Toast.makeText(this, on ? "Wi-Fi attivato" : "Wi-Fi disattivato", Toast.LENGTH_SHORT).show();
+                return true;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "commutazione Wi-Fi non riuscita", e);
+        }
+        openSetting("wifi");
+        return false;
+    }
+
+    private boolean setBluetooth(boolean on) {
+        try {
+            android.bluetooth.BluetoothAdapter a = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            if (a == null) {
+                Toast.makeText(this, "Bluetooth non disponibile", Toast.LENGTH_SHORT).show();
+                return false;
+            }
+            if (privilegiato()
+                    || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
+                boolean ok = on ? a.enable() : a.disable();   // deprecato, valido da sistema o < API 33
+                if (ok) {
+                    Toast.makeText(this, on ? "Attivo il Bluetooth…" : "Disattivo il Bluetooth…",
+                            Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "commutazione Bluetooth non riuscita", e);
+        }
+        // Due strade e non una: per accendere esiste il dialogo di consenso, per
+        // spegnere no — quindi si apre la schermata di sistema. È la differenza di
+        // :app, tenuta perché è quella che l'utente si aspetta.
+        if (on) {
+            apri(new Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE));
+        } else {
+            openSetting("bluetooth");
+        }
+        return false;
+    }
+
+    private boolean setAereo(boolean on) {
+        if (privilegiato()) {
+            try {
+                android.provider.Settings.Global.putInt(getContentResolver(),
+                        android.provider.Settings.Global.AIRPLANE_MODE_ON, on ? 1 : 0);
+                // Il broadcast non è un extra: è così che il sistema avvisa il resto
+                // del telefono. Scrivere la preferenza da soli non commuta la radio.
+                sendBroadcast(new Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED).putExtra("state", on));
+                Toast.makeText(this, on ? "Modalità aereo attiva" : "Modalità aereo disattivata",
+                        Toast.LENGTH_SHORT).show();
+                return true;
+            } catch (Exception e) {
+                Log.w(TAG, "modalità aereo non commutabile", e);
+            }
+        }
+        openSetting("airplane");
+        return false;
+    }
+
+    private boolean setPosizione(boolean on) {
+        if (privilegiato()) {
+            try {
+                android.provider.Settings.Secure.putInt(getContentResolver(),
+                        android.provider.Settings.Secure.LOCATION_MODE,
+                        on ? android.provider.Settings.Secure.LOCATION_MODE_HIGH_ACCURACY
+                           : android.provider.Settings.Secure.LOCATION_MODE_OFF);
+                Toast.makeText(this, on ? "Posizione attivata" : "Posizione disattivata",
+                        Toast.LENGTH_SHORT).show();
+                return true;
+            } catch (Exception e) {
+                Log.w(TAG, "posizione non commutabile", e);
+            }
+        }
+        openSetting("location");
+        return false;
+    }
+
+    private boolean setNfc(boolean on) {
+        if (privilegiato()) {
+            try {
+                android.nfc.NfcAdapter a = android.nfc.NfcAdapter.getDefaultAdapter(this);
+                if (a != null) {
+                    // enable/disable sono @hide: reflection, come in :app.
+                    java.lang.reflect.Method m =
+                            android.nfc.NfcAdapter.class.getDeclaredMethod(on ? "enable" : "disable");
+                    m.setAccessible(true);
+                    m.invoke(a);
+                    Toast.makeText(this, on ? "NFC attivato" : "NFC disattivato",
+                            Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "NFC non commutabile", e);
+            }
+        }
+        openSetting("nfc");
+        return false;
+    }
+
+    private boolean setDatiMobili(boolean on) {
+        if (privilegiato()) {
+            try {
+                android.telephony.TelephonyManager tm = (android.telephony.TelephonyManager)
+                        getSystemService(Context.TELEPHONY_SERVICE);
+                java.lang.reflect.Method m =
+                        tm.getClass().getDeclaredMethod("setDataEnabled", boolean.class);
+                m.setAccessible(true);
+                m.invoke(tm, on);
+                Toast.makeText(this, on ? "Dati mobili attivi" : "Dati mobili disattivati",
+                        Toast.LENGTH_SHORT).show();
+                return true;
+            } catch (Exception e) {
+                Log.w(TAG, "dati mobili non commutabili", e);
+            }
+        }
+        openSetting("data");
+        return false;
+    }
+
+    /** La torcia è l'unico {@code set*} che funziona su un'app normale: la torcia
+     *  non richiede permessi. Restituisce false se il dispositivo non ha un flash
+     *  posteriore, che la shell traduce in «Torcia non disponibile su questo
+     *  dispositivo» — un'affermazione vera, non un fallimento muto. */
+    private boolean setTorcia(boolean on) {
+        try {
+            android.hardware.camera2.CameraManager cm =
+                    (android.hardware.camera2.CameraManager) getSystemService(CAMERA_SERVICE);
+            if (cm == null) return false;
+            for (String id : cm.getCameraIdList()) {
+                android.hardware.camera2.CameraCharacteristics cc = cm.getCameraCharacteristics(id);
+                Boolean flash = cc.get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                Integer verso = cc.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING);
+                if (Boolean.TRUE.equals(flash) && (verso == null
+                        || verso == android.hardware.camera2.CameraMetadata.LENS_FACING_BACK)) {
+                    cm.setTorchMode(id, on);
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "torcia non commutabile", e);
+        }
+        return false;
+    }
+
+    // ---- lo stato dei sensori non è una fotografia ----
+
+    private final android.os.Handler rimandoStato =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable mandaStato = this::inviaStatoAllaShell;
+    private BroadcastReceiver ricevitoreSensori;
+
+    /** Rimanda lo stato alla shell, ma non più di una volta ogni 250 ms.
+     *
+     *  <p>Il ritardo non è pigrizia: un solo cambio di Wi-Fi produce quattro
+     *  broadcast (ENABLING, ENABLED…) e ognuno manderebbe un messaggio completo —
+     *  preferenze comprese — alla pagina. Accodando, la raffica diventa un invio
+     *  solo, e con lo stato finale, che è l'unico che conta. */
+    private void ripubblicaStato() {
+        rimandoStato.removeCallbacks(mandaStato);
+        rimandoStato.postDelayed(mandaStato, 250);
+    }
+
+    /** Ascolta i cambi di stato che il sistema annuncia.
+     *
+     *  <p>Serve perché la shell rilegge {@code sensorStates} a ogni disegno della
+     *  tendina, ma il valore che riceve è l'ultimo che le abbiamo mandato: senza
+     *  questi avvisi, accendere il Wi-Fi dal pannello di sistema lascerebbe
+     *  l'interruttore com'era, e la shell mostrerebbe un telefono diverso da quello
+     *  che ha davanti.
+     *
+     *  <p>Quattro azioni, non sei: posizione e dati mobili non hanno un broadcast
+     *  pubblico affidabile, e per quelle resta la rilettura su {@link #onResume} —
+     *  che è anche il momento esatto in cui si torna dal pannello. */
+    private void ascoltaISensori() {
+        ricevitoreSensori = new BroadcastReceiver() {
+            @Override public void onReceive(Context c, Intent i) {
+                Log.i(TAG, "il sistema annuncia un cambio di stato: " + i.getAction());
+                ripubblicaStato();
+            }
+        };
+        IntentFilter f = new IntentFilter();
+        f.addAction(android.net.wifi.WifiManager.WIFI_STATE_CHANGED_ACTION);
+        f.addAction(android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED);
+        f.addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED);
+        f.addAction(android.nfc.NfcAdapter.ACTION_ADAPTER_STATE_CHANGED);
+        try {
+            // Da Android 14 la registrazione vuole dichiarare se il ricevitore è
+            // esposto alle altre app. NOT_EXPORTED e non EXPORTED: questi avvisi
+            // arrivano solo dal sistema, e un ricevitore che accetta comandi da
+            // fuori sarebbe una porta aperta su una cosa che non ci riguarda.
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(ricevitoreSensori, f, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(ricevitoreSensori, f);
+            }
+        } catch (Exception e) {
+            // Un ricevitore mancato costa la freschezza degli interruttori, non
+            // l'avvio: la shell resta usabile e lo stato arriva comunque al boot.
+            Log.w(TAG, "ricevitore dei sensori non registrato", e);
+        }
+    }
+
     /** L'estensione da dare al file, dedotta dal mime del data URL.
      *
      *  <p>Serve solo quando il nome non ne porta già una: la galleria e il
@@ -1078,6 +1545,62 @@ public class MainActivity extends Activity {
                 apri(Intent.createChooser(send, "Condividi"));
                 break;
             }
+
+            // ---- sensori, pannelli di sistema, preferenze ----------------------
+            //
+            // I set* sono di richiesta/risposta, e la risposta è il punto: `true`
+            // significa «commutato qui», `false` «delegato al pannello di sistema».
+            // La shell usa quella differenza per decidere se ridisegnare
+            // l'interruttore o chiudere la tendina (os.js:1740-1746), quindi un
+            // valore inventato non è un dettaglio: è un interruttore che mostra il
+            // contrario di ciò che il telefono sta facendo.
+            //
+            // Su un'app normale sei dei sette rispondono false, perché da Android 10
+            // la commutazione silenziosa non è concessa a nessuno che non sia il
+            // sistema. Nel ROM (§14.5), con i permessi privilegiati, gli stessi
+            // metodi rispondono true — ed è la ragione per cui questo codice è
+            // portato senza cambiarne la logica.
+
+            case "openSetting":
+                openSetting(argomento(args, 0));
+                break;
+            case "setTorch":   inviaRisposta(idRichiesta, setTorcia(booleano(args, 0))); break;
+            case "setWifi":    inviaRisposta(idRichiesta, setWifi(booleano(args, 0))); break;
+            case "setBluetooth": inviaRisposta(idRichiesta, setBluetooth(booleano(args, 0))); break;
+            case "setAirplane":  inviaRisposta(idRichiesta, setAereo(booleano(args, 0))); break;
+            case "setLocation":  inviaRisposta(idRichiesta, setPosizione(booleano(args, 0))); break;
+            case "setNfc":       inviaRisposta(idRichiesta, setNfc(booleano(args, 0))); break;
+            case "setMobileData": inviaRisposta(idRichiesta, setDatiMobili(booleano(args, 0))); break;
+
+            case "prefSet":
+                // Specchio in sola scrittura, e va detto com'è: la fonte di verità
+                // delle impostazioni sotto Gecko è la localStorage della pagina, che
+                // su un'origine http fissa e sempre la stessa è affidabile e si legge
+                // a tempo di parsing — cosa che nessun getter nativo può fare, perché
+                // qui non esistono chiamate sincrone. Il nativo tiene comunque la sua
+                // copia per una ragione precisa: è dove vivono le impostazioni
+                // dell'APK pubblicato sotto WebView, e importarle è il compito del
+                // passo di migrazione del contenitore, non di questo.
+                //
+                // NON viene esposto prefGet, ed è la scelta che conta: se lo stub
+                // esponesse anche il lettore, has("prefGet") diventerebbe vero e la
+                // shell leggerebbe l'istantanea dell'avvio invece del valore appena
+                // scritto — l'opposto di un miglioramento. Vedi content.js.
+                try {
+                    getSharedPreferences("novaos", MODE_PRIVATE).edit()
+                            .putString(argomento(args, 0), argomento(args, 1)).apply();
+                } catch (Exception e) {
+                    Log.w(TAG, "preferenza non scritta nello specchio nativo", e);
+                }
+                break;
+            case "prefDel":
+                try {
+                    getSharedPreferences("novaos", MODE_PRIVATE).edit()
+                            .remove(argomento(args, 0)).apply();
+                } catch (Exception e) {
+                    Log.w(TAG, "preferenza non rimossa dallo specchio nativo", e);
+                }
+                break;
 
             case "requestMic": {
                 // Primo comando cablato che NON finisce in un log: chiede il permesso e
@@ -1478,6 +2001,12 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         CallHub.setActivity(this);
+        // Anche lo stato dei sensori, per la stessa ragione e nello stesso momento:
+        // qui si torna dal pannello di sistema aperto da un set*, e l'interruttore
+        // che la shell disegnerà deve essere quello vero. Posizione e dati mobili
+        // non hanno un broadcast pubblico che li annunci, quindi questa è la sola
+        // via per saperlo — e coincide con l'unico momento in cui serve.
+        ripubblicaStato();
     }
 
     @Override
@@ -1491,6 +2020,19 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (ricevitoreSensori != null) {
+            try { unregisterReceiver(ricevitoreSensori); } catch (Exception ignored) {}
+            ricevitoreSensori = null;
+        }
+        rimandoStato.removeCallbacks(mandaStato);
+        if (callbackTorcia != null) {
+            try {
+                android.hardware.camera2.CameraManager cm = (android.hardware.camera2.CameraManager)
+                        getSystemService(CAMERA_SERVICE);
+                if (cm != null) cm.unregisterTorchCallback(callbackTorcia);
+            } catch (Exception ignored) {}
+            callbackTorcia = null;
+        }
         if (server != null) {
             server.ferma();
             server = null;

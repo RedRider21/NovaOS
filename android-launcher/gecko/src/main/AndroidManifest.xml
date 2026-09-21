@@ -30,6 +30,36 @@
          invece di chiamare. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Stato reale di connettività, letto da sensorStates. Sono permessi
+         «normali» (nessun dialogo), ma vanno dichiarati lo stesso: senza,
+         WifiManager.isWifiEnabled e NfcAdapter.isEnabled sollevano
+         SecurityException, i lettori la assorbono e rispondono «spento» — cioè
+         un interruttore che mente invece di un dato che manca. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- BLUETOOTH_CONNECT è l'unico di questi che si concede a RUNTIME (Android
+         12+): finché non è concesso, isEnabled() solleva SecurityException. È il
+         motivo per cui lo stato del Bluetooth è l'unico che nasce «non noto»
+         invece che «spento» — vedi MainActivity.statoSensori. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.NFC" />
+
+    <!-- Permessi PRIVILEGIATI: un'app normale non li ottiene e qui non hanno
+         effetto; nel ROM definitivo, con NovaOS come priv-app firmata + whitelist,
+         vengono concessi e i set* commutano direttamente invece di aprire il
+         pannello di sistema. Dichiararli ora è ciò che rende lo stesso codice
+         valido su entrambe le tracce. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="android.permission.MODIFY_PHONE_STATE" />
+    <uses-permission android:name="android.permission.NETWORK_SETTINGS" />
+
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
+
     <!-- Necessario su Android 11+ per aprire il dialer e l'app SMS di sistema:
          senza, startActivity fallisce con ActivityNotFoundException. -->
     <queries>

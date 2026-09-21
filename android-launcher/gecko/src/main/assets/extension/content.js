@@ -97,7 +97,7 @@
   // blocca su quel gesto, senza errore e senza scadenza. È la trappola simmetrica a
   // quella dei getter — là il guasto era un default ottimista, qui è un blocco.
   //
-  // Oggi ha tre nomi su quattordici: il canale è cablato e provato, e ogni comando in
+  // Oggi ha dieci nomi su quattordici: il canale è cablato e provato, e ogni comando in
   // più è una riga qui e un `case` in Java. Non aggiungerne uno qui senza il `case`:
   // vedi sopra, è il solo modo di rompere il ponte in modo invisibile.
   // shellWrite/shellCommit sono il percorso dell'OTA: la shell scarica i file della
@@ -105,9 +105,19 @@
   // Entrambi devono restituire `true` VERO — `os.js` confronta con `ok !== true`,
   // perché un esito ancora ignoto (null) brickerebbe la shell al commit successivo.
   // shellStageBegin e shellReset restano fire-and-forget, come nel contratto.
+  //
+  // MANCANO DI PROPOSITO: audioRecStart e audioRecStop. Sotto Gecko il registratore
+  // usa getUserMedia + MediaRecorder, cioè il percorso standard del web, che la
+  // shell preferisce già di suo (apps.js:4111-4135) e che la fase 6 ha verificato
+  // funzionante. Esporli qui farebbe scegliere alla shell il registratore nativo —
+  // una seconda implementazione della stessa cosa, con il suo formato proprietario e
+  // il suo base64. La via nativa resta come ripiego per la WebView, dove getUserMedia
+  // non ha una PermissionDelegate che risponde.
   const RR = [
     "saveDownload",
     "shellWrite", "shellCommit",
+    "setTorch", "setWifi", "setBluetooth", "setAirplane",
+    "setLocation", "setNfc", "setMobileData",
   ];
 
   // Quanto aspettare una risposta prima di arrendersi. Generoso: non è un timeout di
