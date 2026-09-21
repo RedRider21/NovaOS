@@ -1009,7 +1009,15 @@ const NovaApps = (() => {
           return { label: new Date(y, m, 1).toLocaleDateString("it-IT", { month:"long", year:"numeric" }) + " · " + (yrs > 1 ? yrs + " anni fa" : yrs === 1 ? "1 anno fa" : "qualche mese fa"), items: map[k] }; }).slice(0, 8); };
 
       const playBadge = `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none"><div style="width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;font-size:calc(13px*var(--fscale,1))">▶</div></div>`;
-      const cell = (p, i) => {
+      // Il numero scritto sulla cella è un indice dentro `items`, e NON dentro la fetta
+      // passata a gridHtml. Le griglie di Foto e Cerca sono costruite gruppo per giorno
+      // (`groupByDate`) e ogni gruppo riparte da zero: prendere l'indice dalla fetta
+      // significava toccare la seconda foto di un giorno e aprirne la seconda della
+      // galleria intera — «clicco una foto e me ne apre un'altra». L'indice si ricava
+      // qui dall'elemento, così la cella sa sempre dove sta nella lista da cui il
+      // visualizzatore pesca e conta avanti/indietro: una sola fonte di verità.
+      const cell = (p) => {
+        const i = items.indexOf(p);
         const checked = selMode && sel.includes(p.id);
         const media = p.video
           ? `<div class="gp-media" style="background-image:url('${p.poster || p.data}')">${playBadge}</div>`
@@ -1018,7 +1026,7 @@ const NovaApps = (() => {
           ${p.fav ? `<span class="gp-fav">${ICO("heart-fill")}</span>` : ""}
           ${selMode ? `<span class="gp-check">${checked ? "✓" : ""}</span>` : ""}</div>`;
       };
-      const gridHtml = (arr, pad = "4px 2px 0") => `<div class="gp-grid" style="padding:${pad}">${arr.map((p, i) => cell(p, i)).join("")}</div>`;
+      const gridHtml = (arr, pad = "4px 2px 0") => `<div class="gp-grid" style="padding:${pad}">${arr.map(p => cell(p)).join("")}</div>`;
 
       const frame = (top, body) => root.innerHTML = `<div style="height:100%;display:flex;flex-direction:column">${top}
         <div style="flex:1;overflow-y:auto" class="gp-body">${body}<div style="height:14px"></div></div>${tabbar()}</div>`;
@@ -1246,10 +1254,15 @@ const NovaApps = (() => {
       const enterSel = (id) => { selMode = true; sel = id ? [id] : []; draw(); };
       const bindCells = (container) => {
         container.querySelectorAll(".gp-cell").forEach(el => {
-          const id = items[+el.dataset.i].id;
+          const i = +el.dataset.i, it = items[i];
+          // Se la cella non è in `items` (indice -1: non deve succedere, ma se
+          // succedesse) resta inerte: meglio una cella che non risponde di una che
+          // apre la foto sbagliata.
+          if (!it) return;
+          const id = it.id;
           el.addEventListener("click", () => {
             if (lpFired) { lpFired = false; return; }
-            if (selMode) toggleSel(id); else openViewer(+el.dataset.i);
+            if (selMode) toggleSel(id); else openViewer(i);
           });
           let t = null, mt = null;
           const fire = () => { if (selMode) return; lpFired = true; enterSel(id); };

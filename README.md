@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.55** (build 57). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.56** (build 58). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -383,6 +383,19 @@ Fatto:
   Messaggi, Fotocamera, Browser) non riempiono più la cella: restano a **48px** centrate
   (come la griglia), così non appaiono più enormi né nel Drawer reale né nella simulazione
   del reale dello Studio (il modello in scala resta invariato).
+Ultime novità (0.1.56) — la Galleria apre l'elemento giusto:
+- **Toccando una foto o un video si apriva l'elemento sbagliato.** La griglia di Foto è divisa per
+  giorno, e ogni giorno è una griglia a sé: il numero scritto sulla cella era la posizione **dentro
+  il giorno** (che riparte da zero), mentre il visualizzatore lo interpretava come posizione
+  **nell'elenco completo**. Conseguenza: dal secondo giorno in poi si apriva l'elemento che occupava
+  quella posizione nella galleria intera — ad esempio la seconda foto di «Ieri» apriva la seconda
+  foto della galleria. Riguardava anche i risultati della **ricerca** (anch'essi raggruppati per
+  giorno) e i **video**, che passano dalla stessa griglia. Ora la cella ricava la sua posizione
+  dall'elenco completo, che è la stessa lista da cui il visualizzatore conta avanti e indietro:
+  si apre sempre l'elemento toccato. Verificato sull'emulatore nei due versi (con il codice
+  precedente il tocco apriva l'elemento sbagliato, con questo apre quello giusto).
+  Aggiornamento della sola interfaccia: **non richiede di reinstallare l'APK**.
+
 Ultime novità (0.1.55) — i comandi passano dal ponte:
 - **La shell non interroga più `window.NovaNative`** — i 28 comandi *fire-and-forget* (vibrazione,
   condivisione, apertura browser, torcia, mail, chiamata, SMS…) passano ora da `NovaBridge.cmd()`,

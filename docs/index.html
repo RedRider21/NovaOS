@@ -22,7 +22,7 @@
 
 <header class="topbar">
   <div class="container">
-    <a class="brand" href="index.html"><img src="img/logo.svg" alt=""><b>NovaOS</b><span class="tagline">0.1.55</span></a>
+    <a class="brand" href="index.html"><img src="img/logo.svg" alt=""><b>NovaOS</b><span class="tagline">0.1.56</span></a>
     <nav class="nav">
       <a href="index.html">Presentazione</a>
       <a href="manuale.html">Manuale</a>
@@ -276,6 +276,13 @@
       con l'APK sono su GitHub; la shell si aggiorna da sola via OTA leggendo
       <code>shell/version.json</code>.</p>
     <ol class="road">
+      <li><span class="s">fatto</span><div><b>Release 0.1.56 — la Galleria apre l'elemento giusto</b><p>La
+        griglia di Foto è divisa per giorno e ogni giorno riparte da zero: il numero scritto sulla cella
+        era la posizione <i>dentro il giorno</i>, mentre il visualizzatore lo leggeva come posizione
+        nell'elenco completo. Dal secondo giorno in poi si apriva quindi l'elemento sbagliato — la
+        seconda foto di un giorno apriva la seconda foto della galleria. Riguardava anche la ricerca e i
+        video. Ora la cella ricava la sua posizione dall'elenco completo: si apre sempre l'elemento
+        toccato. Aggiornamento della sola interfaccia via OTA.</p></div></li>
       <li><span class="s">fatto</span><div><b>Release 0.1.55 — i comandi passano dal ponte</b><p>La shell
         non interroga più <code>window.NovaNative</code> in nessun punto: i 28 comandi verso l'hardware
         passano da <code>NovaBridge.cmd()</code>, che risponde <code>true</code> solo se il comando è
@@ -367,7 +374,7 @@
       <a href="https://github.com/RedRider21/NovaOS/blob/main/docs/GUIDA-MAIL.md">Guida alla Mail</a>
       <a href="https://github.com/RedRider21/NovaOS" target="_blank" rel="noopener">GitHub</a>
     </nav>
-    <small>NovaOS 0.1.55 (build 57) · sistema operativo con interfacce web su base Android ·
+    <small>NovaOS 0.1.56 (build 58) · sistema operativo con interfacce web su base Android ·
       progetto open source, senza affiliazioni con Firefox OS o KaiOS.</small>
   </div>
 </footer>
