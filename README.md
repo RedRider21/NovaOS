@@ -554,23 +554,37 @@ Prossimi passi (aggiornati al 2026-09-18, **due tracce** — vedi
    `NovaInCallService` avviava l'Activity senza dichiarare l'origine, e il valore predefinito era
    quella che il content script non aggancia — la chiamata arrivava e la schermata non compariva.
    Dettagli in **[docs/MIGRAZIONE-GECKOVIEW.md §16](docs/MIGRAZIONE-GECKOVIEW.md)**.
-10. **Completare il ponte** — in Java sono cablati **22 comandi su 53**: dopo `toast`, `vibrate`,
-   `openBrowser`, `requestMic` e `openAppSettings` sono entrate telefonia e condivisione —
-   chiamare, ricevere, rispondere, riagganciare, muto, vivavoce, DTMF, SMS e la condivisione di
-   foto/file/testo — verificate sull'emulatore (§16). Restano i comandi minori (mail,
-   `screenshot`, `installUpdate`, `openSetting`, `prefSet`/`prefDel`) e il port di
-   `BrowserActivity`. I sette `set*` **non sono lavoro di porting**: sotto Android stock
-   rispondono già `false` oggi, anche nell'app pubblicata.
-11. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
+10. ~~**Getter, richiesta/risposta e stato dei sensori (fase 3 residua)**~~ — **fatto (2026-09-21)**:
+   sotto Gecko **non esiste una chiamata sincrona al nativo**, quindi i getter rispondevano vuoti.
+   Ora il nativo pubblica lo stato e lo ripubblica quando il sistema annuncia un cambio, al ritorno
+   in primo piano e quando cambia la torcia; i sensori si leggono a **tre stati** (acceso, spento,
+   non noto) e una chiave assente non è uno «spento»; la torcia è osservata con un `TorchCallback`,
+   perché si accende anche da fuori; `openSetting`, i sette `set*` e `prefSet`/`prefDel` sono
+   cablati — i `set*` rispondono `true` solo se commutano in-process, `false` se delegano al
+   pannello di sistema. Provando è emerso un difetto vero: la tendina dava per sincrono il ritorno
+   del nativo, che sotto Gecko è una **Promise**, quindi la torcia si accendeva e il suo tile
+   restava spento senza più correggersi. Corretto con l'`await`, che vale identico sotto WebView.
+   Dettagli in **[docs/MIGRAZIONE-GECKOVIEW.md §17](docs/MIGRAZIONE-GECKOVIEW.md)**.
+11. **Completare il ponte** — in Java sono cablati **32 comandi su 53**, più **11 getter serviti
+   dal payload di stato**: dopo `toast`, `vibrate`, `openBrowser`, `requestMic` e `openAppSettings`
+   sono entrate telefonia e condivisione (§16), poi i getter, la richiesta/risposta e i sette
+   `set*` (§17). Restano sei `cmd` — le quattro `mail*`, `screenshot`, `installUpdate` — e il port
+   di `BrowserActivity`. Restano fuori **di proposito** `prefGet`/`prefKeys` (la migrazione una
+   tantum delle preferenze sarebbe distruttiva sotto Gecko, dove l'autorità è `localStorage`) e
+   `audioRecStart`/`audioRecStop` (`getUserMedia` li rende inutili, §15.2). I `set*` sotto Android
+   stock rispondono `false` e aprono il pannello di sistema: è il comportamento voluto, non un
+   guasto — nel ROM commutano direttamente (§14.5).
+12. **Migrazione del contenitore** — `GeckoSession` + WebExtension al posto di
     `addJavascriptInterface`, contenuta al livello contenitore (piano dettagliato in
     **[docs/MIGRAZIONE-GECKOVIEW.md](docs/MIGRAZIONE-GECKOVIEW.md)**). Va messo a piano che la
     traccia A **abbandona `build-apk.sh`**: la catena di GeckoView richiede Gradle (§9).
-12. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
-    doppia persistenza.
+13. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
+    doppia persistenza, le sonde `__probe_bg`/`__probe_stub`, e il sottotitolo «NFC» di
+    Impostazioni su dispositivi che non hanno NFC (§17.4).
 
 **Traccia B — ROM su telefono secondario** *(differita)*
-13. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
-14. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
+14. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
+15. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).
    Da fare **solo su un dispositivo secondario, preferibilmente Pixel**, mai sul telefono
    principale: il fusibile hardware è irreversibile.
 

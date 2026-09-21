@@ -1231,7 +1231,138 @@ finché non si tocca la riga dell'app**. Non è nostro, ma senza saperlo sembra 
 
 ---
 
+## 17 · Esito della fase 3 residua — getter, richiesta/risposta e lo stato dei sensori (2026-09-21)
+
+Il buco più grande rimasto: sotto Gecko **non esiste una chiamata sincrona al nativo**. I getter
+rispondevano vuoti e i comandi di richiesta/risposta non avevano niente da cui partire, perché
+all'avvio nessuno aveva ancora detto alla shell come stava il telefono. Adesso c'è uno stato che si
+popola da solo e si aggiorna quando cambia.
+
+**Comandi cablati in Java: 32 su 53** (erano 22), più **11 getter serviti dal payload di stato**.
+
+| Gruppo | Voci | Raggiungibili | Note |
+|---|---|---|---|
+| `cmd` (fire-and-forget) | 28 | 22 | mancano `mailConfigure`/`mailClear`/`mailSend`/`mailFetch`, `screenshot`, `installUpdate` |
+| `get` (getter sincroni) | 13 | 11 | `prefGet`/`prefKeys` fuori **di proposito**, vedi §17.3 |
+| `rr` (richiesta/risposta) | 12 | 10 | `audioRecStart`/`audioRecStop` fuori di proposito (§15.2) |
+| **Totale** | **53** | **43** | i 10 che mancano: 6 sono il punto 2, 4 sono scelte dichiarate |
+
+### 17.1 · Cosa è stato portato
+
+- **Lo stato sale, non si chiede.** `inviaStatoAllaShell()` pubblica `shell.state` con tutti i
+  getter, e lo **ripubblica** quando il sistema annuncia un cambio (Wi-Fi, Bluetooth, modalità
+  aereo, NFC), quando torna in primo piano (`onResume`, cioè il momento esatto in cui si esce dal
+  pannello di sistema) e quando cambia la torcia. Fra i due c'è un ritardo di 250 ms: un solo
+  cambio di Wi-Fi produce quattro broadcast (`ENABLING`, `ENABLED`, …) e senza la pausa ogni
+  interruttore riceverebbe quattro aggiornamenti completi.
+- **I sensori si leggono a tre stati: acceso, spento, non noto.** Una chiave assente dal JSON vuol
+  dire «non lo so», e la shell lascia il valore che ha (`if (k in ns) state[k] = ns[k]`). Non è
+  pignoleria: un `false` al posto di «non lo so» è un interruttore che mente, e sarebbe
+  indistinguibile da un dispositivo che ha davvero quella cosa spenta.
+- **La torcia entra nel modello** con un `CameraManager.TorchCallback`. È l'unico `set*` che
+  funziona da app normale, non ha un broadcast, e **si accende anche da fuori**: senza callback lo
+  stato della shell sarebbe stato solo l'ultima cosa che la shell credeva di aver fatto.
+  `onTorchModeUnavailable` scrive «non noto» e non «spenta», perché «non comandabile» non è
+  «spenta».
+- **`openSetting`** (router completo, otto destinazioni) e i **sette `set*`**. Ogni `set*`
+  restituisce `true` **solo** se ha commutato in-process, `false` se ha dovuto aprire il pannello
+  di sistema: è lo stesso codice che regge le due tracce — da app normale apre il pannello, da
+  priv-app nel ROM commuta direttamente (§14.5).
+- **`prefSet`/`prefDel`** scrivono uno specchio nativo di `localStorage`. **`prefGet`/`prefKeys`
+  restano non esposti**, e la ragione è nel `has()`: esponendoli `has("prefGet")` diventerebbe vero
+  e la shell avvierebbe la migrazione una tantum delle preferenze verso un nativo che non le ha —
+  distruttiva, non prudente. Sotto Gecko le preferenze restano `localStorage`.
+
+### 17.2 · Il difetto che la prova ha trovato
+
+La tendina dava per **sincrono** il ritorno del nativo:
+
+```js
+const r = NB()[fn](!state[k]);                       // sotto Gecko è una Promise
+applied = (r === true || r === false) ? r : null;    // …quindi sempre null
+```
+
+Sotto WebView `@JavascriptInterface` risponde con un booleano vero e la riga funziona. Sotto Gecko
+la stessa chiamata torna una Promise: `applied` cadeva **sempre** nel ramo «esito ignoto», quello
+che per progetto non decide nulla. Il ramo `true` — quello che ridisegna l'interruttore — non si
+prendeva più.
+
+Si vedeva così: **la torcia si accendeva davvero e il suo tile restava spento**, e non si
+correggeva più. Gli altri sensori si salvavano per caso, perché un broadcast li riportava indietro
+dopo ~250 ms; la torcia non ha un broadcast, quindi il tile mentiva e basta. La stessa svista stava
+in **Impostazioni → Rete**, dove faceva scegliere sempre il tempo di attesa del rifiuto (800 ms)
+anche quando la commutazione era riuscita.
+
+Corretto con l'`await`, che è **l'unica forma corretta in entrambi i contenitori**: su un valore
+non-Promise restituisce il valore stesso, quindi la shell non ha bisogno di sapere dove sta
+girando. Nel ramo riuscito lo stato si scrive invece di rileggerlo: la lettura è l'ultimo annuncio
+del telefono e in quel momento è ancora quello vecchio.
+
+Provando sono emersi anche due interruttori che mostravano lo stato della shell e non del
+telefono: `mobileData` e `torch` **non erano nella lista di sincronizzazione** — il nativo li
+mandava da sempre (la torcia, da oggi) e nessuno li leggeva.
+
+### 17.3 · Come è stato verificato
+
+Sull'emulatore `nova`, con la shell servita dagli asset (`shell dagli asset (interna=57 asset=57)`)
+e il log letto dal tag nativo:
+
+- **Getter**: `stato ricevuto: batteryLevel,micReady,privileged,isDialer,sensorStates,…` e
+  l'autodiagnosi del ponte conferma `has(micDiag)=true micDiag="granted"`, cioè la shell non legge
+  più il default ottimista ma il valore del telefono.
+- **Stato reale all'avvio**: `sensorStates: {"wifi":true,"bt":true,"location":true,"airplane":false,"mobileData":true,"torch":false, …}`,
+  che concorda con `settings get global airplane_mode_on` → 0 e con lo stato di Wi-Fi e dati del
+  sistema. La chiave **`nfc` è assente**, ed è il comportamento voluto: l'emulatore non ha un
+  adattatore NFC, quindi quel dato non esiste — non è «spento».
+- **`setWifi` da app normale**: `comando dal ponte: setWifi → apro il pannello di sistema: Wi-Fi →
+  risposta inviata: valore=false`, e la finestra in primo piano diventa
+  `com.android.settings/.panel.SettingsPanelActivity`. Il nativo non finge di aver commutato.
+- **La torcia, nei due versi**: `setTorch → valore=true`, poi il tile si accende e la tendina
+  **resta aperta**; il callback del dispositivo ripubblica `torch:true`. Secondo tocco:
+  `torch:false` con il tile che torna spento. Sono due conferme indipendenti — la shell che
+  ragiona e il telefono che annuncia.
+- **Impostazioni → Rete**: la sezione disegna lo stato vero (`Wi-Fi Attivo`, `Dati mobili Attivi`,
+  `Modalità aereo Disattivata`) e `Dati mobili` risponde `valore=false` aprendo il pannello.
+- **Ritorno dal pannello**: alla chiusura, `onResume` ripubblica lo stato completo.
+
+### 17.4 · Limiti, dichiarati
+
+- **Il ramo `SecurityException` non è stato esercitato su questa immagine.** `dumpsys package`
+  riporta `BLUETOOTH_CONNECT: granted=false`, ma il Bluetooth è stato letto lo stesso: il percorso
+  «permesso negato → dato assente» è quindi provato solo dal caso NFC (adattatore mancante), non
+  dal caso permesso. Non va raccontato come verificato.
+- **La torcia è verificata come comando, non come luce.** La fotocamera emulata accetta
+  `setTorchMode` senza sollevare eccezioni e risponde `true`, ma non ha un LED: cosa succede sul
+  ferro lo dice l'APK pubblicato sotto WebView, dove la torcia **si accende davvero** sul telefono.
+- **`mobileData` e `location` non hanno un broadcast pubblico affidabile**: si aggiornano
+  all'avvio e al ritorno in primo piano, non mentre la tendina è aperta. Un cambiamento fatto da
+  fuori si vede uscendo e rientrando. Per la posizione il pannello di sistema è già il percorso
+  normale, quindi il caso è raro.
+- **«NFC» compare fra i sottotitoli di Impostazioni** su un dispositivo che non ha NFC, perché
+  quella riga legge il valore di ripiego della shell quando il nativo non manda la chiave. È una
+  bugia cosmetica **della shell**, non del ponte: da correggere nel passo di pulizia.
+- **Le sonde `__probe_bg`/`__probe_stub`** continuano a partire e a essere registrate come
+  «comando riconosciuto ma non ancora cablato» (§16.5): rumore nel log che serve proprio a
+  diagnosticare. Passo di pulizia.
+
+### 17.5 · Da dove si riprende
+
+Il lavoro su `shell/js/os.js` e `shell/js/apps.js` è **condiviso con `main`** (i due rami avevano
+la stessa shell fino a qui, e la correzione dell'`await` vale identica sotto WebView: è una
+robustezza in più, non un cambio di comportamento). Va portato su `main` insieme alla migrazione,
+non lasciato indietro.
+
+1. **`mail*` (4), `screenshot`, `installUpdate`**: sono i sei `cmd` che restano del punto 2.
+   Portano `MailBridge` in `os.nova.gecko` con i jar di JavaMail, e il sink `JsSink.eval` diventa
+   un evento verso la pagina.
+2. `BrowserActivity` → `GeckoView`.
+3. Pulizia: ripieghi resi inutili da Gecko, sonde di fase 1, e il sottotitolo NFC di §17.4.
+4. Fase 8: la ROM.
+
+---
+
 *Documento di pianificazione — l'implementazione vive sul ramo `gecko-spike`. La shell è già stata
-predisposta (`js/bridge.js`) con comportamento invariato sul motore attuale, così le fasi 0–7
-lavorano su un'interfaccia stabile senza toccare l'app in uso. Finché la migrazione non è completa
-`main` resta la shell pubblicata: nessuna fase di questo documento, da sola, è un rilascio.*
+predisposta (`js/bridge.js`) con comportamento invariato sul motore attuale, così le fasi 0–7 e la
+fase 3 residua lavorano su un'interfaccia stabile senza toccare l'app in uso. Finché la migrazione
+non è completa `main` resta la shell pubblicata: nessuna fase di questo documento, da sola, è un
+rilascio.*
