@@ -396,6 +396,33 @@ Ultime novità (0.1.56) — la Galleria apre l'elemento giusto:
   precedente il tocco apriva l'elemento sbagliato, con questo apre quello giusto).
   Aggiornamento della sola interfaccia: **non richiede di reinstallare l'APK**.
 
+Ultime novità (0.1.56) — la condivisione: più file in una volta, e un video resta un video:
+- **La condivisione multipla non faceva nulla.** Scegliendo più foto nella Galleria (pressione
+  lunga) e toccando «Condividi», non si apriva nessuna scelta: il lato nativo sapeva condividere un
+  file solo. Ora un comando nuovo (`shareFiles`) manda tutti i file in **una sola** scelta di
+  sistema (`ACTION_SEND_MULTIPLE`), con il permesso di lettura su ognuno — senza il permesso su
+  tutti, la scelta si sarebbe aperta una volta per foto. I nomi uguali non si sovrascrivono più:
+  diventano `-1`, `-2` e così via. Se la shell è aggiornata ma l'APK no, la shell ripiega sulla
+  condivisione del browser, così non si perde nulla.
+- **Un video arrivava come una foto «grande quanto il filmato».** Il contenuto era giusto: era il
+  **tipo annunciato** a essere sbagliato. Il file veniva dichiarato `image/jpeg`, e l'app che lo
+  riceveva credeva di avere davanti una foto enorme. Ora il tipo è quello vero (`video/mp4`,
+  `video/webm`, `audio/mp4` per l'audio di uno schermo registrato) e il nome porta l'estensione
+  giusta, anche quando il nome di partenza non ce l'ha.
+  Verificato sull'emulatore: due foto in **una sola** scelta («Condivisione di 2 immagini»), un
+  video annunciato come video e non come immagine. **Richiede l'APK** (c'è un comando nativo nuovo).
+
+Ultime novità (0.1.56) — la fascia nera in alto, su schermi con foro o notch:
+- **Su uno schermo con foro della fotocamera o notch, Android accorciava la finestra di NovaOS
+  sotto il ritaglio**: 128 px di nero in cima a **tutte** le schermate (misurato:
+  `mLetterboxInsets=[0,128][0,0]`, sia su `os.nova.launcher` sia su `os.nova.gecko`). Non era un
+  errore di disegno della shell: la finestra non dichiarava di voler arrivare sotto il ritaglio,
+  quindi il sistema la teneva più corta e lasciava il nero. Ora la dichiara, e la shell si tiene
+  libera la striscia (`--sa-t`, cioè `env(safe-area-inset-top)`): sfondo fino in cima e barra di
+  stato appena sotto il foro, come sugli altri telefoni. Dove il ritaglio non c'è — schermi piatti
+  e anteprima del Theme Studio, che gira in un riquadro — non cambia niente.
+  Verificato sull'emulatore prima e dopo, nella home e dentro un'app. **Richiede l'APK.**
+
 Ultime novità (0.1.55) — i comandi passano dal ponte:
 - **La shell non interroga più `window.NovaNative`** — i 28 comandi *fire-and-forget* (vibrazione,
   condivisione, apertura browser, torcia, mail, chiamata, SMS…) passano ora da `NovaBridge.cmd()`,
