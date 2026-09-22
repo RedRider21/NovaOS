@@ -17,6 +17,11 @@
   --radius:    22px;
   --radius-sm: 14px;
   --sb-h:      30px;   /* altezza status bar */
+  /* Spazio che la shell deve lasciare libero in alto quando lo schermo ha un
+     ritaglio (foro della fotocamera o notch). Senza questo, la barra di stato
+     finisce sotto il foro. Vale 0 dove il ritaglio non c'è: schermi piatti e
+     anteprima del Theme Studio (che gira in un riquadro, quindi senza ritaglio). */
+  --sa-t:      env(safe-area-inset-top, 0px);
   --nav-h:     46px;   /* altezza barra navigazione */
   --grid-gap:  18px;
   --fscale:    1;    /* moltiplicatore dimensione testo (Accessibilità) */
@@ -76,10 +81,10 @@ html.nova-preview #device { width: 390px !important; height: 844px !important; m
 
 /* ---------- Status bar ---------- */
 .statusbar {
-  height: var(--sb-h);
+  height: calc(var(--sb-h) + var(--sa-t));
   flex: 0 0 auto;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 20px;
+  padding: var(--sa-t) 20px 0;
   font-size:calc(13px*var(--fscale,1)); font-weight: 600;
   color: var(--text);
   z-index: 5;
@@ -469,7 +474,7 @@ html.nova-preview #device { width: 390px !important; height: 844px !important; m
 .qr-ov video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .qr-frame { width: 62%; aspect-ratio: 1; border: 3px solid rgba(255,255,255,.9); border-radius: 22px; box-shadow: 0 0 0 2000px rgba(0,0,0,.45); z-index: 1; }
 .qr-hint { position: absolute; bottom: 90px; left: 0; right: 0; text-align: center; color: #fff; font-size:calc(14px*var(--fscale,1)); z-index: 2; text-shadow: 0 1px 3px rgba(0,0,0,.6); padding: 0 20px; }
-.qr-close { position: absolute; top: calc(var(--sb-h) + 8px); right: 16px; width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(0,0,0,.5); color: #fff; font-size:calc(18px*var(--fscale,1)); cursor: pointer; z-index: 3; }
+.qr-close { position: absolute; top: calc(var(--sb-h) + var(--sa-t) + 8px); right: 16px; width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(0,0,0,.5); color: #fff; font-size:calc(18px*var(--fscale,1)); cursor: pointer; z-index: 3; }
 .qr-result { position: absolute; left: 16px; right: 16px; bottom: 20px; background: var(--bg-2); border-radius: 18px; padding: 16px; z-index: 4; transform: translateY(140%); transition: transform .28s cubic-bezier(.2,.7,.2,1); }
 .qr-result.show { transform: translateY(0); }
 .qr-result .qr-val { color: var(--text); font-size:calc(14px*var(--fscale,1)); word-break: break-all; margin-bottom: 12px; }
@@ -578,7 +583,7 @@ body[data-theme="light"] .dock { background: rgba(255,255,255,.6); }
   border-radius: 0 0 28px 28px;
   transform: translateY(-100%);
   transition: transform .32s cubic-bezier(.2,.7,.2,1);
-  z-index: 50; padding: calc(var(--sb-h) + 6px) 16px 22px;
+  z-index: 50; padding: calc(var(--sb-h) + var(--sa-t) + 6px) 16px 22px;
   max-height: 82%; overflow-y: auto;
 }
 .shade.open { transform: translateY(0); }
