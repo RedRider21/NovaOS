@@ -42,7 +42,7 @@ window.NovaBridge = (() => {
   window.__NovaNativeRaw = raw;
 
   // ---- 2) contratto del ponte ----
-  // Elenco esplicito dei 53 metodi di MainActivity.NovaBridge, con la loro natura:
+  // Elenco esplicito dei 54 metodi di MainActivity.NovaBridge, con la loro natura:
   //   "cmd" = comando fire-and-forget (il valore di ritorno è ignorato)
   //   "get" = getter sincrono, il valore viene letto subito dalla pagina
   //   "rr"  = richiesta/risposta: il risultato decide l'azione successiva
@@ -53,7 +53,7 @@ window.NovaBridge = (() => {
     call:"cmd", sms:"cmd", sendSms:"cmd", vibrate:"cmd", toast:"cmd",
     callAnswer:"cmd", callHangup:"cmd", callMute:"cmd", callSpeaker:"cmd", callDtmf:"cmd",
     requestDialerRole:"cmd", requestMic:"cmd", openAppSettings:"cmd", openBrowser:"cmd",
-    shareImage:"cmd", shareFile:"cmd", shareText:"cmd", openSetting:"cmd",
+    shareImage:"cmd", shareFile:"cmd", shareFiles:"cmd", shareText:"cmd", openSetting:"cmd",
     installUpdate:"cmd", screenshot:"cmd",
     shellStageBegin:"cmd", shellReset:"cmd",
     mailConfigure:"cmd", mailClear:"cmd", mailSend:"cmd", mailFetch:"cmd",
@@ -93,7 +93,7 @@ window.NovaBridge = (() => {
     if (n in cache) return cache[n];
     return dflt === undefined ? null : dflt;
   }
-  // Comandi fire-and-forget (i 28 "cmd" della tabella): non c'è un valore di ritorno da
+  // Comandi fire-and-forget (i 29 "cmd" della tabella): non c'è un valore di ritorno da
   // interpretare, ma serve sapere SE il comando è stato inoltrato al nativo. Il valore
   // restituito è esattamente questo, e sostituisce i vecchi probe sparsi
   // `window.NovaNative && window.NovaNative.x`: dove il comando non parte, il chiamante

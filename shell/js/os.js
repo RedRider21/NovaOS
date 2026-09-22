@@ -1456,15 +1456,41 @@ const OS = (() => {
       if (state.bubbles && !screens.lock.classList.contains("active")) showBubble(n); }
   }
 
-  // Condivisione unificata usabile da ogni app: immagine (data URL) e/o testo/URL.
+  // Condivisione unificata usabile da ogni app: immagine (data URL), file, testo/URL,
+  //  e più file insieme (opts.files).
   //  Ordine di preferenza: bridge nativo Android (affidabile nella WebView) →
   //  Web Share API → appunti (clipboard) come ripiego. Ritorna una Promise.
-  //  Uso: os.share({ image:dataUrl }) oppure os.share({ title, text, url }).
+  //  Uso: os.share({ image:dataUrl }) oppure os.share({ file:{data,name} })
+  //       oppure os.share({ files:[{data,name}, …] }) oppure os.share({ title, text, url }).
   async function share(opts) {
     opts = opts || {};
     const title = opts.title || "NovaOS";
     const url = opts.url || "";
     const text = [opts.text, url].filter(Boolean).join(url && opts.text ? "\n" : "");
+    // Più file in una volta sola. Non è una comodità: il nativo apre un chooser per
+    // ogni CHIAMATA, quindi condividere N file chiamando share N volte significa N
+    // schermate di scelta in fila — e per chi guarda, «la condivisione multipla non
+    // la esegue». Qui si manda un elenco solo e la scelta è una sola.
+    if (opts.files && opts.files.length) {
+      const elenco = opts.files.filter(f => f && f.data)
+        .map(f => ({ data:f.data, name:f.name || "novaos" }));
+      if (!elenco.length) return false;
+      if (elenco.length === 1) return share(Object.assign({}, opts, { files:null, file:elenco[0] }));
+      // Un solo argomento, di tipo stringa: l'elenco in JSON. Passare un array
+      // significherebbe attraversare il ponte con argomenti di tipi diversi, che è
+      // il punto in cui i comandi spariscono in silenzio (v. background.js).
+      if (NB().cmd("shareFiles", JSON.stringify(elenco))) return true;
+      try {
+        const files = [];
+        for (const f of elenco) {
+          const blob = await (await fetch(f.data)).blob();
+          files.push(new File([blob], f.name, { type: blob.type || "application/octet-stream" }));
+        }
+        if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, title }); return true; }
+      } catch {}
+      notify({ app: opts.app || "settings", title: "Condivisione", text: "Aggiorna l'app per condividere più file." });
+      return false;
+    }
     // Immagine: preferisci il bridge nativo, poi Web Share con file.
     if (opts.image) {
       if (NB().cmd("shareImage", opts.image)) return true;

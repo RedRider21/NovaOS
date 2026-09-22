@@ -1284,9 +1284,27 @@ const NovaApps = (() => {
         for (const id of cur) await os.photos.patch(id, { fav: !allFav });
         exitSel();
       };
+      // Un elemento si condivide per quello che È. Il video passava dal ramo "image",
+      // e shareImage non guarda il mime: scriveva il filmato in un file ".jpg" con
+      // tipo dichiarato image/jpeg. Il file era giusto (e quindi grande quanto il
+      // video), il nome no — e all'app di destinazione arrivava «una jpeg grande
+      // quanto il filmato», inapribile. I video vanno dal ramo "file", che dal mime
+      // ricava l'estensione vera.
+      const nomeItem = p => (p.video ? "novaos-video-" : "novaos-foto-") + (p.ts || p.id);
+      const shareItem = (p) => p.video
+        ? os.share({ app:"gallery", file:{ data:p.data, name:nomeItem(p) }, title:"Video da NovaOS" })
+        : os.share({ app:"gallery", image:p.data, filename:nomeItem(p), title:"Foto da NovaOS" });
+      // Selezione multipla: UNA condivisione con dentro tutti gli elementi, non N
+      // chiamate in fila. Prima si passava solo il primo della selezione (e nemmeno
+      // quello toccato per primo: il primo in ordine di galleria), quindi «condividi
+      // 4 foto» ne condivideva una — o nessuna, se il primo elemento non era tra
+      // quelli scelti.
       const selShare = async () => {
-        const p = items.find(x => sel.includes(x.id));
-        if (p) await os.share({ app:"gallery", image: p.data, filename:"novaos-foto", title:"Foto da NovaOS" });
+        const scelti = items.filter(x => sel.includes(x.id));
+        if (scelti.length === 1) await shareItem(scelti[0]);
+        else if (scelti.length > 1)
+          await os.share({ app:"gallery", title:"Elementi da NovaOS",
+                           files: scelti.map(p => ({ data:p.data, name:nomeItem(p) })) });
         exitSel();
       };
       const selTrash = async () => {
@@ -1405,7 +1423,7 @@ const NovaApps = (() => {
         const fav = root.querySelector("#vb-fav");
         if (fav) fav.onclick = async () => { await os.photos.patch(p.id, { fav: !p.fav }); p.fav = !p.fav; fav.classList.toggle("on", p.fav); };
         const share = root.querySelector("#vb-share");
-        if (share) share.onclick = () => os.share({ app:"gallery", image: p.data, filename:"novaos-foto", title:"Foto da NovaOS" });
+        if (share) share.onclick = () => shareItem(p);
         const ed = root.querySelector("#vb-edit");
         if (ed) ed.onclick = () => openEditor(p);
         const trash = root.querySelector("#vb-trash");

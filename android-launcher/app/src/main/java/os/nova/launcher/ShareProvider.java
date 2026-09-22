@@ -32,12 +32,34 @@ public class ShareProvider extends ContentProvider {
         catch (Exception e) { return null; }
     }
 
+    /**
+     * Il tipo dichiarato del file. <b>Deve</b> corrispondere al contenuto: è quello che
+     * l'app di destinazione crede, e una bugia qui è invisibile da entrambe le parti.
+     * (Il caso vero: un filmato scritto con nome {@code .jpg} veniva annunciato come
+     * {@code image/jpeg}, e all'altro capo arrivava «una jpeg grande quanto il filmato».)
+     *
+     * <p>Se l'estensione non è fra quelle note si ripiega su {@code octet-stream}, che è
+     * l'onesto «non lo so»: meglio di un tipo sbagliato.
+     */
     @Override
     public String getType(Uri uri) {
         String n = uri.getLastPathSegment();
         if (n == null) return "application/octet-stream";
-        if (n.endsWith(".png")) return "image/png";
-        if (n.endsWith(".jpg") || n.endsWith(".jpeg")) return "image/jpeg";
+        String nome = n.toLowerCase(java.util.Locale.ROOT);
+        if (nome.endsWith(".png"))  return "image/png";
+        if (nome.endsWith(".jpg") || nome.endsWith(".jpeg")) return "image/jpeg";
+        if (nome.endsWith(".webp")) return "image/webp";
+        if (nome.endsWith(".gif"))  return "image/gif";
+        if (nome.endsWith(".mp4") || nome.endsWith(".m4v")) return "video/mp4";
+        if (nome.endsWith(".webm")) return "video/webm";
+        if (nome.endsWith(".3gp"))  return "video/3gpp";
+        if (nome.endsWith(".m4a") || nome.endsWith(".aac")) return "audio/mp4";
+        if (nome.endsWith(".mp3"))  return "audio/mpeg";
+        if (nome.endsWith(".ogg") || nome.endsWith(".oga")) return "audio/ogg";
+        if (nome.endsWith(".wav"))  return "audio/wav";
+        if (nome.endsWith(".pdf"))  return "application/pdf";
+        if (nome.endsWith(".json")) return "application/json";
+        if (nome.endsWith(".txt"))  return "text/plain";
         return "application/octet-stream";
     }
 

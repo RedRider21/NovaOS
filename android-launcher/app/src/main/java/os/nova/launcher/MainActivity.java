@@ -350,6 +350,66 @@ public class MainActivity extends Activity {
     }
 
     /**
+     * Estensione da dare a un file condiviso, ricavata dal mime del suo data URL.
+     *
+     * <p>Serve perché il nome che arriva dalla pagina spesso non ha estensione, e senza
+     * estensione l'app di destinazione non sa cosa ha ricevuto. Il caso che l'ha resa
+     * necessaria: {@code video/mp4} finiva in {@code .m4a} (audio!), perché la regola
+     * guardava "mp4" senza chiedersi se fosse video o audio — e un filmato salvato con
+     * estensione audio non si apre.
+     */
+    private static String estensione(String mime) {
+        if (mime == null) return ".bin";
+        if (mime.contains("png"))  return ".png";
+        if (mime.contains("jpeg") || mime.contains("jpg")) return ".jpg";
+        if (mime.contains("webp")) return ".webp";
+        if (mime.contains("gif"))  return ".gif";
+        if (mime.contains("webm")) return ".webm";
+        if (mime.contains("mp4") || mime.contains("m4v")) return mime.startsWith("video") ? ".mp4" : ".m4a";
+        if (mime.contains("m4a") || mime.contains("aac")) return ".m4a";
+        if (mime.contains("mpeg")) return ".mp3";
+        if (mime.contains("ogg"))  return ".ogg";
+        if (mime.contains("wav"))  return ".wav";
+        if (mime.contains("pdf"))  return ".pdf";
+        if (mime.contains("json")) return ".json";
+        if (mime.startsWith("image/")) return ".jpg";
+        if (mime.startsWith("video/")) return ".mp4";
+        if (mime.startsWith("audio/")) return ".m4a";
+        return ".bin";
+    }
+
+    /** Rende unico un nome per la condivisione multipla, infilando il contatore
+     *  <b>prima</b> dell'estensione: {@code foto.jpg} → {@code foto-2.jpg}. Appeso in
+     *  fondo darebbe {@code foto.jpg-2}, che non ha più un'estensione riconoscibile. */
+    private static String conContatore(String nome, int n) {
+        if (nome == null || nome.trim().isEmpty()) nome = "novaos-" + System.currentTimeMillis();
+        int dot = nome.lastIndexOf('.');
+        return (dot > 0) ? nome.substring(0, dot) + "-" + n + nome.substring(dot) : nome + "-" + n;
+    }
+
+    /** Scrive nella cache dell'app i byte di un data URL e restituisce l'URI content://
+     *  con cui condividerlo. Usata da tutte le condivisioni (una o più file).
+     *
+     *  <p>{@code nomeBase} viene ripulito: arriva dalla pagina, quindi barre e due punti
+     *  verrebbero letti come percorso e si scriverebbe fuori dalla cache. */
+    private android.net.Uri fileDaCondividere(String dataUrl, String nomeBase) throws Exception {
+        int comma = dataUrl.indexOf(',');
+        String meta = dataUrl.substring(dataUrl.indexOf(':') + 1, comma);   // es. video/webm;base64
+        String mime = meta.split(";")[0];
+        byte[] bytes = android.util.Base64.decode(dataUrl.substring(comma + 1), android.util.Base64.DEFAULT);
+        java.io.File dir = new java.io.File(getCacheDir(), "share");
+        dir.mkdirs();
+        String safe = (nomeBase == null || nomeBase.trim().isEmpty())
+                ? ("novaos-" + System.currentTimeMillis() + "-" + System.nanoTime() % 1000)
+                : nomeBase.replaceAll("[^A-Za-z0-9._ -]", "_");
+        if (safe.indexOf('.') < 0) safe = safe + estensione(mime);
+        java.io.File f = new java.io.File(dir, safe);
+        java.io.FileOutputStream fos = new java.io.FileOutputStream(f);
+        fos.write(bytes); fos.close();
+        return Uri.parse("content://" + ShareProvider.AUTHORITY + "/" + f.getName());
+    }
+
+    /**
      * Bridge nativo: ogni metodo @JavascriptInterface è chiamabile dalla shell
      * come window.NovaNative.<metodo>(). È qui che il "web" tocca l'hardware reale.
      */
@@ -538,16 +598,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void shareImage(String dataUrl) {
             try {
                 int comma = dataUrl.indexOf(',');
-                String meta = dataUrl.substring(dataUrl.indexOf(':') + 1, comma); // es. image/jpeg;base64
-                String mime = meta.split(";")[0];
-                byte[] bytes = android.util.Base64.decode(dataUrl.substring(comma + 1), android.util.Base64.DEFAULT);
-                java.io.File dir = new java.io.File(getCacheDir(), "share");
-                dir.mkdirs();
-                String ext = mime.contains("png") ? ".png" : ".jpg";
-                java.io.File f = new java.io.File(dir, "novaos-" + System.currentTimeMillis() + ext);
-                java.io.FileOutputStream fos = new java.io.FileOutputStream(f);
-                fos.write(bytes); fos.close();
-                Uri uri = Uri.parse("content://" + ShareProvider.AUTHORITY + "/" + f.getName());
+                String mime = dataUrl.substring(dataUrl.indexOf(':') + 1, comma).split(";")[0];
+                Uri uri = fileDaCondividere(dataUrl, "novaos-" + System.currentTimeMillis());
                 Intent send = new Intent(Intent.ACTION_SEND).setType(mime)
                         .putExtra(Intent.EXTRA_STREAM, uri)
                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -568,28 +620,63 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void shareFile(String dataUrl, String name) {
             try {
                 int comma = dataUrl.indexOf(',');
-                String meta = dataUrl.substring(dataUrl.indexOf(':') + 1, comma); // es. audio/mp4;base64
-                String mime = meta.split(";")[0];
-                byte[] bytes = android.util.Base64.decode(dataUrl.substring(comma + 1), android.util.Base64.DEFAULT);
-                java.io.File dir = new java.io.File(getCacheDir(), "share");
-                dir.mkdirs();
-                String safe = (name == null || name.trim().isEmpty()) ? ("novaos-" + System.currentTimeMillis()) : name.replaceAll("[^A-Za-z0-9._ -]", "_");
-                if (safe.indexOf('.') < 0) {
-                    String ext = mime.contains("mp4") || mime.contains("m4a") || mime.contains("aac") ? ".m4a"
-                            : mime.contains("mpeg") ? ".mp3" : mime.contains("webm") ? ".webm"
-                            : mime.contains("ogg") ? ".ogg" : mime.contains("wav") ? ".wav"
-                            : mime.contains("png") ? ".png" : mime.contains("pdf") ? ".pdf" : ".bin";
-                    safe = safe + ext;
-                }
-                java.io.File f = new java.io.File(dir, safe);
-                java.io.FileOutputStream fos = new java.io.FileOutputStream(f);
-                fos.write(bytes); fos.close();
-                Uri uri = Uri.parse("content://" + ShareProvider.AUTHORITY + "/" + f.getName());
+                String mime = dataUrl.substring(dataUrl.indexOf(':') + 1, comma).split(";")[0];
+                Uri uri = fileDaCondividere(dataUrl, name);
                 Intent send = new Intent(Intent.ACTION_SEND).setType(mime)
                         .putExtra(Intent.EXTRA_STREAM, uri)
                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                send.setClipData(ClipData.newUri(getContentResolver(), safe, uri));
+                send.setClipData(ClipData.newUri(getContentResolver(), uri.getLastPathSegment(), uri));
                 Intent chooser = Intent.createChooser(send, "Condividi");
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(chooser);
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, "Condivisione non riuscita", Toast.LENGTH_SHORT).show());
+            }
+        }
+
+        /**
+         * Condivide <b>più file con una sola scelta</b> ({@code ACTION_SEND_MULTIPLE}).
+         *
+         * <p>Arriva un solo argomento — l'elenco in JSON, {@code [{data,name}, …]} — e non
+         * un array di dati: sul ponte a messaggi di GeckoView gli argomenti di tipi
+         * diversi non attraversano il canale e il comando sparirebbe in silenzio, mentre
+         * una stringa passa sempre (v. {@code content.js} in {@code :gecko}). Alla WebView
+         * sarebbe indifferente: si usa la forma che va bene a entrambe.
+         *
+         * <p>Serve perché il chooser si apre <b>una volta per chiamata</b>: condividere N
+         * file con N chiamate significa N schermate di scelta in fila, che all'occhio è
+         * «la condivisione multipla non la esegue».
+         */
+        @JavascriptInterface public void shareFiles(String elencoJson) {
+            try {
+                org.json.JSONArray a = new org.json.JSONArray(elencoJson);
+                java.util.ArrayList<Uri> uris = new java.util.ArrayList<>();
+                String mimeComune = null;
+                for (int i = 0; i < a.length(); i++) {
+                    org.json.JSONObject o = a.getJSONObject(i);
+                    String data = o.optString("data", "");
+                    if (data.isEmpty()) continue;
+                    int comma = data.indexOf(',');
+                    if (comma < 0) continue;
+                    String mime = data.substring(data.indexOf(':') + 1, comma).split(";")[0];
+                    // Nome distinto per ogni elemento: due file con lo stesso nome
+                    // scriverebbero lo stesso file in cache, e ne arriverebbe uno solo.
+                    String nome = conContatore(o.optString("name", ""), i + 1);
+                    uris.add(fileDaCondividere(data, nome));
+                    mimeComune = (mimeComune == null) ? mime : (mimeComune.equals(mime) ? mimeComune : "*/*");
+                }
+                if (uris.isEmpty()) return;
+                Intent send = new Intent(Intent.ACTION_SEND_MULTIPLE)
+                        .setType(mimeComune == null ? "*/*" : mimeComune)
+                        .putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                ClipData clip = null;
+                for (Uri u : uris) {
+                    if (clip == null) clip = ClipData.newUri(getContentResolver(), u.getLastPathSegment(), u);
+                    else clip.addItem(new ClipData.Item(u));
+                }
+                if (clip != null) send.setClipData(clip);
+                Intent chooser = Intent.createChooser(send, "Condividi elementi");
                 chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 startActivity(chooser);
             } catch (Exception e) {
