@@ -516,11 +516,14 @@ const NovaApps = (() => {
       const setMode = (m) => { mode = m;
         root.querySelectorAll("[data-mode]").forEach(b=>b.classList.toggle("on", b.dataset.mode===m));
         shotBtn.classList.toggle("rec", m==="video");
-        // Audio del video: se c'è il runtime nativo (WebView) lo registriamo a parte,
-        // quindi l'anteprima resta video-only (nessuna contesa sul microfono). Senza
-        // nativo (GeckoView/desktop) chiediamo l'audio dentro lo stream web.
+        // Audio del video: si chiede SEMPRE dentro lo stream web, anche quando il
+        // runtime nativo saprebbe registrarlo a parte. Un audio registrato a parte
+        // vive accanto al video solo dentro NovaOS (in riproduzione resta
+        // sincronizzato) e si perde appena il filmato esce: condiviso o salvato in
+        // Download arrivava senza voce. Con l'audio dentro lo stream il filmato è
+        // UN file solo, con il suo suono, e vale per qualunque destinazione.
         if (m==="video") NB().cmd("requestMic");
-        const want = (m==="video") && !nativeAudioAvail;
+        const want = (m==="video");
         if (want !== wantAudio) {
           wantAudio = want;
           if (!want) micChip.style.display = "none";
@@ -536,9 +539,13 @@ const NovaApps = (() => {
         else { t.style.backgroundImage = ""; t.innerHTML = ICO("images","width:22px;height:22px"); }
       };
 
-      // in modalità Video acquisiamo UN solo stream video+audio (registrazione
-      // affidabile su WebView); in Foto lo stream è solo video (così scattare
-      // non dipende mai dal permesso microfono).
+      // In modalità Video chiediamo UN solo stream video+audio: l'audio finisce così
+      // dentro il filmato, e resta con lui quando lo si condivide o lo si salva in
+      // Download. In Foto lo stream è solo video, così scattare non dipende mai dal
+      // permesso microfono. Se la traccia audio non arriva (permesso negato, o
+      // telefono che non la concede al motore web), si ricade sul registratore
+      // nativo: l'audio resta sincronizzato in riproduzione dentro NovaOS, ma non
+      // esce insieme al video.
       let wantAudio = false, hasAudioTrack = false;
       let curVideo = { facingMode: facing };
       const start = async (videoConstraint) => {
@@ -987,7 +994,7 @@ const NovaApps = (() => {
 
       // ---- stato ----
       let items = [], viewTab = "foto", cat = null, sel = [], selMode = false, q = "";
-      let lpFired = false, lastMems = [], albumCache = [];
+      let lpFired = false, lastMems = [], albumCache = [], lastGroups = [];
 
       const isVid = p => !!p.video;
       const fmtShort = ts => ts ? new Date(ts).toLocaleString("it-IT", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" }) : "—";
@@ -997,7 +1004,11 @@ const NovaApps = (() => {
         const diff = (strip(t) - strip(d)) / 86400000;
         if (diff === 0) return "Oggi"; if (diff === 1) return "Ieri";
         return d.toLocaleDateString("it-IT", { weekday:"long", day:"numeric", month:"long", ...(d.getFullYear() !== t.getFullYear() ? { year:"numeric" } : {}) }); };
-      const sizeOf = data => { try { const b = atob((data || "").split(",")[1] || ""); return (b.length / 1024).toFixed(0) + " KB"; } catch { return "—"; } };
+      // La parte dati di un data URL comincia dopo l'ULTIMA virgola: l'intestazione
+      // può contenerne una per conto suo (video/webm;codecs=vp8,opus). Prendendo la
+      // prima, la dimensione dei filmati non si calcolava e la scheda informazioni
+      // mostrava un trattino al posto dei KB.
+      const sizeOf = data => { try { const s = data || ""; const k = s.lastIndexOf(","); if (k < 0) return "—"; const b = atob(s.slice(k + 1)); return (b.length / 1024).toFixed(0) + " KB"; } catch { return "—"; } };
 
       const groupByDate = arr => { const out = []; let last = null;
         arr.forEach(p => { const l = dayLabel(p.ts); if (l !== last) { out.push({ label: l, items: [], count: 0 }); last = l; } out[out.length - 1].items.push(p); out[out.length - 1].count++; });
@@ -1039,10 +1050,13 @@ const NovaApps = (() => {
 
       // ---- header (normale / selezione / barra con back) ----
       const ACTS = { album:["folder2-open"], heart:["heart-fill"], share:["share-fill"], trash:["trash-fill"], restore:["arrow-repeat"], del:["trash-fill"] };
+      // In selezione, accanto alle azioni: "Tutti" sceglie in un colpo solo tutto
+      // quello che si sta vedendo (la scheda, la raccolta, il risultato della
+      // ricerca), e diventa "Nessuno" quando è già tutto scelto.
       const selHeader = (keys) => `<div class="gp-top sel">
         <button class="gp-close" data-sel="x">${ICO("x-lg","width:20px;height:20px")}</button>
         <div class="gp-count" id="sel-count"></div>
-        <div class="gp-acts">${keys.map(k => `<button class="gp-act" data-sel="${k}">${ICO(ACTS[k][0],"width:20px;height:20px")}</button>`).join("")}</div></div>`;
+        <div class="gp-acts"><button class="gp-text-btn" id="sel-all" data-sel="all">Tutti</button>${keys.map(k => `<button class="gp-act" data-sel="${k}">${ICO(ACTS[k][0],"width:20px;height:20px")}</button>`).join("")}</div></div>`;
       const barHeader = (title, right = "") => `<div class="gp-top back"><button class="back-btn" id="g-back"></button><h1>${title}</h1><div class="gp-acts">${right}</div></div>`;
       const fotoHeader = () => selMode
         ? selHeader(["album", "heart", "share", "trash"])
@@ -1053,11 +1067,18 @@ const NovaApps = (() => {
 
       // ---- viste ----
       const memCard = (mm, i) => `<div class="mem" data-mem="${i}"><div class="mem-cols">${mm.items.slice(0, 3).map(p => `<div style="background-image:url('${p.poster || p.data}')"></div>`).join("")}</div><div class="mem-title">${mm.label}</div></div>`;
+      // Intestazione di un giorno, con il segno di selezione a destra: un tocco
+      // prende tutte le foto di quel giorno (v. il binding su [data-day] in bindTop).
+      const dayHead = (s, gi) => `<div class="date-head" data-day="${gi}">${s.label}${s.count > 1 ? ` <span class="date-count">${s.count}</span>` : ""}<span class="date-pick">${ICO("check-circle-fill","width:19px;height:19px")}</span></div>`;
+      // Gli id di una giornata che sono ancora nell'elenco in vista: dopo una ricerca
+      // o un filtro un gruppo può nominare elementi che non si stanno più mostrando.
+      const giornoIds = g => g ? g.items.map(p => p.id).filter(x => items.some(p => p.id === x)) : [];
       const renderFoto = (shown) => {
         lastMems = memories(shown);
         let body = "";
         if (lastMems.length) body += `<div class="mem-wrap"><div class="mem-head">Ricordi</div><div class="mem-strip">${lastMems.map((mm, i) => memCard(mm, i)).join("")}</div></div>`;
-        if (shown.length) groupByDate(shown).forEach(s => body += `<div class="date-head">${s.label}${s.count > 1 ? ` <span class="date-count">${s.count}</span>` : ""}</div>` + gridHtml(s.items));
+        lastGroups = shown.length ? groupByDate(shown) : [];
+        if (shown.length) lastGroups.forEach((s, gi) => { body += dayHead(s, gi) + gridHtml(s.items); });
         else body += `<div class="gp-empty">${ICO("images","width:44px;height:44px")}<p>Nessuna foto.<br>Scatta con la Fotocamera o importa immagini.</p></div>`;
         frame(fotoHeader(), body);
         bindTop(); bindCells(root);
@@ -1071,9 +1092,11 @@ const NovaApps = (() => {
           const needle = q.toLowerCase();
           const res = shown.filter(p => !needle || p.name.toLowerCase().includes(needle) || (p.album || "").toLowerCase().includes(needle) || dayLabel(p.ts).toLowerCase().includes(needle));
           items = res;
-          body += res.length ? groupByDate(res).map(s => `<div class="date-head">${s.label}</div>` + gridHtml(s.items)).join("") : `<div class="gp-empty"><p>Nessun risultato per “${q}”.</p></div>`;
+          lastGroups = res.length ? groupByDate(res) : [];
+          body += res.length ? lastGroups.map((s, gi) => dayHead(s, gi) + gridHtml(s.items)).join("") : `<div class="gp-empty"><p>Nessun risultato per “${q}”.</p></div>`;
         } else {
           items = shown;
+          lastGroups = [];
           body += `<div class="sec-label">Categorie</div>`;
           body += CATS.map(([n, ic, col], i) => `<div class="gp-catrow" data-scat="${i}"><div class="i-ico" style="background:${col}">${ICO(ic,"width:20px;height:20px")}</div><div class="i-body"><div class="i-title">${n}</div><div class="i-sub">${counts[n]}</div></div><div style="color:var(--text-dim)">›</div></div>`).join("");
           if (lastMems.length) body += `<div class="mem-wrap"><div class="mem-head">Ricordi</div><div class="mem-strip">${lastMems.map((mm, i) => memCard(mm, i)).join("")}</div></div>`;
@@ -1249,9 +1272,46 @@ const NovaApps = (() => {
       };
 
       // ---- interazioni griglia ----
-      const exitSel = () => { selMode = false; sel = []; draw(); };
-      const toggleSel = id => { const k = sel.indexOf(id); if (k >= 0) sel.splice(k, 1); else sel.push(id); draw(); };
-      const enterSel = (id) => { selMode = true; sel = id ? [id] : []; draw(); };
+      // Ridisegna la griglia (serve per entrare o uscire dalla selezione: le celle
+      // cambiano forma, compare o sparisce il cerchio di spunta) ma RIMETTENDO la
+      // videata dove stavi scorrendo. Prima ogni tocco ridisegnava tutto e la
+      // griglia ripartiva dall'alto: per scegliere quattro cose in fondo
+      // bisognava riscorrere quattro volte.
+      const drawKeep = async () => {
+        const b0 = root.querySelector(".gp-body");
+        const top = b0 ? b0.scrollTop : 0;
+        await draw();
+        const b1 = root.querySelector(".gp-body");
+        if (b1 && top) b1.scrollTop = top;
+      };
+      // Aggiorna i segni della selezione SENZA ricostruire la griglia: si accende o
+      // si spegne la cella toccata, si aggiorna il contatore, e la videata non si
+      // muove di un pixel. Questa è la strada di ogni tocco in selezione.
+      const syncSelMarks = () => {
+        root.querySelectorAll(".gp-cell").forEach(el => {
+          const it = items[+el.dataset.i]; if (!it) return;
+          const on = sel.includes(it.id);
+          el.classList.toggle("sel", on);
+          const ck = el.querySelector(".gp-check"); if (ck) ck.textContent = on ? "✓" : "";
+        });
+        // Il segno accanto alla data segue la sua giornata: spento finché qualcosa
+        // di quel giorno resta fuori, acceso quando la giornata è presa tutta.
+        root.querySelectorAll("[data-day]").forEach(el => {
+          const g = lastGroups[+el.dataset.day]; if (!g) return;
+          const ids = giornoIds(g);
+          el.classList.toggle("sel-day", ids.length > 0 && ids.every(x => sel.includes(x)));
+        });
+        const cnt = root.querySelector("#sel-count");
+        if (cnt) cnt.textContent = sel.length === 1 ? "1 elemento" : sel.length + " elementi";
+        const ba = root.querySelector("#sel-all");
+        if (ba) ba.textContent = (items.length && sel.length >= items.length) ? "Nessuno" : "Tutti";
+      };
+      const exitSel = () => { selMode = false; sel = []; drawKeep(); };
+      const toggleSel = id => { const k = sel.indexOf(id); if (k >= 0) sel.splice(k, 1); else sel.push(id); syncSelMarks(); };
+      // "Tutti" / "Nessuno": prende tutto quello che si sta vedendo (la scheda, la
+      // raccolta aperta, il risultato della ricerca), non tutto l'archivio.
+      const selAll = () => { sel = (items.length && sel.length < items.length) ? items.map(p => p.id) : []; syncSelMarks(); };
+      const enterSel = (id) => { selMode = true; sel = id ? [id] : []; drawKeep(); };
       const bindCells = (container) => {
         container.querySelectorAll(".gp-cell").forEach(el => {
           const i = +el.dataset.i, it = items[i];
@@ -1335,11 +1395,10 @@ const NovaApps = (() => {
         draw();
       };
       const bindSelHeader = () => {
-        const cnt = root.querySelector("#sel-count");
-        if (cnt) cnt.textContent = sel.length === 1 ? "1 elemento" : sel.length + " elementi";
         root.querySelectorAll("[data-sel]").forEach(b => b.onclick = () => {
           const a = b.dataset.sel;
           if (a === "x") exitSel();
+          else if (a === "all") selAll();
           else if (a === "album") selAlbum();
           else if (a === "heart") selFav();
           else if (a === "share") selShare();
@@ -1347,6 +1406,7 @@ const NovaApps = (() => {
           else if (a === "restore") selRestore();
           else if (a === "del") selDel();
         });
+        syncSelMarks();
       };
       const bindTop = () => {
         root.querySelectorAll("#gal-nav [data-tab]").forEach(b => b.onclick = () => { cat = null; q = ""; viewTab = b.dataset.tab; selMode = false; sel = []; draw(); });
@@ -1357,6 +1417,20 @@ const NovaApps = (() => {
         const et = root.querySelector("#empty-trash"); if (et) et.onclick = emptyTrash;
         bindSelHeader();
         root.querySelectorAll("[data-mem]").forEach(el => el.onclick = () => { const mm = lastMems[+el.dataset.mem]; cat = { kind:"mem", title: mm.label, filter: () => mm.items }; draw(); });
+        // Tocco sul segno di selezione accanto a una data: prende tutte le foto di
+        // quel giorno — o le lascia, se erano già tutte scelte. Se non si era ancora
+        // in selezione, il tocco ci entra: una giornata intera con un dito solo.
+        root.querySelectorAll("[data-day]").forEach(el => {
+          el.onclick = () => {
+            const g = lastGroups[+el.dataset.day]; if (!g) return;
+            const ids = giornoIds(g);
+            if (!ids.length) return;
+            if (!selMode) { selMode = true; sel = ids.slice(); drawKeep().then(syncSelMarks); return; }
+            const allOn = ids.every(x => sel.includes(x));
+            ids.forEach(x => { const k = sel.indexOf(x); if (allOn) { if (k >= 0) sel.splice(k, 1); } else if (k < 0) sel.push(x); });
+            syncSelMarks();
+          };
+        });
       };
       const openFotoMenu = () => {
         const sheet = document.createElement("div"); sheet.className = "sheet-ov";

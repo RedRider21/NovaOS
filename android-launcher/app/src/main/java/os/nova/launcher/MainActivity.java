@@ -398,14 +398,22 @@ public class MainActivity extends Activity {
         return (dot > 0) ? nome.substring(0, dot) + "-" + n + nome.substring(dot) : nome + "-" + n;
     }
 
-    /** Scrive nella cache dell'app i byte di un data URL e restituisce l'URI content://
+    /**
+     * Scrive nella cache dell'app i byte di un data URL e restituisce l'URI content://
      *  con cui condividerlo. Usata da tutte le condivisioni (una o più file).
      *
      *  <p>{@code nomeBase} viene ripulito: arriva dalla pagina, quindi barre e due punti
      *  verrebbero letti come percorso e si scriverebbe fuori dalla cache. */
     private android.net.Uri fileDaCondividere(String dataUrl, String nomeBase) throws Exception {
-        int comma = dataUrl.indexOf(',');
-        String meta = dataUrl.substring(dataUrl.indexOf(':') + 1, comma);   // es. video/webm;base64
+        // La virgola che separa i dati è l'ULTIMA, non la prima. L'intestazione può
+        // contenerne una per conto suo — «data:video/webm;codecs=vp8,opus;base64,…»:
+        // prendendo la prima, la decodifica partiva da «opus;base64,», e quei caratteri
+        // spostavano tutto il resto. Il file che ne usciva non era il filmato: era
+        // spazzatura, e il lettore lo rifiutava ("EBML header parsing failed"). Le foto
+        // non ne soffrivano perché «data:image/jpeg;base64,…» ha una virgola sola: si
+        // rompevano solo i video e gli audio, cioè i formati con i codec dichiarati.
+        int comma = dataUrl.lastIndexOf(',');
+        String meta = dataUrl.substring(dataUrl.indexOf(':') + 1, comma);   // es. video/webm;codecs=vp8,opus;base64
         String mime = meta.split(";")[0];
         byte[] bytes = android.util.Base64.decode(dataUrl.substring(comma + 1), android.util.Base64.DEFAULT);
         java.io.File dir = new java.io.File(getCacheDir(), "share");

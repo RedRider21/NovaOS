@@ -383,6 +383,35 @@ Fatto:
   Messaggi, Fotocamera, Browser) non riempiono più la cella: restano a **48px** centrate
   (come la griglia), così non appaiono più enormi né nel Drawer reale né nella simulazione
   del reale dello Studio (il modello in scala resta invariato).
+Ultime novità (0.1.56) — la Galleria: scegliere più elementi senza perdere il posto, e il suono dentro il filmato:
+- **Scegliendo più foto, la videata tornava in cima.** Ogni tocco su una cella ridisegnava l'intera
+  griglia, e con essa si azzerava la posizione di scorrimento: per prendere la quinta foto di una
+  giornata bisognava riscendere ogni volta. Ora il tocco **non ridisegna niente**: aggiorna solo la
+  cella toccata, il contatore e la voce «Tutti». La videata resta dove si trova anche entrando e
+  uscendo dalla selezione, e nell'elenco lunghi si sceglie una fila intera senza mai tornare su.
+- **Selezione per giornata e «tutto», come in Google Foto.** Accanto a ogni data c'è un segno di
+  selezione: un tocco prende **tutte** le foto e i filmati di quel giorno (e lo stesso tocco li
+  lascia, se erano già presi); se non si era in selezione, quel tocco la apre. Per l'intero elenco
+  c'è **«Tutti»** nella barra della selezione, che diventa «Nessuno» quando è tutto preso.
+  Il segno resta sempre visibile, così la funzione si vede.
+- **Il suono dei filmati è ora dentro il filmato.** La registrazione video chiedeva l'audio al
+  registratore di sistema, e lo teneva **a parte**: dentro NovaOS la riproduzione restava
+  sincronizzata, ma appena il filmato usciva — condiviso o salvato in Download — l'audio non lo
+  seguiva e il file arrivava muto. Ora l'audio si chiede **dentro lo stesso flusso del video**,
+  quindi finisce nel file: un filmato, un suono, per qualunque destinazione. Se il telefono non
+  concede il microfono al motore web, resta il registratore di sistema come rete di sicurezza
+  (l'audio continua a sentirsi in riproduzione dentro NovaOS).
+- **Ogni filmato condiviso o salvato arrivava corrotto.** L'intestazione di un video dichiara i
+  codec (`data:video/webm;codecs=vp8,opus;base64,…`) e contiene **una virgola sua**: il lato
+  nativo tagliava i dati sulla **prima** virgola invece che sull'ultima, e decodificava partendo da
+  `opus;base64,` — quei caratteri spostavano tutto il resto, e il file che ne usciva non era il
+  filmato (il lettore lo rifiutava: `EBML header parsing failed`). Le foto non ne soffrivano: il
+  loro tipo (`data:image/jpeg;base64,…`) ha una virgola sola. Si rompevano solo video e audio, cioè
+  i formati con i codec dichiarati. Verificato prima e dopo: il file condiviso ora è identico al
+  filmato registrato, con le sue tracce. **Richiede l'APK.**
+  Aggiornamento dell'interfaccia: la Galleria e il suono dei video viaggiano nell'APK, quindi per
+  vederli serve installarlo.
+
 Ultime novità (0.1.56) — la Galleria apre l'elemento giusto:
 - **Toccando una foto o un video si apriva l'elemento sbagliato.** La griglia di Foto è divisa per
   giorno, e ogni giorno è una griglia a sé: il numero scritto sulla cella era la posizione **dentro

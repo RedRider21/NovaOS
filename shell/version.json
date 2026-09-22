@@ -2,8 +2,8 @@
   "version": "0.1.56",
   "build": 58,
   "minNative": 12,
-  "date": "2026-09-21",
-  "notes": "Galleria: toccando una foto o un video si apriva l'elemento sbagliato. Il numero scritto sulla cella era preso dal gruppo del giorno (ogni giorno riparte da zero) invece che dall'elenco completo, quindi dal secondo giorno in poi si apriva l'elemento che occupava quella posizione nella galleria intera. Ora la cella ricava la sua posizione dall'elenco completo: si apre sempre l'elemento toccato, e le frecce avanti/indietro scorrono la galleria nell'ordine giusto. Riguarda anche la ricerca. Aggiornamento della sola interfaccia, nessuna reinstallazione dell'APK.",
+  "date": "2026-09-22",
+  "notes": "Galleria: scegliere più foto e filmati non riporta più la videata in cima a ogni tocco, e un'intera giornata o tutto l'elenco si prendono con un tocco (il segno accanto alla data, o «Tutti» nella selezione), come in Google Foto. Video: il suono ora è dentro il filmato, quindi condiviso o salvato in Download si sente (prima l'audio era registrato a parte e restava dentro NovaOS). Corretto anche un difetto che consegnava corrotti tutti i filmati condivisi o salvati: l'intestazione di un video contiene una virgola sua («codecs=vp8,opus») e i dati venivano decodificati da lì. La fascia nera in alto (foro della fotocamera o notch) non taglia più NovaOS.",
   "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1.52/NovaOS-0.1.52.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/bridge.js",    "js/icons.js",    "js/os.js",    "js/version.js",    "manifest.webmanifest",    "sw.js",
