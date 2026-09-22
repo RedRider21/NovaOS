@@ -192,6 +192,17 @@ public class MainActivity extends Activity {
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                              WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
 
+        // Il ritaglio dello schermo in alto (foro della fotocamera o notch): senza
+        // questa riga Android ACCORCIA la finestra e lascia una fascia nera sopra
+        // NovaOS. Misurato sull'emulatore: mLetterboxInsets=[0,128] — 128 px persi
+        // in tutte le schermate. Con SHORT_EDGES il vetro arriva sotto il foro, e la
+        // shell si tiene libera la striscia col safe-area del CSS (--sa-t). Nota:
+        // FLAG_LAYOUT_NO_LIMITS da solo non basta, il ritaglio si rispetta comunque.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            getWindow().getAttributes().layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        }
+
         web = new WebView(this);
         setContentView(web);
 
