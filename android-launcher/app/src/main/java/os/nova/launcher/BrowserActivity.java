@@ -36,13 +36,16 @@ import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
 import android.webkit.PermissionRequest;
 import android.webkit.URLUtil;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
+import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.GridLayout;
@@ -58,9 +61,11 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Il browser di NovaOS.
@@ -100,6 +105,10 @@ public class BrowserActivity extends Activity {
         boolean incognito = false;
         boolean desktop = false;
         Bitmap anteprima;   // per il selettore schede
+        // Scheda di lettura: dentro non c'è un sito da visitare ma un testo che abbiamo
+        // ricavato noi. Serve a due cose: non finire nella cronologia (l'indirizzo è quello
+        // del sito, ma la pagina visitata è questa) e non riaprire una lettura su una lettura.
+        boolean lettura = false;
     }
 
     private FrameLayout selettore;   // selettore schede a griglia (null = chiuso)
@@ -157,6 +166,17 @@ public class BrowserActivity extends Activity {
     private TextView stellaFila, stellaVoceIcona, stellaVoceTesto;
     // Palette del pannello del menu mentre lo si costruisce (segue la scheda in vista).
     private int pCard, pCap, pTxt, pDim;
+
+    /**
+     * Le decisioni prese sito per sito (v. «Impostazioni del sito»).
+     *
+     * <p>Sta nella stessa copia dei preferiti e del tema: un oggetto con una chiave per
+     * sito — {@code {"example.com":{"popup":"block","camera":"block","desktop":true}}} — e
+     * dentro solo le voci che l'utente ha davvero toccato. Un sito senza chiave è un sito
+     * su cui non si è deciso niente, e vale il comportamento di sempre: è il motivo per cui
+     * le decisioni si salvano per differenza e non per valore di partenza.
+     */
+    private static final String PREF_SITI = "nova:browserSiti";
 
     /** Legge il tema salvato da NovaOS (SharedPreferences "novaos", chiave nova:theme)
      *  e sceglie la palette chiara o scura, per andare di pari passo con il resto del sistema. */
@@ -581,7 +601,7 @@ public class BrowserActivity extends Activity {
         stellaFila = iconaMenu(bm ? "★" : "☆", indice, this::invertiPreferitoDaMenu);
         stellaFila.setTextColor(bm ? ACC : pTxt);   // blu quando la pagina è salvata
         fila.addView(stellaFila);
-        fila.addView(iconaMenu("⬇", true, v -> apriDownload()));
+        fila.addView(iconaMenu("⬇", true, v -> apriElencoDownload()));
         fila.addView(iconaMenu("⟳", s != null,
                 v -> { Scheda c = schedaCorrente(); if (c != null && c.web != null) c.web.reload(); }));
         pannello.addView(fila);
@@ -604,9 +624,22 @@ public class BrowserActivity extends Activity {
         pannello.addView(voceMenu(stellaVoceIcona, stellaVoceTesto, this::invertiPreferitoDaMenu));
         pannello.addView(separatore());
         pannello.addView(voceMenu(R.drawable.ic_find, "Trova nella pagina", v -> mostraBarraTrova(true)));
+        // «Mostra modalità lettura»: la pagina si legge senza il contorno del sito. Il testo
+        // si ricava dalla pagina stessa (v. modalitaLettura) e si apre in una scheda a parte.
+        pannello.addView(voceMenu(R.drawable.ic_reader, "Mostra modalità lettura", v -> modalitaLettura()));
         pannello.addView(voceMenu(s != null && s.desktop ? R.drawable.ic_mobile : R.drawable.ic_desktop,
                 s != null && s.desktop ? "Sito mobile" : "Sito desktop",
                 v -> { Scheda c = schedaCorrente(); if (c != null) cambiaModalita(c, !c.desktop); }));
+        pannello.addView(separatore());
+        // ---- da una pagina a una cosa che resta: un file, un'icona nella home ----
+        pannello.addView(voceMenu(R.drawable.ic_download, "Download", v -> apriElencoDownload()));
+        pannello.addView(voceMenu(R.drawable.ic_install, "Installa", v -> installaApp()));
+        pannello.addView(voceMenu(R.drawable.ic_shortcut, "Crea scorciatoia", v -> creaScorciatoia()));
+        pannello.addView(separatore());
+        // ---- quello che si cancella e quello che si concede, tutti e due per sito ----
+        pannello.addView(voceMenu(R.drawable.ic_trash, "Elimina cronologia", v -> eliminaCronologia()));
+        pannello.addView(voceMenu(R.drawable.ic_settings, "Impostazioni del sito", v -> impostazioniSito()));
+        pannello.addView(separatore());
         pannello.addView(voceMenu(R.drawable.ic_fullscreen, "Schermo intero", v -> setSchermoIntero(true)));
         pannello.addView(separatore());
         pannello.addView(voceMenu(R.drawable.ic_share, "Condividi…",
@@ -751,20 +784,114 @@ public class BrowserActivity extends Activity {
     }
 
     /**
-     * Porta ai download di sistema.
+     * L'elenco dei download, dentro il browser.
      *
-     * <p>I file che questa schermata salva finiscono nella cartella Download (v. il
-     * {@code DownloadListener}): l'elenco dei download non è una schermata che abbiamo,
-     * quindi l'icona della freccia in giù porta dove i file stanno davvero, invece di aprire
-     * una lista vuota fatta in casa.
+     * <p>Prima questa voce passava all'app dei download del sistema: i file si vedevano, ma
+     * la via d'uscita da quella schermata dipendeva da quella app — e su un telefono può non
+     * esserci, lasciando il browser irraggiungibile. L'elenco lo disegna quindi il browser,
+     * con la stessa domanda al sistema che fa quell'app ({@link DownloadManager}) e con un
+     * solo modo di chiuderlo: il suo pulsante. I file restano dove sono — la cartella
+     * Download del telefono — e da qui si aprono con l'app che li sa leggere.
      */
-    private void apriDownload() {
+    private void apriElencoDownload() {
+        DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+        if (dm == null) { Toast.makeText(this, "Download non disponibile", Toast.LENGTH_SHORT).show(); return; }
+
+        final List<Scaricato> righe = new ArrayList<>();
+        android.database.Cursor c = null;
         try {
-            startActivity(new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS));
+            // Tutti i download del telefono, compresi quelli in corso: un elenco che
+            // mostrasse solo i file finiti sembrerebbe non aver visto il download appena
+            // avviato. I valori si leggono per nome di colonna — gli indici fissi cambiano
+            // da una versione all'altra — e l'ordine si fa qui sotto: la Query di questa
+            // versione di Android non ha un «ordina per», quindi il sistema non lo fa.
+            c = dm.query(new DownloadManager.Query());
+            while (c != null && c.moveToNext()) {
+                righe.add(new Scaricato(
+                        c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_ID)),
+                        c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_LAST_MODIFIED_TIMESTAMP)),
+                        c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)),
+                        c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
+                        c.getString(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TITLE)),
+                        c.getString(c.getColumnIndexOrThrow(DownloadManager.COLUMN_MEDIA_TYPE))));
+            }
         } catch (Exception e) {
-            Log.w(TAG, "nessuna app per i download", e);
-            Toast.makeText(this, "Nessuna app per i download", Toast.LENGTH_SHORT).show();
+            Log.w(TAG, "elenco download non leggibile", e);
+        } finally {
+            if (c != null) c.close();
         }
+        righe.sort((x, y) -> Long.compare(y.quando, x.quando));
+
+        if (righe.isEmpty()) {
+            mostraAvviso("Download",
+                "Nessun download.\nI file scaricati dalle pagine finiscono nella cartella Download del telefono: li trovi anche da lì.",
+                null, Pulsante.principale("Chiudi", null));
+            return;
+        }
+        LinearLayout corpo = apriFoglio(righe.size() == 1 ? "Download" : "Download (" + righe.size() + ")", "Chiudi");
+        for (final Scaricato s : righe) {
+            corpo.addView(rigaFoglio(s.nome(), s.dettaglio(), () -> apriFileScaricato(s)));
+        }
+    }
+
+    /** Una voce dell'elenco dei download: quello che serve a mostrarla e ad aprirla. */
+    private static class Scaricato {
+        final long id, quando, quanti;
+        final int stato;
+        final String nome, mime;
+        Scaricato(long id, long quando, long quanti, int stato, String nome, String mime) {
+            this.id = id; this.quando = quando; this.quanti = quanti; this.stato = stato;
+            this.nome = nome == null || nome.isEmpty() ? "File" : nome;
+            this.mime = mime == null ? "" : mime;
+        }
+        String nome() { return nome; }
+        String dettaglio() {
+            StringBuilder b = new StringBuilder();
+            if (quanti > 0) b.append(dimensione(quanti));
+            if (stato != DownloadManager.STATUS_SUCCESSFUL) {
+                if (b.length() > 0) b.append(" · ");
+                b.append(statoDownload(stato));
+            }
+            return b.toString();
+        }
+    }
+
+    /** Apre un file scaricato con l'app che lo sa leggere. */
+    private void apriFileScaricato(Scaricato s) {
+        if (s.stato != DownloadManager.STATUS_SUCCESSFUL) {
+            Toast.makeText(this, statoDownload(s.stato), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+            Uri u = dm == null ? null : dm.getUriForDownloadedFile(s.id);
+            if (u == null) { Toast.makeText(this, "Il file non c'è più", Toast.LENGTH_SHORT).show(); return; }
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setDataAndType(u, s.mime.isEmpty() ? "*/*" : s.mime);
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(i);
+        } catch (Exception e) {
+            // Nessuna app installata sa leggere questo tipo di file: è una risposta, non un guasto.
+            Log.w(TAG, "nessuna app per questo file", e);
+            Toast.makeText(this, "Nessuna app per aprire questo file", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private static String statoDownload(int stato) {
+        switch (stato) {
+            case DownloadManager.STATUS_PENDING: return "in attesa";
+            case DownloadManager.STATUS_RUNNING: return "in corso";
+            case DownloadManager.STATUS_PAUSED: return "in pausa";
+            case DownloadManager.STATUS_FAILED: return "non riuscito";
+            default: return "";
+        }
+    }
+
+    /** Una dimensione leggibile: «412 B», «38 kB», «1,2 MB». */
+    private static String dimensione(long b) {
+        if (b < 1024) return b + " B";
+        if (b < 1024L * 1024L) return String.format(Locale.ITALY, "%.0f kB", b / 1024.0);
+        return String.format(Locale.ITALY, "%.1f MB", b / (1024.0 * 1024.0));
     }
 
     /**
@@ -777,6 +904,10 @@ public class BrowserActivity extends Activity {
      */
     private void cambiaModalita(Scheda s, boolean desktop) {
         s.desktop = desktop;
+        // La scelta vale per il sito e non per la scheda: chi ha bisogno della vista desktop
+        // su un sito la vuole tutte le volte, anche nella scheda aperta domani. Ed è la
+        // stessa voce che si trova nelle impostazioni del sito.
+        decidi(hostDi(s.indirizzo), "desktop", desktop ? "si" : "no");
         applicaUa(s);
         if (s.web != null) s.web.reload();
     }
@@ -793,13 +924,21 @@ public class BrowserActivity extends Activity {
         s.setLoadWithOverviewMode(true);
     }
 
+    /**
+     * Se questo sito va mostrato da computer.
+     *
+     * <p>L'ordine è: la scelta dell'utente, se c'è; poi i due siti che da telefono non
+     * funzionano (sono applicazioni da scrivania, e in vista mobile si aprono a metà); poi
+     * no. La scelta dell'utente viene prima di tutto perché è l'unica che sa qualcosa che
+     * noi non sappiamo.
+     */
     private boolean vuoleDesktop(String url) {
-        try {
-            String host = Uri.parse(url).getHost();
-            if (host == null) return false;
-            host = host.toLowerCase();
-            return host.contains("web.whatsapp.com") || host.contains("web.telegram.org");
-        } catch (Exception e) { return false; }
+        String host = hostDi(url);
+        if (host.isEmpty()) return false;
+        String scelta = decisione(host, "desktop");
+        if ("si".equals(scelta)) return true;
+        if ("no".equals(scelta)) return false;
+        return host.contains("web.whatsapp.com") || host.contains("web.telegram.org");
     }
 
     // ------------------------------------------------------------------ navigazione
@@ -924,7 +1063,9 @@ public class BrowserActivity extends Activity {
                 if (vw == webCorrente()) syncBar(tab.indirizzo);
                 // La cronologia si scrive a caricamento finito: a pagina iniziata il titolo
                 // non c'è ancora, e le voci sarebbero tutte senza nome.
-                if (!tab.incognito) addCronologia(url);
+                // Una scheda di lettura non è una pagina visitata: l'indirizzo è quello del
+                // sito, ma quello che si è letto è il testo che ne abbiamo ricavato.
+                if (!tab.incognito && !tab.lettura) addCronologia(url, tab.titolo);
             }
             @Override public boolean shouldOverrideUrlLoading(WebView vw, WebResourceRequest req) {
                 String u = req.getUrl() != null ? req.getUrl().toString() : "";
@@ -972,6 +1113,14 @@ public class BrowserActivity extends Activity {
             }
             /** {@code window.open} e i popup: si aprono in una scheda nuova. */
             @Override public boolean onCreateWindow(WebView vw, boolean dialog, boolean gesture, Message resultMsg) {
+                // Se per questo sito i pop-up sono bloccati (v. «Impostazioni del sito»), la
+                // finestra non si apre: restituire false lascia la richiesta cadere, ed è
+                // esattamente quello che deve succedere.
+                String sito = hostDi(tab.indirizzo);
+                if ("block".equals(decisione(sito, "popup"))) {
+                    Toast.makeText(BrowserActivity.this, "Pop-up bloccato: " + sito, Toast.LENGTH_SHORT).show();
+                    return false;
+                }
                 Scheda nuova = nuovaScheda(null, tab.incognito, tab.desktop);
                 if (resultMsg != null && resultMsg.obj instanceof WebView.WebViewTransport && nuova.web != null) {
                     ((WebView.WebViewTransport) resultMsg.obj).setWebView(nuova.web);
@@ -1074,6 +1223,14 @@ public class BrowserActivity extends Activity {
                     if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) vuoleAudio = true;
                 }
                 ArrayList<String> concesse = new ArrayList<>();
+                // Bloccate nelle impostazioni del sito: la pagina non le riceve e non si
+                // chiede niente ad Android. È l'unica cosa che possiamo promettere su questi
+                // permessi — «consentire in anticipo» no, perché la fotocamera senza il
+                // permesso di Android inquadrerebbe il vuoto.
+                String sito = richiesta.getOrigin() == null ? "" : richiesta.getOrigin().getHost();
+                if ("block".equals(decisione(sito, "camera"))) vuoleVideo = false;
+                if ("block".equals(decisione(sito, "microfono"))) vuoleAudio = false;
+                if (!vuoleVideo && !vuoleAudio) { richiesta.deny(); return; }
                 if (vuoleVideo && checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
                     concesse.add(PermissionRequest.RESOURCE_VIDEO_CAPTURE);
                 if (vuoleAudio && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
@@ -1101,6 +1258,7 @@ public class BrowserActivity extends Activity {
 
             /** La pagina chiede di sapere dove sei: si chiede la posizione ad Android. */
             @Override public void onGeolocationPermissionsShowPrompt(String origine, final GeolocationPermissions.Callback cb) {
+                if ("block".equals(decisione(hostDi(origine), "posizione"))) { cb.invoke(origine, false, false); return; }
                 if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                     cb.invoke(origine, true, false);
                     return;
@@ -1360,13 +1518,18 @@ public class BrowserActivity extends Activity {
         } catch (Exception e) { Log.w(TAG, "preferito non salvato", e); }
     }
 
-    private void addCronologia(String url) {
+    private void addCronologia(String url, String titolo) {
         if (url == null || url.isEmpty() || url.startsWith("data:")) return;
         try {
             JSONArray a = arr("browserHistory");
             JSONArray out = new JSONArray();
             JSONObject o = new JSONObject();
-            o.put("url", url); o.put("t", System.currentTimeMillis());
+            o.put("url", url);
+            // Il titolo della pagina, che il browser conosce: la shell prima salvava solo
+            // l'indirizzo, e l'elenco era una lista di indirizzi. Le voci vecchie non ce
+            // l'hanno, e l'elenco le mostra col sito — v. nomeCronologia.
+            if (titolo != null && !titolo.isEmpty()) o.put("name", titolo);
+            o.put("t", System.currentTimeMillis());
             out.put(o);
             // 30 voci, come la shell: è la sua stessa coda, e allungarla qui vorrebbe dire
             // che il primo caricamento della shell la accorcia di nuovo.
@@ -1444,84 +1607,1187 @@ public class BrowserActivity extends Activity {
         } catch (Exception e) { Log.w(TAG, "preferito non rimosso", e); }
     }
 
-    /** Elenco preferiti: tocca una voce per aprire/rinominare/eliminare. */
-    private void mostraPreferiti() {
-        JSONArray a = arr("bookmarks");
-        int n = a.length();
-        if (n == 0) {
-            new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle("Preferiti")
-                .setMessage("Nessun preferito.\nApri un sito e usa «Aggiungi ai preferiti» dal menu.")
-                .setNegativeButton("Chiudi", null).show();
-            return;
+    // =====================================================================
+    //  Le superfici del browser: gli elenchi, i fogli e gli avvisi
+    //
+    //  Tutto quello che il browser apre sopra la pagina — la cronologia, i preferiti, le
+    //  impostazioni di un sito, la conferma di una cancellazione — è disegnato qui. Prima
+    //  erano finestrelle di sistema: grigie, coi pulsanti in fondo a destra, i caratteri di
+    //  un'altra app e il titolo in grassetto blu — cioè un pezzo di Android in mezzo a
+    //  NovaOS, ogni volta diverso da tutto il resto. Qui ci sono tre sole forme, e sono le
+    //  stesse tre di un browser: l'elenco a tutto schermo (cronologia, preferiti), il foglio
+    //  che sale dal basso (le scelte), l'avviso al centro (le conferme).
+    // =====================================================================
+
+    private FrameLayout elenco;        // elenco a tutto schermo aperto (null = nessuno)
+    private LinearLayout elencoCorpo;  // dove vanno le righe
+    private boolean elencoPreferiti;   // quale dei due elenchi è aperto
+    private String elencoFiltro = "";  // il testo cercato nel campo in alto
+
+    private FrameLayout foglio;        // foglio sollevato dal basso (null = chiuso)
+    private FrameLayout avviso;        // avviso al centro (null = chiuso)
+
+    /** Una scelta nell'avviso: il testo del pulsante, se è quello principale, e che cosa fa. */
+    private static class Pulsante {
+        final String testo; final boolean forte; final Runnable azione;
+        Pulsante(String testo, boolean forte, Runnable azione) { this.testo = testo; this.forte = forte; this.azione = azione; }
+        static Pulsante normale(String testo, Runnable azione) { return new Pulsante(testo, false, azione); }
+        static Pulsante principale(String testo, Runnable azione) { return new Pulsante(testo, true, azione); }
+    }
+
+    /** Vale per la scheda in vista: in incognito le superfici sono scure. */
+    private boolean incognitoOra() {
+        Scheda s = schedaCorrente();
+        return s != null && s.incognito;
+    }
+    private int colTxt() { return incognitoOra() ? INC_TXT : TXT; }
+    private int colDim() { return incognitoOra() ? INC_DIM : DIM; }
+    private int colCard() { return incognitoOra() ? INC_CARD : CARD; }
+    private int colCap() { return incognitoOra() ? INC_CAP : CAP; }
+
+    // ------------------------------------------------------------ il foglio dal basso
+    /**
+     * Apre un foglio dal basso con il suo titolo, e restituisce il corpo da riempire.
+     *
+     * <p>Si usa così: si chiama, si aggiungono le righe con {@link #rigaFoglio}, e il foglio
+     * si compone da sé — titolo in alto, righe in mezzo, la via d'uscita in fondo. La riga
+     * d'uscita sta fuori dallo scorrimento apposta: se le voci fossero tante da dover
+     * scorrere, il modo di chiudere non deve scorrere via con loro.
+     *
+     * @param titolo  l'intestazione, oppure {@code null} per un foglio di sole voci
+     * @param chiudi  il testo del pulsante di chiusura ({@code null} per non metterlo)
+     */
+    private LinearLayout apriFoglio(String titolo, String chiudi) {
+        chiudiFoglio();
+        chiudiAvviso();
+        final int cCard = colCard(), cTxt = colTxt(), cDim = colDim();
+
+        LinearLayout scheda = new LinearLayout(this);
+        scheda.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable sfondo = new GradientDrawable();
+        sfondo.setColor(cCard);
+        sfondo.setCornerRadii(new float[]{ dp(20), dp(20), dp(20), dp(20), 0, 0, 0, 0 });
+        scheda.setBackground(sfondo);
+
+        if (titolo != null && !titolo.isEmpty()) {
+            TextView t = new TextView(this);
+            t.setText(titolo);
+            t.setTextColor(cDim);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            t.setPadding(dp(22), dp(20), dp(22), dp(6));
+            t.setMaxLines(2);
+            scheda.addView(t);
         }
-        final String[] labels = new String[n];
-        for (int i = 0; i < n; i++) {
+
+        LinearLayout corpo = new LinearLayout(this);
+        corpo.setOrientation(LinearLayout.VERTICAL);
+        ScrollView scorri = new ScrollView(this);
+        scorri.addView(corpo);
+        scheda.addView(scorri, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+        if (chiudi != null) {
+            View riga = new View(this);
+            riga.setBackgroundColor(cDim);
+            riga.setAlpha(0.18f);
+            scheda.addView(riga, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)));
+            TextView x = new TextView(this);
+            x.setText(chiudi);
+            x.setTextColor(cTxt);
+            x.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            x.setGravity(Gravity.CENTER);
+            x.setPadding(dp(22), dp(16), dp(22), dp(18));
+            x.setBackgroundResource(sfondoTocco());
+            x.setOnClickListener(v -> chiudiFoglio());
+            scheda.addView(x);
+        }
+
+        foglio = vetro(scheda, Gravity.BOTTOM);
+        // Un foglio più alto dello schermo si ferma prima del bordo: senza, le prime voci
+        // finirebbero fuori dalla cornice e non si potrebbero toccare.
+        scheda.post(() -> {
+            int max = (int) (getResources().getDisplayMetrics().heightPixels * 0.78f) - dp(24);
+            if (scheda.getHeight() > max) {
+                LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) scorri.getLayoutParams();
+                lp.height = max;
+                scorri.setLayoutParams(lp);
+            }
+        });
+        return corpo;
+    }
+
+    /** Una riga di un foglio: il testo, un dettaglio in coda, e cosa fare al tocco. */
+    private View rigaFoglio(String testo, String dettaglio, Runnable azione) {
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(dp(22), dp(15), dp(22), dp(15));
+        r.setBackgroundResource(sfondoTocco());
+
+        TextView t = new TextView(this);
+        t.setText(testo);
+        t.setTextColor(colTxt());
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        t.setLayoutParams(new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        r.addView(t);
+
+        if (dettaglio != null && !dettaglio.isEmpty()) {
+            TextView d = new TextView(this);
+            d.setText(dettaglio);
+            d.setTextColor(colDim());
+            d.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            d.setPadding(dp(12), 0, 0, 0);
+            r.addView(d);
+        }
+        if (azione != null) r.setOnClickListener(v -> { chiudiFoglio(); azione.run(); });
+        return r;
+    }
+
+    /** Una riga scelta fra le alternative: la spunta sta in coda a quella in corso. */
+    private View rigaScelta(String testo, boolean scelta, Runnable azione) {
+        LinearLayout r = (LinearLayout) rigaFoglio(testo, null, azione);
+        TextView s = new TextView(this);
+        s.setText("✓");
+        s.setTextColor(scelta ? ACC : Color.TRANSPARENT);
+        s.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        s.setPadding(dp(12), 0, 0, 0);
+        r.addView(s);
+        return r;
+    }
+
+    private void chiudiFoglio() {
+        if (foglio != null && foglio.getParent() != null) ((ViewGroup) foglio.getParent()).removeView(foglio);
+        foglio = null;
+    }
+
+    // ------------------------------------------------------------ l'avviso al centro
+    /**
+     * Un avviso: titolo, testo, e i pulsanti passati — che si mettono in fila da sinistra a
+     * destra nell'ordine in cui li si scrive, con il principale alla fine, cioè a destra,
+     * dove sta sempre il pulsante che conclude.
+     */
+    private void mostraAvviso(String titolo, String messaggio, View extra, Pulsante... pulsanti) {
+        chiudiAvviso();
+        chiudiFoglio();
+        final int cCard = colCard(), cTxt = colTxt(), cDim = colDim();
+
+        LinearLayout scheda = new LinearLayout(this);
+        scheda.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable sfondo = new GradientDrawable();
+        sfondo.setColor(cCard);
+        sfondo.setCornerRadius(dp(18));
+        scheda.setBackground(sfondo);
+        int pad = dp(22);
+        scheda.setPadding(pad, pad, pad, dp(12));
+
+        if (titolo != null && !titolo.isEmpty()) {
+            TextView t = new TextView(this);
+            t.setText(titolo);
+            t.setTextColor(cTxt);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+            t.setPadding(0, 0, 0, dp(8));
+            scheda.addView(t);
+        }
+        if (messaggio != null && !messaggio.isEmpty()) {
+            TextView m = new TextView(this);
+            m.setText(messaggio);
+            m.setTextColor(cDim);
+            m.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            m.setLineSpacing(0, 1.15f);
+            scheda.addView(m);
+        }
+        if (extra != null) { scheda.addView(extra); }
+
+        LinearLayout fila = new LinearLayout(this);
+        fila.setOrientation(LinearLayout.HORIZONTAL);
+        fila.setGravity(Gravity.END);
+        fila.setPadding(0, dp(6), 0, 0);
+        for (final Pulsante p : pulsanti) {
+            TextView b = new TextView(this);
+            b.setText(p.testo);
+            b.setTextColor(p.forte ? ACC : cDim);
+            b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            b.setPadding(dp(14), dp(12), dp(6), dp(10));
+            b.setBackgroundResource(sfondoTocco());
+            b.setOnClickListener(v -> {
+                chiudiAvviso();
+                // L'azione dopo la chiusura: aprire un altro avviso da dentro questo no —
+                // si sovrapporrebbero, e il secondo resterebbe sotto il primo.
+                if (p.azione != null) p.azione.run();
+            });
+            fila.addView(b);
+        }
+        scheda.addView(fila, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+        // La larghezza dell'avviso: mai più stretta di 280 dp e mai oltre il bordo dello
+        // schermo, con 28 dp di margine per lato — così su un telefono sta al centro e su
+        // uno schermo grande non si allarga fino a diventare illeggibile.
+        int larg = Math.min(dp(400), getResources().getDisplayMetrics().widthPixels - dp(56));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(larg, LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.CENTER;
+        avviso = vetro(scheda, Gravity.CENTER, lp);
+    }
+
+    private void chiudiAvviso() {
+        if (avviso != null && avviso.getParent() != null) ((ViewGroup) avviso.getParent()).removeView(avviso);
+        avviso = null;
+    }
+
+    /**
+     * Il vetro su cui appoggia un foglio o un avviso: il velo scuro che copre la pagina e,
+     * dentro, il pannello. Il tocco sul velo chiude, e non arriva alla pagina: sotto non c'è
+     * niente da premere.
+     */
+    private FrameLayout vetro(View pannello, int dove) {
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        lp.gravity = dove;
+        return vetro(pannello, dove, lp);
+    }
+
+    private FrameLayout vetro(View pannello, int dove, FrameLayout.LayoutParams lp) {
+        FrameLayout vetro = new FrameLayout(this);
+        vetro.setBackgroundColor(0xB3000000);
+        vetro.setClickable(true);
+        vetro.setOnClickListener(v -> { chiudiFoglio(); chiudiAvviso(); });
+        vetro.setPadding(0, dp(24), 0, 0);
+        lp.gravity = dove;
+        vetro.addView(pannello, lp);
+        ((ViewGroup) findViewById(android.R.id.content)).addView(vetro,
+                new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        return vetro;
+    }
+
+    // ------------------------------------------------------------ l'elenco a tutto schermo
+    private void mostraCronologia() { mostraElenco(false); }
+    private void mostraPreferiti() { mostraElenco(true); }
+
+    /**
+     * L'elenco delle pagine (cronologia o preferiti), a tutto schermo.
+     *
+     * <p>È una schermata e non una finestrella perché è quello che è: un elenco lungo, da
+     * leggere, da cercare e da scorrere. In cima la barra col titolo, il cestino e il campo
+     * di ricerca; sotto le righe con il titolo della pagina e il sito, raggruppate per
+     * giorno nella cronologia. Il tocco su una riga la apre, il ⋮ accanto (o il dito tenuto
+     * premuto) apre le sue azioni.
+     */
+    private void mostraElenco(boolean preferiti) {
+        chiudiElenco();
+        chiudiFoglio();
+        chiudiAvviso();
+        elencoPreferiti = preferiti;
+        elencoFiltro = "";
+
+        final int cBar = incognitoOra() ? INC_BAR : BAR, cBg = incognitoOra() ? INC_BG : BG,
+                  cTxt = colTxt(), cDim = colDim(), cCap = colCap();
+
+        FrameLayout tutto = new FrameLayout(this);
+        tutto.setBackgroundColor(cBg);
+        tutto.setClickable(true);
+
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+
+        // ---- barra: chiudi, titolo, cestino ----
+        LinearLayout testata = new LinearLayout(this);
+        testata.setOrientation(LinearLayout.VERTICAL);
+        testata.setBackgroundColor(cBar);
+
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.setPadding(dp(6), dp(10), dp(6), dp(4));
+        Button x = iconBtn("✕"); x.setTextColor(cTxt);
+        x.setOnClickListener(v -> chiudiElenco());
+        TextView tit = new TextView(this);
+        tit.setText(preferiti ? "Preferiti" : "Cronologia");
+        tit.setTextColor(cTxt);
+        tit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19);
+        tit.setPadding(dp(8), 0, 0, 0);
+        tit.setLayoutParams(new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        top.addView(x); top.addView(tit);
+        if (!preferiti) {
+            ImageView cestino = iconaBtn(R.drawable.ic_trash);
+            cestino.setColorFilter(cTxt, PorterDuff.Mode.SRC_IN);
+            cestino.setOnClickListener(v -> eliminaCronologia());
+            top.addView(cestino);
+        }
+        testata.addView(top);
+
+        // ---- il campo di ricerca, con la lente dentro la capsula ----
+        LinearLayout capsula = new LinearLayout(this);
+        capsula.setOrientation(LinearLayout.HORIZONTAL);
+        capsula.setGravity(Gravity.CENTER_VERTICAL);
+        GradientDrawable sfondoCap = new GradientDrawable();
+        sfondoCap.setColor(cCap);
+        sfondoCap.setCornerRadius(dp(22));
+        capsula.setBackground(sfondoCap);
+        capsula.setPadding(dp(16), dp(1), dp(16), dp(1));
+        ImageView lente = iconaVista(R.drawable.ic_find, 16, cDim);
+        EditText cerca = new EditText(this);
+        cerca.setBackgroundColor(Color.TRANSPARENT);
+        cerca.setHint(preferiti ? "Cerca nei preferiti" : "Cerca nella cronologia");
+        cerca.setTextColor(cTxt); cerca.setHintTextColor(cDim);
+        cerca.setSingleLine(true);
+        cerca.setInputType(InputType.TYPE_CLASS_TEXT);
+        cerca.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        cerca.setPadding(dp(10), dp(11), 0, dp(11));
+        capsula.addView(lente);
+        capsula.addView(cerca, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        clp.setMargins(dp(14), dp(2), dp(14), dp(12));
+        capsula.setLayoutParams(clp);
+        testata.addView(capsula);
+        col.addView(testata);
+
+        elencoCorpo = new LinearLayout(this);
+        elencoCorpo.setOrientation(LinearLayout.VERTICAL);
+        elencoCorpo.setPadding(0, dp(4), 0, dp(28));
+        ScrollView scorri = new ScrollView(this);
+        scorri.addView(elencoCorpo);
+        col.addView(scorri, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
+
+        tutto.addView(col, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        elenco = tutto;
+        ((ViewGroup) findViewById(android.R.id.content)).addView(tutto,
+                new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+        cerca.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            public void onTextChanged(CharSequence s, int a, int b, int c) { elencoFiltro = s.toString(); riempiElenco(); }
+            public void afterTextChanged(Editable s) {}
+        });
+        riempiElenco();
+    }
+
+    private void chiudiElenco() {
+        if (elenco != null && elenco.getParent() != null) ((ViewGroup) elenco.getParent()).removeView(elenco);
+        elenco = null;
+        elencoCorpo = null;
+    }
+
+    /** Ridisegna le righe dell'elenco secondo il testo cercato. */
+    private void riempiElenco() {
+        if (elencoCorpo == null) return;
+        elencoCorpo.removeAllViews();
+        String cerca = elencoFiltro.trim().toLowerCase(Locale.ITALY);
+        JSONArray a = arr(elencoPreferiti ? "bookmarks" : "browserHistory");
+        int mostrate = 0;
+        String gruppo = null;
+        for (int i = 0; i < a.length(); i++) {
             JSONObject o = a.optJSONObject(i);
-            labels[i] = "★  " + (o != null ? nomePreferito(o) : "");
+            if (o == null) continue;
+            String url = o.optString("url", "");
+            String nome = elencoPreferiti ? nomePreferito(o) : nomeCronologia(o);
+            if (!cerca.isEmpty()
+                    && !nome.toLowerCase(Locale.ITALY).contains(cerca)
+                    && !url.toLowerCase(Locale.ITALY).contains(cerca)) continue;
+            if (!elencoPreferiti) {
+                String g = giorno(o.optLong("t", 0));
+                if (!g.equals(gruppo)) { gruppo = g; elencoCorpo.addView(intestazioneGiorno(g)); }
+            }
+            final int idx = i;
+            final String indirizzo = url;
+            View.OnClickListener azioni = v -> azioniVoce(idx);
+            View riga = rigaElenco(nome, url, url, azioni);
+            riga.setOnClickListener(v -> { chiudiElenco(); apriUrl(indirizzo, false); });
+            elencoCorpo.addView(riga);
+            mostrate++;
         }
-        new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle("Preferiti (" + n + ")")
-            .setItems(labels, (d, w) -> azioniPreferito(w))
-            .setNegativeButton("Chiudi", null).show();
+        if (mostrate == 0) {
+            TextView v = new TextView(this);
+            v.setText(cerca.isEmpty()
+                    ? (elencoPreferiti ? "Nessun preferito.\nUsa «Aggiungi ai preferiti» dal menu su una pagina."
+                                       : "Nessuna cronologia.\nLe pagine che apri finiscono qui.")
+                    : "Nessun risultato per «" + elencoFiltro.trim() + "».");
+            v.setTextColor(colDim());
+            v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            v.setLineSpacing(0, 1.2f);
+            v.setGravity(Gravity.CENTER);
+            v.setPadding(dp(32), dp(72), dp(32), 0);
+            elencoCorpo.addView(v);
+        }
     }
 
-    private void azioniPreferito(int idx) {
+    /** «Oggi», «Ieri», o la data: l'intestazione che apre un giorno della cronologia. */
+    private static String giorno(long quando) {
+        if (quando <= 0) return "Meno recenti";
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.set(java.util.Calendar.HOUR_OF_DAY, 0); c.set(java.util.Calendar.MINUTE, 0);
+        c.set(java.util.Calendar.SECOND, 0); c.set(java.util.Calendar.MILLISECOND, 0);
+        long oggi = c.getTimeInMillis();
+        if (quando >= oggi) return "Oggi";
+        if (quando >= oggi - 86400000L) return "Ieri";
+        String s = new SimpleDateFormat("EEE d MMMM", Locale.ITALY).format(new java.util.Date(quando));
+        return s.substring(0, 1).toUpperCase(Locale.ITALY) + s.substring(1);
+    }
+
+    private TextView intestazioneGiorno(String testo) {
+        TextView h = new TextView(this);
+        h.setText(testo);
+        h.setTextColor(colDim());
+        h.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        h.setPadding(dp(18), dp(18), dp(18), dp(6));
+        return h;
+    }
+
+    /** Il titolo di una voce di cronologia: quello salvato, o il sito se non c'è. */
+    private static String nomeCronologia(JSONObject o) {
+        String n = o.optString("name", "");
+        String url = o.optString("url", "");
+        if (!n.isEmpty()) return n;
+        String host = hostDi(url);
+        return host.isEmpty() ? url : host;
+    }
+
+    /**
+     * Una riga di un elenco: la tessera del sito, il titolo, il sito, e il ⋮ delle azioni.
+     *
+     * <p>La tessera porta l'iniziale del sito e non la sua icona: il browser non tiene un
+     * archivio delle icone dei siti, e andarle a prendere una per una vorrebbe dire una
+     * richiesta a un servizio esterno per ogni riga dell'elenco — cioè raccontare a qualcun
+     * altro quali siti hai visitato. L'iniziale è nostra, il colore è nostro, e la riga si
+     * legge lo stesso: a dire quale sito è, c'è scritto sotto il titolo.
+     */
+    private View rigaElenco(String nome, String url, String perTessera, final View.OnClickListener azioni) {
+        final int cTxt = colTxt(), cDim = colDim();
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(dp(18), dp(9), dp(6), dp(9));
+        r.setBackgroundResource(sfondoTocco());
+        r.setLongClickable(true);
+
+        String host = hostDi(url);
+        TextView tessera = new TextView(this);
+        tessera.setText(iniziale(host.isEmpty() ? perTessera : host));
+        tessera.setTextColor(Color.WHITE);
+        tessera.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        tessera.setGravity(Gravity.CENTER);
+        GradientDrawable cerchio = new GradientDrawable();
+        cerchio.setShape(GradientDrawable.OVAL);
+        cerchio.setColor(tintaSito(host));
+        tessera.setBackground(cerchio);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(dp(38), dp(38));
+        tlp.rightMargin = dp(14);
+        tessera.setLayoutParams(tlp);
+        r.addView(tessera);
+
+        LinearLayout testo = new LinearLayout(this);
+        testo.setOrientation(LinearLayout.VERTICAL);
+        testo.setLayoutParams(new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        TextView t = new TextView(this);
+        t.setText(nome == null || nome.isEmpty() ? url : nome);
+        t.setTextColor(cTxt);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        t.setSingleLine(true);
+        t.setEllipsize(TextUtils.TruncateAt.END);
+        TextView u = new TextView(this);
+        u.setText(host.isEmpty() ? url : host);
+        u.setTextColor(cDim);
+        u.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        u.setSingleLine(true);
+        u.setEllipsize(TextUtils.TruncateAt.END);
+        testo.addView(t); testo.addView(u);
+        r.addView(testo);
+
+        Button piu = new Button(this);
+        piu.setText("⋮");
+        piu.setAllCaps(false);
+        piu.setBackgroundColor(Color.TRANSPARENT);
+        piu.setTextColor(cDim);
+        piu.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        piu.setPadding(0, 0, 0, 0);
+        piu.setMinWidth(dp(44)); piu.setMinimumWidth(dp(44));
+        piu.setLayoutParams(new LinearLayout.LayoutParams(dp(44), dp(44)));
+        // Le azioni si aprono da qui e dal dito tenuto premuto sulla riga: il ⋮ si vede, e
+        // chi non lo guarda preme a lungo la riga come in un elenco qualsiasi.
+        piu.setOnClickListener(azioni);
+        r.setOnLongClickListener(v -> { azioni.onClick(v); return true; });
+        r.addView(piu);
+        return r;
+    }
+
+    /** Le azioni di una voce dell'elenco, nel foglio dal basso. */
+    private void azioniVoce(final int idx) {
+        JSONArray a = arr(elencoPreferiti ? "bookmarks" : "browserHistory");
+        final JSONObject o = a.optJSONObject(idx);
+        if (o == null) return;
+        final String url = o.optString("url", "");
+        final String nome = elencoPreferiti ? nomePreferito(o) : nomeCronologia(o);
+        LinearLayout corpo = apriFoglio(nome, "Annulla");
+        corpo.addView(rigaFoglio("Apri", null, () -> { chiudiElenco(); apriUrl(url, false); }));
+        corpo.addView(rigaFoglio("Apri in una nuova scheda", null, () -> { chiudiElenco(); apriUrl(url, true); }));
+        if (elencoPreferiti) corpo.addView(rigaFoglio("Rinomina", null, () -> rinominaPreferito(idx)));
+        corpo.addView(rigaFoglio(elencoPreferiti ? "Elimina" : "Rimuovi dalla cronologia", null, () -> {
+            if (elencoPreferiti) {
+                rimuoviPreferitoIndice(idx);
+                Toast.makeText(this, "Preferito eliminato", Toast.LENGTH_SHORT).show();
+            } else {
+                rimuoviCronologiaIndice(idx);
+                Toast.makeText(this, "Tolto dalla cronologia", Toast.LENGTH_SHORT).show();
+            }
+            riempiElenco();
+        }));
+    }
+
+    /** Apre un indirizzo nella scheda in vista o in una nuova. */
+    private void apriUrl(String url, boolean nuovaScheda_) {
+        if (url == null || url.isEmpty()) return;
+        if (nuovaScheda_) { nuovaScheda(url, false, false); return; }
+        Scheda s = schedaCorrente();
+        if (s == null || s.web == null) nuovaScheda(url, false, false);
+        else s.web.loadUrl(url);
+    }
+
+    private void rimuoviCronologiaIndice(int idx) {
+        try {
+            JSONArray a = arr("browserHistory"), out = new JSONArray();
+            for (int i = 0; i < a.length(); i++) if (i != idx) out.put(a.get(i));
+            putArr("browserHistory", out);
+        } catch (Exception e) { Log.w(TAG, "cronologia non aggiornata", e); }
+    }
+
+    /** La prima lettera del sito, quella che sta nella tessera. */
+    private static String iniziale(String host) {
+        if (host == null || host.isEmpty()) return "•";
+        String h = host.startsWith("www.") ? host.substring(4) : host;
+        return h.isEmpty() ? "•" : h.substring(0, 1).toUpperCase(Locale.ITALY);
+    }
+
+    /**
+     * Il colore della tessera di un sito: sempre lo stesso per lo stesso sito.
+     *
+     * <p>Si ricava dal nome con una somma pesata — non da un numero casuale, che
+     * cambierebbe colore a ogni disegno, e nemmeno da un colore preso dal sito, che sarebbe
+     * un colore che non si vede su un fondo chiaro o su uno scuro.
+     */
+    private static int tintaSito(String host) {
+        if (host == null || host.isEmpty()) return 0xFF6b7280;
+        int h = 0;
+        for (int i = 0; i < host.length(); i++) h = h * 31 + host.charAt(i);
+        return TINTE[Math.abs(h % TINTE.length)];
+    }
+
+    /** I colori delle tessere: pieni, scuri abbastanza da reggere una lettera bianca. */
+    private static final int[] TINTE = {
+        0xFF4c6ef5, 0xFF0c8599, 0xFFe8590c, 0xFF7048e8, 0xFF2b8a3e,
+        0xFFc2255c, 0xFF1971c2, 0xFFa61e4d, 0xFF5f3dc4, 0xFF087f5b,
+    };
+
+    /** Rinomina un preferito: un avviso con il campo del nome. */
+    private void rinominaPreferito(final int idx) {
         JSONArray a = arr("bookmarks");
-        JSONObject o = a.optJSONObject(idx); if (o == null) return;
-        final String titolo = nomePreferito(o);
-        final String url = o.optString("url");
-        new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle(titolo)
-            .setItems(new String[]{ "Apri", "Apri in nuova scheda", "Rinomina", "Elimina" }, (d, w) -> {
-                switch (w) {
-                    case 0: Scheda s = schedaCorrente(); if (s != null && s.web != null) s.web.loadUrl(url); break;
-                    case 1: nuovaScheda(url, false, false); break;
-                    case 2: rinominaPreferito(idx); break;
-                    case 3: rimuoviPreferitoIndice(idx); Toast.makeText(this, "Preferito eliminato", Toast.LENGTH_SHORT).show(); break;
-                }
-            })
-            .setNegativeButton("Annulla", null).show();
-    }
-
-    private void rinominaPreferito(int idx) {
-        JSONArray a = arr("bookmarks"); JSONObject o = a.optJSONObject(idx); if (o == null) return;
+        JSONObject o = a.optJSONObject(idx);
+        if (o == null) return;
         final EditText in = new EditText(this);
         in.setText(nomePreferito(o));
         in.setSelectAllOnFocus(true);
-        int pad = dp(18);
-        FrameLayout box = new FrameLayout(this); box.setPadding(pad, pad / 2, pad, 0); box.addView(in);
-        new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle("Rinomina preferito").setView(box)
-            .setPositiveButton("Salva", (d, w) -> {
+        in.setTextColor(colTxt());
+        in.setHintTextColor(colDim());
+        in.setSingleLine(true);
+        in.setInputType(InputType.TYPE_CLASS_TEXT);
+        in.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        LinearLayout box = new LinearLayout(this);
+        box.setPadding(0, dp(12), 0, 0);
+        box.addView(in);
+        mostraAvviso("Rinomina preferito", null, box,
+            Pulsante.normale("Annulla", null),
+            Pulsante.principale("Salva", () -> {
                 try {
-                    JSONArray b = arr("bookmarks"); JSONObject bo = b.optJSONObject(idx);
+                    JSONArray b = arr("bookmarks");
+                    JSONObject bo = b.optJSONObject(idx);
                     if (bo != null) {
                         String t = in.getText().toString().trim();
                         bo.put("name", t.isEmpty() ? bo.optString("url") : t);
                         putArr("bookmarks", b);
                         MainActivity.preferitiCambiati();
+                        riempiElenco();
                     }
                 } catch (Exception e) { Log.w(TAG, "rinomina non salvata", e); }
-            })
-            .setNegativeButton("Annulla", null).show();
+            }));
     }
 
-    private void mostraCronologia() {
-        JSONArray a = arr("browserHistory");
-        int n = a.length();
-        final String[] labels = new String[n];
-        final String[] urls = new String[n];
-        for (int i = 0; i < n; i++) {
-            JSONObject o = a.optJSONObject(i);
-            urls[i] = o != null ? o.optString("url") : "";
-            // La shell non salvava il titolo, solo l'indirizzo: si mostra quello.
-            labels[i] = urls[i];
+    /**
+     * Elimina la cronologia, e se si vuole anche il resto.
+     *
+     * <p>La cronologia è la voce, e si cancella da sola; cookie, dati dei siti e cache
+     * stanno nella stessa casella perché sono la stessa domanda — «cosa resta sul telefono
+     * di dove sono stato» — ma si cancellano solo se li si chiede: sono anche le cose che
+     * tengono l'accesso fatto ai siti, e cancellarli senza dirlo sarebbe un dispetto.
+     */
+    private void eliminaCronologia() {
+        final CheckBox anche = new CheckBox(this);
+        anche.setText("Elimina anche cookie, dati dei siti e cache");
+        anche.setTextColor(colTxt());
+        anche.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        anche.setPadding(0, dp(14), 0, 0);
+        mostraAvviso("Elimina cronologia", "Le pagine visitate non saranno più nell'elenco. I preferiti non si toccano.", anche,
+            Pulsante.normale("Annulla", null),
+            Pulsante.principale("Elimina", () -> {
+                putArr("browserHistory", new JSONArray());
+                if (anche.isChecked()) cancellaDatiDiNavigazione();
+                if (elenco != null && !elencoPreferiti) riempiElenco();
+                Toast.makeText(this, anche.isChecked()
+                        ? "Cronologia, cookie e cache eliminati" : "Cronologia eliminata", Toast.LENGTH_SHORT).show();
+            }));
+    }
+
+    /** Cookie, dati dei siti e cache: quello che rende «riconoscibile» un telefono. */
+    private void cancellaDatiDiNavigazione() {
+        try {
+            CookieManager cm = CookieManager.getInstance();
+            cm.removeAllCookies(null);
+            cm.flush();
+        } catch (Exception e) { Log.w(TAG, "cookie non cancellati", e); }
+        try { WebStorage.getInstance().deleteAllData(); } catch (Exception e) { Log.w(TAG, "dati non cancellati", e); }
+        for (Scheda t : schede) {
+            if (t.web == null) continue;
+            try { t.web.clearCache(true); t.web.clearFormData(); } catch (Exception e) { /* niente da fare */ }
         }
-        AlertDialog.Builder bld = new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle("Cronologia");
-        if (n == 0) bld.setMessage("Nessuna cronologia.");
-        else bld.setItems(labels, (d, w) -> {
-            Scheda s = schedaCorrente();
-            if (s != null && s.web != null) s.web.loadUrl(urls[w]);
+    }
+
+    // =====================================================================
+    //  Da una pagina a una cosa che resta: la lettura, un'app nella home
+    // =====================================================================
+
+    /**
+     * Il valore che una pagina ha restituito a {@code evaluateJavascript}, decodificato.
+     *
+     * <p>La risposta arriva come una stringa JSON che contiene il valore, non come il
+     * valore: se la pagina restituisce una stringa, alla fine ci sono due strati di
+     * virgolette e di barre rovesciate. Toglierli a mano funziona finché dentro non c'è una
+     * virgoletta; leggerli come JSON funziona sempre.
+     */
+    private static String testoDaJs(String risposta) {
+        if (risposta == null) return "";
+        try {
+            Object v = new JSONTokener(risposta).nextValue();
+            return v == null ? "" : v.toString();
+        } catch (Exception e) { return ""; }
+    }
+
+    /**
+     * Il testo della pagina, ricavato dalla pagina stessa.
+     *
+     * <p>Il criterio è quello di sempre nei lettori: il pezzo di pagina con più caratteri
+     * <i>suoi</i> — cioè non dentro un collegamento — e con almeno qualche capoverso. La
+     * densità di collegamenti è quello che distingue un articolo da un menu, da una lista di
+     * risultati o da una pagina di indice: sono tutti pieni di testo, ma quasi tutto il loro
+     * testo è cliccabile. Vince il pezzo col punteggio più alto, e di quel pezzo si tiene
+     * l'HTML, ripulito da script, moduli, testate e piè di pagina e da ogni attributo che
+     * non sia un indirizzo.
+     *
+     * <p>Se un articolo non c'è, la pagina lo dice: «non c'è un testo da estrarre» è una
+     * risposta, una pagina bianca sarebbe un guasto.
+     */
+    private static final String JS_LETTURA =
+          "(function(){try{"
+        + "var via='script,style,noscript,iframe,svg,form,nav,aside,footer,header,button,input,select,textarea,[role=navigation],[aria-hidden=true]';"
+        + "function testo(e){return (e.innerText||'').trim();}"
+        + "var tutti=document.querySelectorAll('article,main,[role=main],section,div,td'),cand=[];"
+        + "for(var i=0;i<tutti.length;i++){var e=tutti[i];var t=testo(e);if(t.length<400)continue;"
+        + "if(e.getElementsByTagName('p').length<3)continue;"
+        + "var link=0,aa=e.getElementsByTagName('a');for(var j=0;j<aa.length;j++)link+=testo(aa[j]).length;"
+        + "cand.push({e:e,p:t.length*(t.length-link)/t.length});}"
+        + "if(!cand.length)return JSON.stringify({ok:false,motivo:'in questa pagina non c\\u2019è un testo da estrarre'});"
+        + "cand.sort(function(a,b){return b.p-a.p;});"
+        + "var cl=cand[0].e.cloneNode(true),brutti=cl.querySelectorAll(via);"
+        + "for(var k=brutti.length-1;k>=0;k--)brutti[k].parentNode.removeChild(brutti[k]);"
+        + "var nodi=cl.querySelectorAll('*');"
+        + "for(var k=0;k<nodi.length;k++){var n=nodi[k],at=n.attributes;"
+        + "for(var q=at.length-1;q>=0;q--){var nome=at[q].name;"
+        + "if(nome!=='href'&&nome!=='src'&&nome!=='alt'&&nome!=='colspan'&&nome!=='rowspan')n.removeAttribute(nome);}"
+        + "if(n.tagName==='IMG')n.setAttribute('loading','lazy');}"
+        + "var h=document.querySelector('h1'),titolo=(h&&testo(h))?testo(h):(document.title||'').trim();"
+        + "return JSON.stringify({ok:true,titolo:titolo,html:cl.innerHTML});"
+        + "}catch(e){return JSON.stringify({ok:false,motivo:'questa pagina non si è lasciata leggere'});}})()";
+
+    /** «Mostra modalità lettura»: chiede alla pagina il suo testo e lo apre da solo. */
+    private void modalitaLettura() {
+        final Scheda t = schedaCorrente();
+        if (t == null || t.web == null || t.indirizzo.isEmpty()) return;
+        if (t.lettura) { Toast.makeText(this, "Questa scheda è già in modalità lettura", Toast.LENGTH_SHORT).show(); return; }
+        t.web.evaluateJavascript(JS_LETTURA, r -> {
+            String testo = testoDaJs(r);
+            try {
+                JSONObject o = new JSONObject(testo);
+                if (!o.optBoolean("ok")) {
+                    Toast.makeText(this, o.optString("motivo", "Non c'è un testo da leggere"), Toast.LENGTH_LONG).show();
+                    return;
+                }
+                apriLettura(t, o.optString("titolo", ""), o.optString("html", ""));
+            } catch (Exception e) {
+                Log.w(TAG, "lettura non riuscita", e);
+                Toast.makeText(this, "Non sono riuscito a leggere questa pagina", Toast.LENGTH_SHORT).show();
+            }
         });
-        if (n > 0) bld.setNeutralButton("Cancella", (d, w) -> putArr("browserHistory", new JSONArray()));
-        bld.setNegativeButton("Chiudi", null).show();
+    }
+
+    /**
+     * Apre il testo estratto in una scheda sua.
+     *
+     * <p>In una scheda a parte e non al posto della pagina: così la pagina vera resta dov'è,
+     * con la sua impaginazione e i suoi collegamenti, e si torna a leggerla chiudendo
+     * questa. L'indirizzo resta quello del sito (è la base della pagina, e serve anche a
+     * fare arrivare le immagini e a far funzionare i collegamenti relativi), ma la scheda
+     * sa di essere una lettura: non finisce in cronologia.
+     *
+     * <p>La pagina è nostra, quindi la scriviamo col tema di NovaOS: fondo, testo e
+     * collegamenti del sistema, colonna larga al massimo 34 em (oltre, l'occhio salta di
+     * riga in riga) e immagini mai più larghe dello schermo.
+     */
+    private void apriLettura(Scheda origine, String titolo, String html) {
+        if (html == null || html.trim().isEmpty()) {
+            Toast.makeText(this, "Non c'è un testo da leggere", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean inc = origine.incognito;
+        String cTxt = inc ? "#eceaf4" : esadecimale(TXT);
+        String cDim = inc ? "#b3aec6" : esadecimale(DIM);
+        String cBg  = inc ? "#17141f" : esadecimale(BG);
+        String cSup = inc ? "#231d33" : esadecimale(CARD);
+        String tit = titolo == null || titolo.trim().isEmpty() ? hostDi(origine.indirizzo) : titolo.trim();
+        String css =
+              "html,body{margin:0;padding:0}"
+            + "body{background:" + cBg + ";color:" + cTxt + ";font-size:17px;line-height:1.68;"
+            + "padding:22px 20px 48px;word-wrap:break-word}"
+            + "h1{font-size:25px;line-height:1.28;margin:0 0 8px}"
+            + ".fonte{color:" + cDim + ";font-size:13px;margin:0 0 26px}"
+            + "h2,h3,h4{line-height:1.35;margin:1.5em 0 .5em}"
+            + "p{margin:0 0 1.05em}"
+            + "img,video{max-width:100%;height:auto;border-radius:8px}"
+            + "figure{margin:0 0 1.2em}figcaption{color:" + cDim + ";font-size:13px}"
+            + "a{color:" + esadecimale(ACC) + ";text-decoration:none}"
+            + "blockquote{margin:0 0 1.1em;padding:2px 0 2px 16px;border-left:3px solid " + cDim + "}"
+            + "pre,code{white-space:pre-wrap;word-wrap:break-word;background:" + cSup + ";border-radius:8px;"
+            + "font-size:15px;padding:1px 5px}pre{padding:12px}"
+            + "table{max-width:100%;border-collapse:collapse;font-size:15px}"
+            + "th,td{border:1px solid " + cDim + ";padding:6px 8px;text-align:left}"
+            + "hr{border:0;border-top:1px solid " + cDim + ";margin:1.6em 0}";
+        String pagina = "<!doctype html><html lang=\"it\"><head><meta charset=\"utf-8\">"
+            + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+            + "<title>" + TextUtils.htmlEncode(tit) + "</title><style>" + css + "</style></head><body>"
+            + "<h1>" + TextUtils.htmlEncode(tit) + "</h1>"
+            + "<p class=\"fonte\">" + TextUtils.htmlEncode(hostDi(origine.indirizzo)) + " · modalità lettura</p>"
+            + html + "</body></html>";
+
+        Scheda l = nuovaScheda(null, inc, false);
+        l.lettura = true;
+        l.titolo = tit;
+        if (l.web != null) l.web.loadDataWithBaseURL(origine.indirizzo, pagina, "text/html", "utf-8", null);
+    }
+
+    private static String esadecimale(int colore) {
+        return String.format("#%06x", colore & 0xFFFFFF);
+    }
+
+    /**
+     * Quello che la pagina dichiara di sé: se è un'app installabile (il suo manifest) e che
+     * icona ha. È una sola lettura del documento, quella che serve a tutte e due le voci.
+     */
+    private static final String JS_PAGINA =
+          "(function(){try{"
+        + "var l=document.querySelector('link[rel=\"manifest\"]'),f=document.querySelector('link[rel~=\"icon\"]'),"
+        + "t=document.querySelector('meta[name=\"theme-color\"]');"
+        + "return JSON.stringify({manifest:(l&&l.href)?l.href:'',favicon:(f&&f.href)?f.href:'',"
+        + "titolo:(document.title||'').trim(),tema:(t&&t.content)?t.content:''});"
+        + "}catch(e){return JSON.stringify({manifest:'',favicon:'',titolo:'',tema:''});}})()";
+
+    /**
+     * «Installa»: la pagina diventa un'app della home di NovaOS.
+     *
+     * <p>La differenza con «Crea scorciatoia» è tutta in quello che la pagina dichiara: qui
+     * serve il manifest, il file in cui una pagina dice di essere un'applicazione — nome
+     * corto, colore, icona — ed è quello che si porta dietro nella home. Senza manifest non
+     * si installa niente, e si dice perché: un'icona identica a una scorciatoia che finge di
+     * essere un'app sarebbe una bugia.
+     */
+    private void installaApp() {
+        final Scheda t = schedaCorrente();
+        if (t == null || t.web == null || t.indirizzo.isEmpty()) return;
+        t.web.evaluateJavascript(JS_PAGINA, r -> {
+            JSONObject o = leggiJs(r);
+            final String manifest = o.optString("manifest", "");
+            final String titolo = o.optString("titolo", "");
+            final String favicon = o.optString("favicon", "");
+            if (manifest.isEmpty()) {
+                mostraAvviso("Installa", "Questa pagina non dichiara un'applicazione: non dichiara cioè il file (il «manifest») con il nome, il colore e l'icona con cui presentarsi nella home.\n\nPuoi aggiungerla come scorciatoia: si aprirà lo stesso, con il titolo e l'icona della pagina.", null,
+                    Pulsante.normale("Chiudi", null),
+                    Pulsante.principale("Crea scorciatoia", this::creaScorciatoia));
+                return;
+            }
+            leggiManifest(manifest, titolo, favicon, t.indirizzo);
+        });
+    }
+
+    /**
+     * Legge il manifest dell'app e la installa.
+     *
+     * <p>La lettura va fuori dal filo dell'interfaccia: è una richiesta di rete, e la rete
+     * può metterci secondi o non rispondere mai. Con i cookie della pagina, perché il
+     * manifest può stare dietro un accesso come tutto il resto.
+     */
+    private void leggiManifest(final String manifestUrl, final String titoloPagina,
+                               final String favicon, final String paginaUrl) {
+        new Thread(() -> {
+            String nome = "", colore = "", icona = "";
+            try {
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(manifestUrl).openConnection();
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(8000);
+                String ua = mobileUa != null ? mobileUa : "Mozilla/5.0 (Linux; Android) NovaOS";
+                c.setRequestProperty("User-Agent", ua);
+                String cookie = CookieManager.getInstance().getCookie(manifestUrl);
+                if (cookie != null) c.setRequestProperty("Cookie", cookie);
+                java.io.InputStream in = c.getInputStream();
+                java.io.ByteArrayOutputStream fuori = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int letti, tot = 0;
+                // 512 kB: un manifest più grande di così non è un manifest.
+                while ((letti = in.read(buf)) > 0 && tot < 512 * 1024) { fuori.write(buf, 0, letti); tot += letti; }
+                in.close();
+                JSONObject m = new JSONObject(fuori.toString("UTF-8"));
+                nome = m.optString("short_name", "");
+                if (nome.isEmpty()) nome = m.optString("name", "");
+                colore = coloreSicuro(m.optString("theme_color", ""));
+                icona = sceltoIcona(m.optJSONArray("icons"), manifestUrl);
+            } catch (Exception e) {
+                // Manifest illeggibile: si installa lo stesso, con nome e icona della pagina.
+                Log.i(TAG, "manifest non leggibile: " + manifestUrl, e);
+            }
+            final String fn = nome, fc = colore, fi = icona;
+            runOnUiThread(() -> {
+                String nomeFinale = !fn.isEmpty() ? fn : (titoloPagina.isEmpty() ? hostDi(paginaUrl) : titoloPagina);
+                installaInShell(nomeFinale, paginaUrl, fc, fi.isEmpty() ? favicon : fi);
+            });
+        }, "manifest-app").start();
+    }
+
+    /**
+     * L'icona da usare fra quelle dichiarate: la prima delle misure che servono davvero a
+     * un'icona della home, altrimenti la prima che c'è.
+     */
+    private static String sceltoIcona(JSONArray icone, String base) {
+        if (icone == null) return "";
+        String[] misure = { "192", "512", "180", "144", "128", "96", "256" };
+        for (String m : misure) {
+            for (int i = 0; i < icone.length(); i++) {
+                JSONObject ic = icone.optJSONObject(i);
+                if (ic == null) continue;
+                if (ic.optString("sizes", "").contains(m)) {
+                    String src = assoluto(ic.optString("src", ""), base);
+                    if (!src.isEmpty()) return src;
+                }
+            }
+        }
+        for (int i = 0; i < icone.length(); i++) {
+            JSONObject ic = icone.optJSONObject(i);
+            if (ic == null) continue;
+            String src = assoluto(ic.optString("src", ""), base);
+            if (!src.isEmpty() && (src.startsWith("http://") || src.startsWith("https://"))) return src;
+        }
+        return "";
+    }
+
+    /** Un indirizzo relativo risolto rispetto al file che lo contiene. */
+    private static String assoluto(String src, String base) {
+        if (src == null || src.isEmpty()) return "";
+        try { return java.net.URI.create(base).resolve(src).toString(); } catch (Exception e) { return src; }
+    }
+
+    /**
+     * Un colore accettabile come sfondo di un'icona: solo {@code #rgb}, {@code #rrggbb} o
+     * {@code #rrggbbaa}, altrimenti niente.
+     *
+     * <p>Non è pignoleria: questo valore arriva da una pagina web e finisce dentro un
+     * attributo {@code style} della home di NovaOS. Tutto quello che non è un colore — una
+     * virgoletta, un «;», un «url(…)» — uscirebbe dall'attributo e diventerebbe markup
+     * scritto da un sito dentro il launcher.
+     */
+    private static String coloreSicuro(String v) {
+        if (v == null) return "";
+        v = v.trim();
+        return v.matches("#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}") ? v : "";
+    }
+
+    /** «Crea scorciatoia»: la pagina entra nella home col suo titolo e la sua icona. */
+    private void creaScorciatoia() {
+        final Scheda t = schedaCorrente();
+        if (t == null || t.web == null || t.indirizzo.isEmpty()) return;
+        t.web.evaluateJavascript(JS_PAGINA, r -> {
+            JSONObject o = leggiJs(r);
+            String nome = o.optString("titolo", "").trim();
+            if (nome.isEmpty()) nome = hostDi(t.indirizzo);
+            installaInShell(nome, t.indirizzo, coloreSicuro(o.optString("tema", "")), o.optString("favicon", ""));
+        });
+    }
+
+    /** Il JSON restituito da una pagina, o un oggetto vuoto: la pagina può anche sbagliare. */
+    private static JSONObject leggiJs(String risposta) {
+        try { return new JSONObject(testoDaJs(risposta)); } catch (Exception e) { return new JSONObject(); }
+    }
+
+    /**
+     * Aggiunge una web app alla home di NovaOS.
+     *
+     * <p>La scrittura è la stessa che fa la shell quando installa un'app dalla sua vetrina —
+     * l'elenco {@code userApps} nella copia condivisa delle preferenze, con la stessa forma
+     * di voce — e poi la shell viene avvisata, così l'icona compare subito invece che alla
+     * prossima accensione. Il numero della voce è l'istante: è quello che fa la shell, ed è
+     * l'unico modo di non ripetersi fra i due che scrivono lo stesso elenco.
+     */
+    private void installaInShell(String nome, String url, String colore, String icona) {
+        if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) {
+            Toast.makeText(this, "Questa pagina non si può aggiungere alla home", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!url.startsWith("https://")) {
+            // La home è del sistema: un'app che si apre in chiaro è una porta aperta.
+            mostraAvviso("Aggiungi alla home",
+                "Questa pagina viaggia in chiaro (http://): quello che si scrive dentro può essere letto da chi sta in mezzo.\n\nAggiungerla lo stesso?",
+                null,
+                Pulsante.normale("Annulla", null),
+                Pulsante.principale("Aggiungi", () -> scriviApp(nome, url, colore, icona)));
+            return;
+        }
+        scriviApp(nome, url, colore, icona);
+    }
+
+    private void scriviApp(String nome, String url, String colore, String icona) {
+        try {
+            JSONArray a = arr("userApps");
+            long n = System.currentTimeMillis();
+            while (esisteId(a, "web_" + n)) n++;
+            JSONObject o = new JSONObject();
+            o.put("id", "web_" + n);
+            o.put("name", nome);
+            o.put("url", url);
+            o.put("color", colore == null || colore.isEmpty() ? "#6d8bff" : colore);
+            // Il globo di serie, scritto come codice e non come disegno: nel file Java un
+            // emoji è innocuo, ma qui la codifica del file non è una cosa che si vede.
+            o.put("icon", icona == null || icona.isEmpty() ? "🌐" : icona);
+            a.put(o);
+            putArr("userApps", a);
+            MainActivity.appInstallate();
+            Toast.makeText(this, nome + " è nella home di NovaOS", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Log.w(TAG, "app non aggiunta alla home", e);
+            Toast.makeText(this, "Non sono riuscito ad aggiungerla alla home", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private static boolean esisteId(JSONArray a, String id) {
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject o = a.optJSONObject(i);
+            if (o != null && id.equals(o.optString("id"))) return true;
+        }
+        return false;
+    }
+
+    // =====================================================================
+    //  Le impostazioni del sito
+    // =====================================================================
+
+    /** L'host di un indirizzo, o la stringa vuota: è la chiave di tutto ciò che è «per sito». */
+    private static String hostDi(String url) {
+        if (url == null) return "";
+        try {
+            String h = Uri.parse(url).getHost();
+            return h == null ? "" : h.toLowerCase(Locale.ITALY);
+        } catch (Exception e) { return ""; }
+    }
+
+    private JSONObject sitiSalvati() {
+        try { return new JSONObject(prefs().getString(PREF_SITI, "{}")); } catch (Exception e) { return new JSONObject(); }
+    }
+
+    /**
+     * La decisione presa per un sito, o la stringa vuota se non se ne è presa nessuna.
+     *
+     * <p>Vuoto vuol dire «come sempre»: è il valore che non si salva, ed è per questo che il
+     * ritorno al comportamento normale è la cancellazione della voce e non la scrittura di
+     * un valore uguale a quello di partenza.
+     */
+    private String decisione(String host, String chiave) {
+        if (host == null || host.isEmpty()) return "";
+        JSONObject s = sitiSalvati().optJSONObject(host);
+        return s == null ? "" : s.optString(chiave, "");
+    }
+
+    private void decidi(String host, String chiave, String valore) {
+        if (host == null || host.isEmpty()) return;
+        try {
+            JSONObject tutti = sitiSalvati();
+            JSONObject s = tutti.optJSONObject(host);
+            if (s == null) s = new JSONObject();
+            if (valore == null || valore.isEmpty()) s.remove(chiave); else s.put(chiave, valore);
+            if (s.length() == 0) tutti.remove(host); else tutti.put(host, s);
+            prefs().edit().putString(PREF_SITI, tutti.toString()).apply();
+        } catch (Exception e) { Log.w(TAG, "decisione non salvata", e); }
+    }
+
+    /**
+     * «Impostazioni del sito»: che cosa questo sito può fare e che cosa ha lasciato qui.
+     *
+     * <p>Sono le voci che il browser sa davvero mantenere. La fotocamera, il microfono e la
+     * posizione si possono bloccare — e bloccarli vuol dire che la pagina non li riceve e
+     * non c'è niente da rispondere; il permesso di Android, invece, si chiede alla pagina
+     * quando serve, come si è sempre fatto. I pop-up si aprono in una scheda nuova: qui si
+     * può dire di non aprirli. La vista desktop è l'unica voce che è anche un gusto, e vale
+     * per il sito, non per la scheda: è il motivo per cui sta qui e non nel menu.
+     */
+    private void impostazioniSito() {
+        final Scheda t = schedaCorrente();
+        final String host = t == null ? "" : hostDi(t.indirizzo);
+        if (host.isEmpty()) {
+            Toast.makeText(this, "Nessun sito da impostare: apri una pagina", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // La misura di quanto un sito ha lasciato sul telefono non si può chiedere e avere
+        // subito: la risposta arriva da un'altra parte del sistema. Si chiede, e il foglio si
+        // compone quando è arrivata — sono millisecondi, e in cambio la riga dice una cifra
+        // vera invece di un'ipotesi.
+        datiSito(host, quanti -> { if (!isFinishing()) foglioImpostazioniSito(t, host, quanti); });
+    }
+
+    private void foglioImpostazioniSito(final Scheda t, final String host, long quanti) {
+        final boolean inc = t.incognito;
+        LinearLayout corpo = apriFoglio(host, "Chiudi");
+        corpo.addView(rigaFoglio("Fotocamera", statoPermesso(host, "camera"), () -> scegliPermesso(host, "camera", "Fotocamera")));
+        corpo.addView(rigaFoglio("Microfono", statoPermesso(host, "microfono"), () -> scegliPermesso(host, "microfono", "Microfono")));
+        corpo.addView(rigaFoglio("Posizione", statoPermesso(host, "posizione"), () -> scegliPermesso(host, "posizione", "Posizione")));
+        corpo.addView(rigaFoglio("Pop-up", "block".equals(decisione(host, "popup")) ? "Bloccati" : "Consentiti", () -> {
+            boolean bloccati = "block".equals(decisione(host, "popup"));
+            decidi(host, "popup", bloccati ? "" : "block");
+            Toast.makeText(this, bloccati ? "I pop-up di " + host + " si aprono" : "I pop-up di " + host + " sono bloccati", Toast.LENGTH_SHORT).show();
+            impostazioniSito();
+        }));
+        corpo.addView(rigaFoglio("Sito desktop", t.desktop ? "Sì" : "No", () -> {
+            cambiaModalita(t, !t.desktop);
+            impostazioniSito();
+        }));
+        corpo.addView(rigaFoglio("Cookie e dati del sito", riassuntoDati(host, quanti), () -> dettagliDati(host, quanti)));
+        if (inc) {
+            TextView n = new TextView(this);
+            n.setText("In incognito non si salva niente: alla chiusura della scheda cookie e dati di questa sessione spariscono.");
+            n.setTextColor(colDim());
+            n.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            n.setPadding(dp(22), dp(10), dp(22), dp(4));
+            corpo.addView(n);
+        }
+    }
+
+    private String statoPermesso(String host, String chiave) {
+        return "block".equals(decisione(host, chiave)) ? "Bloccata" : "Chiedi";
+    }
+
+    private void scegliPermesso(final String host, final String chiave, String nome) {
+        LinearLayout corpo = apriFoglio(nome + " · " + host, "Annulla");
+        boolean bloccato = "block".equals(decisione(host, chiave));
+        corpo.addView(rigaScelta("Chiedi alla pagina: la richiesta arriva, e decide Android", !bloccato, () -> {
+            decidi(host, chiave, "");
+            impostazioniSito();
+        }));
+        corpo.addView(rigaScelta("Blocca: la pagina non riceve il permesso, e non si chiede niente", bloccato, () -> {
+            decidi(host, chiave, "block");
+            impostazioniSito();
+        }));
+    }
+
+    /** Quanti cookie e quanti dati ha lasciato un sito. */
+    private String riassuntoDati(String host, long quanti) {
+        int n = nomiCookie(host).length;
+        if (n == 0 && quanti == 0) return "niente";
+        String c = n == 0 ? "nessun cookie" : (n == 1 ? "1 cookie" : n + " cookie");
+        return quanti > 0 ? c + " · " + dimensione(quanti) : c;
+    }
+
+    private void dettagliDati(final String host, long quanti) {
+        String[] nomi = nomiCookie(host);
+        StringBuilder m = new StringBuilder();
+        if (nomi.length == 0) m.append("Nessun cookie salvato.");
+        else {
+            m.append(nomi.length == 1 ? "Un cookie salvato:" : nomi.length + " cookie salvati:");
+            for (int i = 0; i < nomi.length && i < 8; i++) m.append("\n· ").append(nomi[i]);
+            if (nomi.length > 8) m.append("\n· …altri ").append(nomi.length - 8);
+        }
+        m.append("\n\n");
+        m.append(quanti > 0
+                ? "Dati del sito (memoria locale, database): " + dimensione(quanti) + "."
+                : "Il sito non tiene dati suoi su questo telefono.");
+        mostraAvviso(host, m.toString(), null,
+            Pulsante.normale("Chiudi", null),
+            Pulsante.principale("Cancella", () -> {
+                cancellaDatiSito(host);
+                Toast.makeText(this, "Cookie e dati di " + host + " cancellati", Toast.LENGTH_SHORT).show();
+            }));
+    }
+
+    /** I nomi dei cookie che il sito ha lasciato: si leggono dall'intestazione dei cookie. */
+    private String[] nomiCookie(String host) {
+        if (host == null || host.isEmpty()) return new String[0];
+        List<String> nomi = new ArrayList<>();
+        for (String schema : new String[]{ "https://", "http://" }) {
+            try {
+                String tutti = CookieManager.getInstance().getCookie(schema + host);
+                if (tutti == null) continue;
+                for (String pezzo : tutti.split(";")) {
+                    int uguale = pezzo.indexOf('=');
+                    String nome = (uguale > 0 ? pezzo.substring(0, uguale) : pezzo).trim();
+                    if (!nome.isEmpty() && !nomi.contains(nome)) nomi.add(nome);
+                }
+            } catch (Exception e) { /* niente cookie leggibili */ }
+        }
+        return nomi.toArray(new String[0]);
+    }
+
+    /**
+     * Quanti byte ha lasciato un sito su questo telefono, sommando le due origini.
+     *
+     * <p>Si chiede due volte — una per l'indirizzo in chiaro e una per quello cifrato — e si
+     * risponde quando hanno risposto tutte e due: la prima che arriva da sola non è il
+     * totale, e un totale a metà sarebbe una cifra sbagliata.
+     */
+    private void datiSito(String host, final ValueCallback<Long> quando) {
+        final long[] tot = { 0 };
+        final int[] restanti = { 2 };
+        for (String schema : new String[]{ "https://", "http://" }) {
+            try {
+                WebStorage.getInstance().getUsageForOrigin(schema + host, valore -> {
+                    if (valore != null && valore > 0) tot[0] += valore;
+                    if (--restanti[0] == 0) quando.onReceiveValue(tot[0]);
+                });
+            } catch (Exception e) {
+                if (--restanti[0] == 0) quando.onReceiveValue(tot[0]);
+            }
+        }
+    }
+
+    /**
+     * Cancella cookie e dati di un sito.
+     *
+     * <p>I cookie si cancellano uno per uno, col nome che hanno: non c'è una chiamata che
+     * cancelli «i cookie di un sito», e cancellarli tutti toglierebbe l'accesso anche agli
+     * altri siti. Si prova sia con l'indirizzo com'è sia con la versione senza «www», perché
+     * un sito può aver scritto i suoi cookie in tutti e due i modi. I dati (memoria locale e
+     * database) hanno invece la cancellazione per origine, ed è esatta.
+     */
+    private void cancellaDatiSito(String host) {
+        try {
+            CookieManager cm = CookieManager.getInstance();
+            List<String> nomi = new ArrayList<>();
+            for (String h : new String[]{ host, host.startsWith("www.") ? host.substring(4) : "www." + host }) {
+                for (String nome : nomiCookie(h)) if (!nomi.contains(nome)) nomi.add(nome);
+            }
+            for (String h : new String[]{ host, host.startsWith("www.") ? host.substring(4) : "www." + host }) {
+                for (String schema : new String[]{ "https://", "http://" }) {
+                    for (String nome : nomi) cm.setCookie(schema + h, nome + "=; Max-Age=0; Path=/");
+                }
+            }
+            cm.flush();
+        } catch (Exception e) { Log.w(TAG, "cookie non cancellati", e); }
+        try {
+            for (String schema : new String[]{ "https://", "http://" }) WebStorage.getInstance().deleteOrigin(schema + host);
+        } catch (Exception e) { Log.w(TAG, "dati non cancellati", e); }
     }
 
     // ------------------------------------------------------------------ pagina iniziale
@@ -1680,6 +2946,12 @@ public class BrowserActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        // Prima le superfici nostre, dalla più esterna alla più interna: un avviso sopra un
+        // elenco si chiude per primo, altrimenti il tasto indietro premuto due volte
+        // chiuderebbe due cose diverse in un colpo solo.
+        if (avviso != null) { chiudiAvviso(); return; }
+        if (foglio != null) { chiudiFoglio(); return; }
+        if (elenco != null) { chiudiElenco(); return; }
         if (menuAperto != null) { chiudiMenu(); return; }
         if (selettore != null) { chiudiSelettore(); return; }
         if (fullscreen) { setSchermoIntero(false); return; }

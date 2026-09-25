@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.58** (build 60). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.59** (build 61). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -383,6 +383,49 @@ Fatto:
   Messaggi, Fotocamera, Browser) non riempiono più la cella: restano a **48px** centrate
   (come la griglia), così non appaiono più enormi né nel Drawer reale né nella simulazione
   del reale dello Studio (il modello in scala resta invariato).
+Ultime novità (0.1.59) — il browser impara le cose che gli mancavano:
+- **Il menu ha le voci che non c'erano.** «Mostra modalità lettura», «Installa», «Crea
+  scorciatoia», «Elimina cronologia» e «Impostazioni del sito». Prima si poteva leggere una
+  pagina, scaricare un file o salvare un sito nella home **solo** dalle voci che il browser
+  già aveva; le altre cinque non esistevano.
+- **Modalità lettura.** La pagina si spoglia del contorno del sito e resta il testo, in
+  colonna, con il titolo e le immagini ridimensionate: si legge senza ingrandire e senza
+  scorrere di lato. Il testo viene ricavato **dalla pagina stessa** — si cerca il blocco con
+  più testo e si buttano via menu, moduli e script — e si apre in una **scheda a parte**, così
+  la pagina originale resta dov'era e una lettura non si apre dentro un'altra lettura. Se in
+  quella pagina non c'è un testo da estrarre, lo dice invece di mostrare una pagina vuota.
+- **Crea scorciatoia: una pagina diventa un'icona nella home.** Il titolo e il colore si
+  leggono dalla pagina, e se il sito dichiara un'**icona** (il manifesto delle web app) si usa
+  quella; altrimenti il globo di serie. La voce «Installa» fa la stessa cosa ma passando dal
+  manifesto del sito, e se il sito non ne ha uno propone «Crea scorciatoia». Una pagina che
+  viaggia **in chiaro** (`http://`) chiede conferma prima di entrare nella home: la home è del
+  sistema, e un'app che si apre in chiaro è una porta aperta. Il colore dichiarato dalla
+  pagina viene accettato **solo** se è un colore (`#rrggbb`): un valore qualsiasi, in un
+  attributo di stile della home, sarebbe stato un modo per scrivere dentro il sistema.
+- **L'elenco dei download è dentro il browser.** Prima la voce passava all'app dei download
+  del telefono: i file si vedevano, ma la via d'uscita dipendeva da quell'app — e su un
+  telefono può non esserci, lasciando il browser irraggiungibile. Ora l'elenco lo disegna il
+  browser (stessa domanda al sistema, `DownloadManager`), con nome, dimensione, stato e il
+  tocco che apre il file con l'app che lo sa leggere. I file restano dove sono: la cartella
+  Download del telefono. L'icona ⬇ del menu apre lo stesso elenco.
+- **Cronologia e preferiti hanno la faccia di una schermata di browser**, non di una finestra
+  di sistema: barra in alto con la ✕ e il titolo, **campo di ricerca** che filtra mentre si
+  scrive, righe con la **tessera colorata del sito** e l'iniziale al posto della favicon —
+  chiedere la favicon a un servizio esterno vorrebbe dire dire a un terzo quali siti hai
+  visitato — e in coda il pulsante **⋮** con «Apri», «Apri in una nuova scheda», «Rinomina»
+  (solo preferiti) e «Elimina». La cronologia è divisa per giorno (**Oggi**, **Ieri**, poi la
+  data), il cestino in alto la vuota tutta.
+- **Impostazioni del sito.** Per il sito che stai guardando: fotocamera, microfono e
+  posizione (**Chiedi** / **Blocca**), pop-up, sito desktop, e «Cookie e dati del sito» con
+  l'elenco dei cookie salvati e quanto spazio occupano. Le decisioni si applicano davvero: un
+  pop-up bloccato non si apre, un permesso bloccato non viene chiesto né concesso, e la scelta
+  del sito desktop resta scritta per quel sito. Si può solo **chiedere** o **bloccare**, non
+  «concedi in anticipo»: il permesso vero resta di Android, e prometterne uno che il sistema
+  non ha dato sarebbe una bugia.
+- **Elimina cronologia**, con la casella per cancellare **anche** cookie, dati dei siti e
+  cache. I preferiti non si toccano: sono un'altra cosa, e chi vuole toglierli li toglie uno
+  per uno dall'elenco.
+
 Ultime novità (0.1.58) — tre difetti del browser, trovati usandolo:
 - **La stella dei preferiti non lo diceva.** Toccandola il preferito veniva salvato, ma la
   stella restava com'era: il salvataggio si vedeva solo chiudendo e riaprendo il menu. Ora

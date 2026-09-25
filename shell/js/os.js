@@ -910,6 +910,15 @@ const OS = (() => {
     NovaApps.dock.forEach((a, i) => dock.appendChild(iconEl(a, i)));
   }
 
+  /**
+   * Il browser nativo annuncia un'app appena aggiunta alla home (una pagina installata o
+   * una scorciatoia: v. MainActivity.appInstallate). L'elenco è già quello condiviso — la
+   * lettura delle preferenze passa sempre di lì — quindi basta ridisegnare la home perché
+   * l'icona nuova ci sia. Se la home non è a schermo il disegno è lo stesso lavoro di
+   * niente, e alla prossima apertura l'app c'è comunque.
+   */
+  window.__novaAppInstallate = () => { try { renderHome(); } catch (e) {} };
+
   // applica un ordine app (da un tema .novatheme, layout.order): imposta l'ordine del
   // launcher Lista e ricostruisce la home a griglia disponendo le app in quell'ordine
   // (le app del dock restano nel dock). Le app non elencate vanno in coda.

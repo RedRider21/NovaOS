@@ -94,6 +94,15 @@ public class MainActivity extends Activity {
         if (m != null) m.evalJs("window.__novaPreferiti && window.__novaPreferiti()");
     }
 
+    /** Stessa cosa per le app: il browser nativo ne aggiunge una alla home (una pagina
+     *  installata o una scorciatoia), e la home deve mostrarla subito. Senza l'annuncio
+     *  l'icona comparirebbe alla prossima accensione della shell, cioè sembrerebbe che
+     *  l'aggiunta non sia riuscita. */
+    static void appInstallate() {
+        MainActivity m = corrente;
+        if (m != null) m.evalJs("window.__novaAppInstallate && window.__novaAppInstallate()");
+    }
+
     // ---- Torcia ----
     /** Lo stato della torcia: acceso, spento, o «non c'è una torcia».
      *
