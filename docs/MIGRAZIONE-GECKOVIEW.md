@@ -11,8 +11,12 @@ ramo parallelo `novaos-rom/`; la shell (`shell/`) non deve cambiare.
   rispondono con il valore vero, il canale richiesta/risposta si scioglie con il valore giusto,
   **l'aggiornamento OTA della shell funziona nei tre momenti che contano** — commit, sopravvivenza
   al riavvio, ripristino — e **la shell sotto Gecko telefona e condivide** come l'APK pubblicato.
-  Restano da cablare 31 comandi su 53 e la fase 8 (ROM). Nulla di quanto descritto qui è stato
-  pubblicato come rilascio: lo spike vive su un ramo isolato.
+  Il **punto 2** (§17 e la fase dei sei comandi) è chiuso, e il **punto 3 — il browser** — è portato
+  a GeckoView e verificato (§18): nel progetto non ci sono più due motori contemporaneamente.
+  Restano la fase 8 (ROM) e quattro voci dichiarate fuori di proposito: `prefGet`/`prefKeys`
+  (sotto Gecko non esistono letture sincrone) e `audioRecStart`/`audioRecStop` (resi inutili da
+  `getUserMedia`). Nulla di quanto descritto qui è stato pubblicato come rilascio: lo spike vive su
+  un ramo isolato.
 - Interessati: livello `android-launcher/` (contenitore + ponte), `shell/` (minimi ritocchi),
   `system/` (ROM definitiva)
 - **Il codice dello spike vive sul ramo `gecko-spike`** (non linkato di proposito: un link
@@ -38,6 +42,11 @@ ramo parallelo `novaos-rom/`; la shell (`shell/`) non deve cambiare.
 > `files/shell` non è più incondizionata, ed è deliberato: una ricopiatura a ogni avvio cancella
 > l'aggiornamento e lo fa sparire **al riavvio successivo**, senza errori. È il guasto peggiore
 > incontrato finora proprio perché sembra un successo.
+
+> **Da leggere per primo se si tocca il browser:** §18.1. Sotto Gecko tre cose si rompono **senza
+> un errore** — la memoria della scheda (omnibox, titolo e voci del menu che restano vuoti), i
+> dialoghi delle pagine (`confirm` che risponde sempre «no») e il ponte che, con il browser
+> aperto, si inietterebbe in qualunque pagina servita da `localhost`.
 
 ---
 
@@ -191,8 +200,11 @@ migrare un componente alla volta e tenere sempre un'istanza avviabile.
   `GeckoSession` (oggi via `onPermissionRequest` WebChromeClient).
 - **File/allegati**: `<input type=file>` e download passano per i delegate Gecko
   (`PromptDelegate`, `ContentDelegate`), non più `onShowFileChooser`/DownloadListener.
-- **User-Agent / vista desktop**: la `BrowserActivity` esterna oggi imposta la UA via WebView;
-  in Gecko la UA si configura a livello di `GeckoSessionSettings`.
+- **User-Agent / vista desktop**: la `BrowserActivity` esterna impostava la UA via WebView; in Gecko
+  la UA si dà come *override* su `GeckoSessionSettings` (`userAgentOverride`,
+  `useDesktopUserAgent`). **Fatto in §18**: la vista desktop sotto Gecko ha richiesto **due**
+  impostazioni e non una — la stringa del browser *e* la larghezza della vista — perché cambiando
+  solo la stringa il sito resterebbe impaginato da telefono.
 - **Service worker offline** (`sw.js`, cache `novaos-vNN`): Gecko supporta i service worker;
   va verificato che la strategia network-first della shell resti valida con la policy di cache
   di GeckoView e che l'update della cache (bump `CACHE` a ogni rilascio) continui a funzionare.
@@ -247,8 +259,13 @@ migrare un componente alla volta e tenere sempre un'istanza avviabile.
   pagina, perché vive in un mondo isolato. Lo stub soddisfa il contratto di `js/bridge.js` e va
   iniettato a `document_start`, prima che `bridge.js` catturi `window.NovaNative`.
   Resta da aggiungere l'iniezione di `__NOVA_PREFS` nello stesso momento.
-- [ ] Persistenza dati shell (preferenze/IndexedDB) nello storage di GeckoView: migrazione o
-  convivenza col percorso attuale.
+- [x] **Persistenza dati shell (preferenze/IndexedDB) nello storage di GeckoView** — **deciso:
+  si convive col percorso attuale** (§11.3), nessuna migrazione. Le preferenze restano scritte
+  **in entrambi i posti** — la pagina le tiene in `localStorage` e il nativo ne tiene una copia
+  aggiornata — esattamente come fa il launcher pubblicato: così i due binari restano coerenti e
+  il browser legge il tema dalla copia nativa, come già faceva. Non si importa nulla dalla vecchia
+  app: i dati del launcher pubblicato stanno in cartelle private di **un'altra app**, leggibili
+  solo con root o dalla ROM, e la decisione presa è di ripartire puliti.
 - [ ] Policy UA per la vista desktop del Browser.
 - [ ] Impatto di `?preview=1` / anteprime (nessuna differenza attesa).
 - [x] **Probe di presenza del nativo** — risolto: la shell non interroga più `window.NovaNative`.
@@ -474,7 +491,7 @@ computer non esiste. Il server locale invece è autosufficiente.
 | Comandi cablati in Java | **3 su 53** (`toast`, `vibrate`, `openBrowser`): tutti gli altri arrivano e finiscono nel log |
 | Getter e richiesta/risposta (14 + 11) | ❌ in questa fase; **risolti in §11** (fase 3): gli 11 getter sono cablati, restano i 14 asincroni |
 | Ritorno nativo → pagina, con evento consegnato alla shell | ✅ verificato (§10.7) |
-| `BrowserActivity` | copiata da `:app`, **ancora basata su WebView**: il port a GeckoView è un passo a sé |
+| `BrowserActivity` | all'inizio copiata da `:app` e basata su WebView; **portata a GeckoView in §18** |
 | Pulizia | la fascia diagnostica è già stata tolta; le sonde `__probe_bg` / `__probe_stub` **restano** finché servono alla fase 3 come spia di canale vivo |
 
 **Nota pratica.** La fascia diagnostica copriva il dock e ne intercettava i tocchi: per un giro di
@@ -677,7 +694,7 @@ problemi diversi, e il log li distingue sempre.
 | Preferenze | ✅ già funzionanti via `localStorage`, senza Java (§11.3) |
 | Richiesta/risposta (14) | ❌ da fare: servono Promise, quindi un disegno a parte |
 | Comandi cablati in Java | **5 su 53** (`toast`, `vibrate`, `openBrowser`, `requestMic`, `openAppSettings`) |
-| `BrowserActivity` | copiata da `:app`, **ancora basata su WebView**: il port è un passo a sé |
+| `BrowserActivity` | all'inizio copiata da `:app` e basata su WebView; **portata a GeckoView in §18** |
 | Tasto Indietro | ✅ cablato e verificato (§12) |
 | Sonde `__probe_bg` / `__probe_stub` | restano: costano due righe di log e servono a distinguere «canale morto» da «comando sbagliato» |
 
@@ -831,7 +848,7 @@ restituito da MediaStore, non si presume da quello richiesto.
 | Preferenze | ✅ già funzionanti via `localStorage`, senza Java (§11.3) |
 | **Canale richiesta/risposta** | ✅ **verificato end-to-end** (§13) — ma con **1 comando su 14** |
 | Comandi cablati in Java | **5 su 53** (`toast`, `vibrate`, `openBrowser`, `requestMic`, `openAppSettings`) |
-| `BrowserActivity` | copiata da `:app`, **ancora basata su WebView**: il port è un passo a sé |
+| `BrowserActivity` | all'inizio copiata da `:app` e basata su WebView; **portata a GeckoView in §18** |
 | Tasto Indietro | ✅ cablato e verificato (§12) |
 
 Il canale è la parte difficile; i comandi che lo usano sono ora quasi tutti una riga in `RR` più
@@ -942,7 +959,7 @@ non sta provando quello che dice.
 | Canale richiesta/risposta (14) | ✅ il canale è verificato (§13) — cablati **3 su 14** |
 | **OTA della shell** | ✅ **verificato nei tre momenti** (§14) |
 | Comandi cablati in Java | **10 su 53** — 7 dei 28 fire-and-forget, 3 dei 14 di richiesta/risposta |
-| `BrowserActivity` | copiata da `:app`, **ancora basata su WebView**: il port è un passo a sé |
+| `BrowserActivity` | all'inizio copiata da `:app` e basata su WebView; **portata a GeckoView in §18** |
 | Tasto Indietro | ✅ cablato e verificato (§12) |
 
 Resta da fare, in ordine di utilità: **`audioRecStart`/`audioRecStop`** — che Gecko dovrebbe rendere
@@ -1104,7 +1121,7 @@ dire cosa le sta succedendo.
 | **Permessi media** | ✅ **microfono e fotocamera, entrambi verificati** (§15) |
 | **`audioRecStart`/`audioRecStop`** | ⛔ **non vanno cablati**: `getUserMedia` li rende inutili (§15.2) |
 | Comandi cablati in Java | **10 su 53** — invariato, ma il totale utile è sceso di 2 |
-| `BrowserActivity` | copiata da `:app`, **ancora basata su WebView**: il port è un passo a sé |
+| `BrowserActivity` | all'inizio copiata da `:app` e basata su WebView; **portata a GeckoView in §18** |
 | Tasto Indietro | ✅ cablato e verificato (§12) |
 
 La fase 6 non ha aggiunto comandi cablati: ha **verificato una capacità** e **tolto due comandi dal
@@ -1223,8 +1240,8 @@ finché non si tocca la riga dell'app**. Non è nostro, ma senza saperlo sembra 
 
 1. I comandi minori rimasti: `mail*` (4), `screenshot`, `installUpdate`, `openSetting`,
    `prefSet`/`prefDel`.
-2. `BrowserActivity` → `GeckoView` (oggi è ancora la copia WebView): è il pezzo che nel piano è un
-   passo a sé.
+2. ~~`BrowserActivity` → `GeckoView`~~ — **fatto**, §18 (all'epoca era ancora la copia WebView: era
+   il pezzo che nel piano è un passo a sé).
 3. Pulizia dei fallback resi inutili da Gecko (audio nativo, `os.confirm`, doppia persistenza) e
    delle sonde di fase 1.
 4. Fase 8: la ROM (§14.5 per i sette `set*`).
@@ -1355,14 +1372,128 @@ non lasciato indietro.
 1. **`mail*` (4), `screenshot`, `installUpdate`**: sono i sei `cmd` che restano del punto 2.
    Portano `MailBridge` in `os.nova.gecko` con i jar di JavaMail, e il sink `JsSink.eval` diventa
    un evento verso la pagina.
-2. `BrowserActivity` → `GeckoView`.
+2. ~~`BrowserActivity` → `GeckoView`~~ — **fatto**, §18.
 3. Pulizia: ripieghi resi inutili da Gecko, sonde di fase 1, e il sottotitolo NFC di §17.4.
 4. Fase 8: la ROM.
 
 ---
 
+## 18 · Esito del punto 3 — il browser passa a GeckoView (2026-09-25)
+
+Il file che restava indietro non è più indietro: `BrowserActivity.java` smette di essere la copia
+WebView infilata dentro un progetto Gecko e diventa **il browser di NovaOS sul motore Gecko**. Con
+questo, nel progetto non ci sono più due motori contemporaneamente.
+
+Il file è riscritto per intero (circa 1.870 righe) **mantenendo la stessa interfaccia e le stesse
+funzioni di prima**: omnibox editabile, barra di avanzamento, schede multiple con selettore e
+anteprime, incognito, trova nella pagina, download, sito desktop, condividi, apri nel browser di
+sistema, schermo intero. Non ci sono schermate XML: la schermata è tutta programmatica, come era.
+
+### 18.1 · Le traduzioni, e le tre che si sarebbero rotte in silenzio
+
+Le traduzioni da WebView a Gecko sono quelle previste in §5. Tre di esse **non falliscono con un
+errore**: falliscono con un peggioramento che sembra normale, e sono il motivo per cui questo
+passo vale più di una traduzione parola per parola.
+
+| cosa | sotto Gecko | se non si chiude |
+|---|---|---|
+| **La memoria della scheda** | Gecko **non** sa dire da fuori «quale indirizzo stai mostrando», «che titolo ha», «si può tornare indietro»: non esiste un getter sincrono | omnibox, titolo e voci del menu restano vuoti o spenti **senza un messaggio**. Risolto facendo ricordare quei valori alla scheda, aggiornandoli dalle callback (`onLocationChange`, `onTitleChange`, `onProgressChange`) |
+| **I dialoghi delle pagine** | `alert`, `confirm`, `prompt` e il «vuoi davvero uscire?» dei moduli, senza un `PromptDelegate`, vengono **congedati in silenzio** | `confirm` risponde sempre «no», `prompt` sempre vuoto: una regressione rispetto a ieri, che si nota solo dalle pagine che li usano |
+| **Il ponte nei confronti di terzi** | l'estensione è dichiarata per `http://127.0.0.1/*` e **la porta non si può restringere** (la documentazione Mozilla è esplicita: i filtri delle estensioni non supportano la porta) | con il browser aperto, una pagina servita da `localhost` riceverebbe il ponte **completo** (chiamate, SMS, wifi…). Chiuso dal lato pagina: lo stub si installa solo se la porta è quella della shell |
+
+Altri due punti non si sarebbero rotti, ma sarebbero rimasti **a metà** senza che si vedesse:
+
+- **La vista desktop sotto Gecko sono due impostazioni, non una**: la stringa del browser *e* la
+  larghezza della vista. Cambiando solo la stringa il sito resterebbe impaginato da telefono — una
+  regressione che somiglia a un sito che «non ha la versione desktop».
+- **L'anteprima della scheda** si cattura con `capturePixels()`, che è **asincrono**, e va chiesto
+  **prima** di staccare la sessione: dopo lo stacco il compositore è spento e la cattura fallisce
+  senza sollevare nulla, lasciando la scheda con un riquadro vuoto per sempre.
+
+### 18.2 · Le tre lacune, chiuse
+
+- **Scelta dei file**: `<input type=file>` apre la schermata di scelta file di Android e il file
+  **arriva alla pagina**, con nome, dimensione, tipo e contenuto leggibile.
+- **Permessi di camera, microfono e posizione**: diventano una richiesta vera, con la coda dei
+  permessi (Android accetta un dialogo alla volta e la seconda richiesta viene rifiutata
+  all'istante — un rifiuto tecnico indistinguibile da un «no»).
+- **Preferiti e cronologia unificati**: il browser legge e scrive **la stessa copia** che la shell
+  aggiorna (le preferenze native `novaos`, chiavi `nova:bookmarks` e `nova:browserHistory`) e le
+  stesse forme delle voci. Un preferito salvato nella shell si vede nel browser senza alcun lavoro
+  in più. **Il verso opposto resta da fare** ed è dichiarato in §18.5.
+
+### 18.3 · Come è stato verificato
+
+Emulatore, origine `local`, dopo `./gradlew :gecko:assembleDebug` e `adb install -r`.
+
+| Prova | Esito |
+|---|---|
+| Un solo motore nel processo | ✅ `GeckoRuntime: Lifecycle: onCreate` **una volta sola** fra shell, browser e tre andate e ritorni; nessun «Failed to initialize» né «init failed» |
+| Memoria con dieci schede aperte | ✅ TOTAL PSS 194.198 → 200.292 KB (**+6 MB**): nessuna crescita lineare, quindi nessun tetto da mettere alle schede |
+| Chiusura del browser | ✅ la shell resta **viva nello stesso processo** (stesso pid prima e dopo) e il ponte risponde |
+| Dialoghi delle pagine | ✅ `alert`, `confirm` (la pagina legge `true`) e `prompt` (la pagina legge il testo scritto) con le finestrelle di sistema vere |
+| Popup (`window.open`) | ✅ `GeckoView:OnNewSession uri=https://it.wikipedia.org/` e il contatore delle schede passa da 1 a 2 |
+| Download | ✅ il file scaricato compare in `Download/` e il suo **md5 è identico** all'originale |
+| Scelta dei file | ✅ si apre la schermata di scelta file di Android; scelto un PNG la pagina legge `c.png · 219.640 byte · image/png` e i primi byte del file |
+| Preferiti condivisi | ✅ «Preferiti (2)» elenca sia un preferito aggiunto dal browser sia uno aggiunto dalla shell |
+| Permesso di posizione | ⚠️ **solo il consenso** (vedi §18.5) |
+
+### 18.4 · I difetti trovati provando, e cosa insegnano
+
+1. **L'omnibox mostrava il suggerimento invece dell'indirizzo.** Il sintomo sembrava un guasto
+   della memoria della scheda. La causa era altrove, nel **fuoco**: da Android 8 la prima vista
+   `focusableInTouchMode` prende il fuoco all'avvio, e togliendo il fuoco alle icone della barra
+   (vedi sotto) quel ruolo era passato all'omnibox — che, per non riscrivere l'indirizzo sotto le
+   dita di chi sta digitando, **salta deliberatamente l'aggiornamento quando ha il fuoco**.
+   Diagnosticato con `adb shell dumpsys input_method` (`mServedView=…EditText`), chiuso dando il
+   fuoco al contenitore invece che al campo.
+2. **Due evidenziazioni permanenti su un'icona.** `?attr/selectableItemBackgroundBorderless` e un
+   `RippleDrawable` disegnano entrambi un fondo **persistente** per lo stato «a fuoco»: sul
+   telefono si vedeva un cerchio pieno che non si spegneva. Un'icona della barra non ha niente da
+   fare col fuoco — non c'è una tastiera — quindi si è risolto con `setFocusable(false)`, e il
+   tocco resta con la sua onda.
+3. **Il menu restava aperto sopra la schermata che aveva appena aperto.** Un `PopupMenu` di sistema
+   si congeda da sé quando una voce è scelta; il pannello disegnato a mano **no**, ed è una finestra
+   nostra: «Trova nella pagina» finiva sotto le proprie righe. Chiuso esplicitamente a ogni voce.
+4. **La riga di PDF.js nell'aria.** Durante la prova di download compare
+   `NS_ERROR_FAILURE: Ignore PDF.js for this download.` sulla console della pagina: **non è un
+   guasto**, è Gecko che dichiara di non voler gestire come PDF un file `.bin`. Il download è
+   completo e verificato col checksum.
+
+### 18.5 · Limiti, dichiarati
+
+- **La posizione: il consenso è verificato, la consegna del punto no.** La catena del permesso è
+  intera — la pagina chiede, il delegato risponde, il sistema registra `os.nova.gecko` fra i
+  richiedenti di posizione (`dumpsys location`: richiesta ogni 100 ms sul provider fuso) — ma
+  l'emulatore **non ha una sorgente di posizione** (`last location=null`, provider GPS
+  `ProviderRequest[OFF]`, zero rapporti GNSS), quindi la pagina resta in attesa e non riceve né un
+  punto né un errore: la pagina di prova non mette un timeout, e senza timeout la richiesta può
+  restare appesa per sempre. **Non va raccontato come verificato**: la prova buona è su un telefono
+  vero, dove il GPS esiste.
+- **Un preferito aggiunto dal browser non compare ancora nella shell.** La shell legge la propria
+  `localStorage`, non la copia nativa: per il verso opposto serve che la shell **riceva la
+  notizia**, cioè un evento nuovo che le faccia rileggere l'elenco (~10 righe in `shell/js/`). È
+  **l'unico punto di questo passo che tocca la shell**, quindi passa dall'OTA e non si pubblica
+  senza il via di Daniele. Il resto della condivisione — quello che il browser legge — è fatto e
+  verificato.
+- **`installUpdate` resta non provabile** (§17.4): serve un download vero e l'installer di sistema.
+- **Il pieno schermo della pagina** (i video che si allargano) non c'è: non c'era nemmeno sotto
+  WebView, quindi non è una regressione.
+- **Le anteprime delle schede ci sono solo per la scheda che si sta lasciando**: le altre non hanno
+  un compositore attivo e mostrano un riquadro vuoto. Dichiarato in partenza, confermato in prova.
+
+### 18.6 · Da dove si riprende
+
+1. L'evento dei preferiti verso la shell (v. §18.5): è l'ultimo pezzo della lacuna, e l'unico che
+   richiede il via per l'OTA.
+2. La prova della posizione su un telefono vero.
+3. Pulizia: ripieghi resi inutili da Gecko, sonde di fase 1, sottotitolo NFC di §17.4.
+4. Fase 8: la ROM.
+
+---
+
 *Documento di pianificazione — l'implementazione vive sul ramo `gecko-spike`. La shell è già stata
-predisposta (`js/bridge.js`) con comportamento invariato sul motore attuale, così le fasi 0–7 e la
-fase 3 residua lavorano su un'interfaccia stabile senza toccare l'app in uso. Finché la migrazione
-non è completa `main` resta la shell pubblicata: nessuna fase di questo documento, da sola, è un
-rilascio.*
+predisposta (`js/bridge.js`) con comportamento invariato sul motore attuale, così le fasi 0–7, la
+fase 3 residua e il punto 3 lavorano su un'interfaccia stabile senza toccare l'app in uso. Finché
+la migrazione non è completa `main` resta la shell pubblicata: nessuna fase di questo documento, da
+sola, è un rilascio.*
