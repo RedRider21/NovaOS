@@ -140,6 +140,23 @@ public class BrowserActivity extends Activity {
     private int BG, BAR, TXT, DIM, CAP, CARD, PH;
     // tema incognito (barra scura viola, capsula più scura) — sempre scuro
     private static final int INC_BG = 0xFF17141f, INC_BAR = 0xFF2a2438, INC_CAP = 0xFF3a3350;
+    // Testo e icone dell'incognito: servono per forza, non si ricavano dal tema. La barra
+    // dell'incognito è scura sempre, mentre la palette qui sopra segue NovaOS — con NovaOS
+    // in chiaro il testo della barra era nero su viola scuro, cioè quasi invisibile.
+    private static final int INC_TXT = 0xFFeceaf4, INC_DIM = 0xFFb3aec6, INC_CARD = 0xFF231d33;
+
+    // Viste che devono cambiare colore quando cambia la palette in uso (il tema di NovaOS,
+    // oppure quella dell'incognito): si registrano mentre si costruiscono — sono poche e
+    // note — invece di andarle a cercare a ogni cambio.
+    private final List<TextView> testiTema = new ArrayList<>();
+    private final List<ImageView> iconeTema = new ArrayList<>();
+    private Button reloadBtn, piuBtn, menuBtn;
+    // La stella dei preferiti del menu. Il pannello resta aperto quando la si tocca, quindi
+    // la stella va aggiornata sul posto: una stella che non cambia si legge come «non è
+    // successo niente», ed è il difetto che questa coppia di riferimenti chiude.
+    private TextView stellaFila, stellaVoceIcona, stellaVoceTesto;
+    // Palette del pannello del menu mentre lo si costruisce (segue la scheda in vista).
+    private int pCard, pCap, pTxt, pDim;
 
     /** Legge il tema salvato da NovaOS (SharedPreferences "novaos", chiave nova:theme)
      *  e sceglie la palette chiara o scura, per andare di pari passo con il resto del sistema. */
@@ -153,6 +170,9 @@ public class BrowserActivity extends Activity {
             BG = 0xFF0b0f17; BAR = 0xFF151a24; TXT = 0xFFe8ecf4; DIM = 0xFF9aa4b8;
             CAP = 0xFF232937; CARD = 0xFF1c2331; PH = 0xFF0f141d;
         }
+        // Il menu non è ancora costruito: la sua palette parte da quella del tema e viene
+        // sostituita all'apertura, se la scheda in vista è in incognito.
+        pCard = CARD; pCap = CAP; pTxt = TXT; pDim = DIM;
     }
 
     @Override protected void onCreate(Bundle b) {
@@ -199,7 +219,7 @@ public class BrowserActivity extends Activity {
         capLp.leftMargin = dp(6); capLp.rightMargin = dp(4);
         cap.setLayoutParams(capLp);
 
-        secIco = iconaVista(R.drawable.ic_lock, 15, DIM);
+        secIco = iconaVista(R.drawable.ic_lock, 15, DIM);   // colore suo: lo decide syncBar
 
         omnibox = new EditText(this);
         omnibox.setSingleLine(true);
@@ -223,26 +243,31 @@ public class BrowserActivity extends Activity {
         });
         omnibox.setOnFocusChangeListener((v, has) -> { if (has) omnibox.selectAll(); });
 
-        Button reload = iconBtn("⟳");
-        reload.setOnClickListener(v -> { Scheda s = schedaCorrente(); if (s != null && s.web != null) s.web.reload(); });
+        reloadBtn = iconBtn("⟳");
+        reloadBtn.setOnClickListener(v -> { Scheda s = schedaCorrente(); if (s != null && s.web != null) s.web.reload(); });
 
         cap.addView(secIco);
         cap.addView(omnibox);
-        cap.addView(reload);
+        cap.addView(reloadBtn);
+        testiTema.add(reloadBtn);
 
         // casa: riporta alla pagina iniziale. È il primo elemento della barra: la si
         // cerca a sinistra dell'omnibox, non in mezzo alle altre icone.
         ImageView casa = iconaBtn(R.drawable.ic_home);
         casa.setOnClickListener(v -> vaiAllaHome());
+        iconeTema.add(casa);
+        // Gli occhiali dell'incognito stanno nella stessa fila: la visibilità la decide
+        // applicaTemaBarra, il colore lo ricevono come le altre icone.
+        iconeTema.add(incBadge);
 
         // ＋ apre una scheda nuova. La stella dei preferiti non sta più qui: era l'unica
         // icona che cambiava aspetto da sola a ogni pagina, e il preferito si aggiunge
         // dalle due voci del menu (che si aprono da ⋮).
-        Button piu = iconBtn("＋");
-        piu.setOnClickListener(v -> nuovaScheda(paginaIniziale(), false, false));
+        piuBtn = iconBtn("＋");
+        piuBtn.setOnClickListener(v -> nuovaScheda(paginaIniziale(), false, false));
 
-        Button menu = iconBtn("⋮");
-        menu.setOnClickListener(this::mostraMenu);
+        menuBtn = iconBtn("⋮");
+        menuBtn.setOnClickListener(this::mostraMenu);
 
         // L'ordine della fila: la casa a sinistra (è lì che la si cerca),
         // l'omnibox a prendersi lo spazio che avanza, ＋ subito dopo, e in fondo il
@@ -250,10 +275,12 @@ public class BrowserActivity extends Activity {
         // perché dicono della scheda che il contatore conta.
         bar.addView(casa);
         bar.addView(cap);
-        bar.addView(piu);
+        bar.addView(piuBtn);
         bar.addView(incBadge);
         bar.addView(tabBtn);
-        bar.addView(menu);
+        bar.addView(menuBtn);
+        testiTema.add(piuBtn);
+        testiTema.add(menuBtn);
 
         // barra di avanzamento
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -441,11 +468,15 @@ public class BrowserActivity extends Activity {
         head.setGravity(Gravity.CENTER_VERTICAL);
         TextView tt = new TextView(this);
         tt.setText(t.titolo == null || t.titolo.isEmpty() ? "Nuova scheda" : t.titolo);
-        tt.setTextColor(TXT); tt.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        // La casella di una scheda in incognito è scura anche col tema chiaro: il titolo
+        // segue la casella, non il tema, altrimenti è testo scuro su viola scuro.
+        tt.setTextColor(t.incognito ? INC_TXT : TXT);
+        tt.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         tt.setSingleLine(true); tt.setEllipsize(TextUtils.TruncateAt.END);
         tt.setLayoutParams(new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
         TextView x = new TextView(this);
-        x.setText("✕"); x.setTextColor(DIM); x.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        x.setText("✕"); x.setTextColor(t.incognito ? INC_DIM : DIM);
+        x.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         x.setPadding(dp(8), dp(2), dp(2), dp(2));
         x.setOnClickListener(v -> {
             int idx = schede.indexOf(t);
@@ -516,13 +547,25 @@ public class BrowserActivity extends Activity {
     private void mostraMenu(View anchor) {
         Scheda s = schedaCorrente();
         boolean bm = s != null && eNeiPreferiti(s.indirizzo);
+        boolean indice = s != null && !s.indirizzo.isEmpty();
         boolean indietro = s != null && s.web != null && s.web.canGoBack();
         boolean avanti = s != null && s.web != null && s.web.canGoForward();
+
+        // La palette del pannello segue la scheda in vista: in incognito è quella scura,
+        // altrimenti sarebbe un rettangolo chiaro con dentro testo scuro su una barra viola.
+        // Il pannello si ricostruisce da zero: i riferimenti alle stelle sono quelli che
+        // sta per costruire, non quelli del pannello precedente.
+        stellaFila = null; stellaVoceIcona = null; stellaVoceTesto = null;
+        boolean inc = s != null && s.incognito;
+        pCard = inc ? INC_CARD : CARD;
+        pCap  = inc ? INC_CAP  : CAP;
+        pTxt  = inc ? INC_TXT  : TXT;
+        pDim  = inc ? INC_DIM  : DIM;
 
         LinearLayout pannello = new LinearLayout(this);
         pannello.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable sfondo = new GradientDrawable();
-        sfondo.setColor(CARD);
+        sfondo.setColor(pCard);
         sfondo.setCornerRadius(dp(14));
         pannello.setBackground(sfondo);
 
@@ -535,8 +578,9 @@ public class BrowserActivity extends Activity {
                 v -> { Scheda c = schedaCorrente(); if (c != null && c.web.canGoBack()) c.web.goBack(); }));
         fila.addView(iconaMenu("→", avanti,
                 v -> { Scheda c = schedaCorrente(); if (c != null && c.web.canGoForward()) c.web.goForward(); }));
-        fila.addView(iconaMenu(bm ? "★" : "☆", s != null && !s.indirizzo.isEmpty(),
-                v -> { Scheda c = schedaCorrente(); if (c != null) invertiPreferito(c.titolo, c.indirizzo); }));
+        stellaFila = iconaMenu(bm ? "★" : "☆", indice, this::invertiPreferitoDaMenu);
+        stellaFila.setTextColor(bm ? ACC : pTxt);   // blu quando la pagina è salvata
+        fila.addView(stellaFila);
         fila.addView(iconaMenu("⬇", true, v -> apriDownload()));
         fila.addView(iconaMenu("⟳", s != null,
                 v -> { Scheda c = schedaCorrente(); if (c != null && c.web != null) c.web.reload(); }));
@@ -552,14 +596,18 @@ public class BrowserActivity extends Activity {
         pannello.addView(separatore());
         pannello.addView(voceMenu(R.drawable.ic_history, "Cronologia", v -> mostraCronologia()));
         pannello.addView(voceMenu("★", "Preferiti", v -> mostraPreferiti()));
-        pannello.addView(voceMenu(bm ? "★" : "☆", bm ? "Rimuovi dai preferiti" : "Aggiungi ai preferiti",
-                v -> { Scheda c = schedaCorrente(); if (c != null) invertiPreferito(c.titolo, c.indirizzo); }));
+        // La voce dei preferiti: si tengono i riferimenti alle sue due parti, perché al
+        // tocco la stella deve cambiare aspetto sul posto.
+        stellaVoceIcona = glifoMenu(bm ? "★" : "☆");
+        stellaVoceIcona.setTextColor(bm ? ACC : pTxt);
+        stellaVoceTesto = etichettaMenu(bm ? "Rimuovi dai preferiti" : "Aggiungi ai preferiti");
+        pannello.addView(voceMenu(stellaVoceIcona, stellaVoceTesto, this::invertiPreferitoDaMenu));
         pannello.addView(separatore());
         pannello.addView(voceMenu(R.drawable.ic_find, "Trova nella pagina", v -> mostraBarraTrova(true)));
         pannello.addView(voceMenu(s != null && s.desktop ? R.drawable.ic_mobile : R.drawable.ic_desktop,
                 s != null && s.desktop ? "Sito mobile" : "Sito desktop",
                 v -> { Scheda c = schedaCorrente(); if (c != null) cambiaModalita(c, !c.desktop); }));
-        pannello.addView(voceMenu("⛶", "Schermo intero", v -> setSchermoIntero(true)));
+        pannello.addView(voceMenu(R.drawable.ic_fullscreen, "Schermo intero", v -> setSchermoIntero(true)));
         pannello.addView(separatore());
         pannello.addView(voceMenu(R.drawable.ic_share, "Condividi…",
                 v -> condividi(schedaCorrente() != null ? schedaCorrente().indirizzo : null)));
@@ -603,7 +651,26 @@ public class BrowserActivity extends Activity {
 
     /** Una voce con l'icona disegnata ({@code res/drawable/ic_*.xml}), non un carattere. */
     private View voceMenu(int icona, String testo, View.OnClickListener azione) {
-        return voceMenu(iconaVista(icona, 18, TXT), testo, azione);
+        return voceMenu(iconaVista(icona, 18, pTxt), etichettaMenu(testo), azione);
+    }
+
+    /** Il testo di una voce, col colore della palette in uso. */
+    private TextView etichettaMenu(String testo) {
+        TextView t = new TextView(this);
+        t.setText(testo);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        t.setTextColor(pTxt);
+        return t;
+    }
+
+    /** Il glifo che fa da icona a una voce, quando non c'è un disegno. */
+    private TextView glifoMenu(String glifo) {
+        TextView i = new TextView(this);
+        i.setText(glifo);
+        i.setTextColor(pTxt);
+        i.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        i.setGravity(Gravity.CENTER);
+        return i;
     }
 
     /**
@@ -616,12 +683,7 @@ public class BrowserActivity extends Activity {
      * disegnate.
      */
     private View voceMenu(String glifo, String testo, View.OnClickListener azione) {
-        TextView i = new TextView(this);
-        i.setText(glifo);
-        i.setTextColor(TXT);
-        i.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        i.setGravity(Gravity.CENTER);
-        return voceMenu(i, testo, azione);
+        return voceMenu(glifoMenu(glifo), etichettaMenu(testo), azione);
     }
 
     /**
@@ -631,7 +693,7 @@ public class BrowserActivity extends Activity {
      * incollata al testo: le voci si leggono in colonna solo se tutti i testi cominciano
      * alla stessa ascissa, e un glifo e un disegno non sono mai larghi uguale.
      */
-    private View voceMenu(View icona, String testo, View.OnClickListener azione) {
+    private View voceMenu(View icona, TextView testo, View.OnClickListener azione) {
         LinearLayout r = new LinearLayout(this);
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setGravity(Gravity.CENTER_VERTICAL);
@@ -642,23 +704,18 @@ public class BrowserActivity extends Activity {
         ilp.rightMargin = dp(8);
         icona.setLayoutParams(ilp);
         r.addView(icona);
-
-        TextView t = new TextView(this);
-        t.setText(testo);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        t.setTextColor(TXT);
-        r.addView(t);
+        r.addView(testo);
 
         r.setOnClickListener(v -> { chiudiMenu(); azione.onClick(v); });
         return r;
     }
 
     /** Un'icona della fila in alto: cerchio chiaro attorno, spenta se l'azione non c'è. */
-    private View iconaMenu(String glifo, boolean attiva, View.OnClickListener azione) {
+    private TextView iconaMenu(String glifo, boolean attiva, View.OnClickListener azione) {
         TextView t = new TextView(this);
         t.setText(glifo);
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
-        t.setTextColor(attiva ? TXT : DIM);
+        t.setTextColor(attiva ? pTxt : pDim);
         t.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(40), dp(40));
         lp.leftMargin = dp(5); lp.rightMargin = dp(5);
@@ -666,7 +723,7 @@ public class BrowserActivity extends Activity {
 
         GradientDrawable cerchio = new GradientDrawable();
         cerchio.setShape(GradientDrawable.OVAL);
-        cerchio.setColor(attiva ? CAP : Color.TRANSPARENT);
+        cerchio.setColor(attiva ? pCap : Color.TRANSPARENT);
         if (attiva) {
             // il tocco si accende dentro il cerchio, non nel rettangolo attorno
             t.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33808080), cerchio, cerchio));
@@ -680,7 +737,7 @@ public class BrowserActivity extends Activity {
     /** La riga di luce che separa due gruppi di voci. */
     private View separatore() {
         View v = new View(this);
-        v.setBackgroundColor(DIM);
+        v.setBackgroundColor(pDim);
         v.setAlpha(0.22f);
         v.setLayoutParams(new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)));
         return v;
@@ -766,18 +823,57 @@ public class BrowserActivity extends Activity {
         boolean inc = s != null && s.incognito;
         boolean sicura = url.startsWith("https://");
         secIco.setImageResource(sicura ? R.drawable.ic_lock : R.drawable.ic_info);
-        secIco.setColorFilter(sicura ? DIM : 0xFFff9f0a, PorterDuff.Mode.SRC_IN);
+        // Il lucchetto segue la palette della barra: in incognito quella chiara del tema
+        // sarebbe invisibile sul viola scuro.
+        secIco.setColorFilter(sicura ? (inc ? INC_DIM : DIM) : 0xFFff9f0a, PorterDuff.Mode.SRC_IN);
         applicaTemaBarra(inc);
     }
 
-    /** Colora la barra secondo il tema: normale, oppure incognito (scuro viola). */
+    /** La scheda in vista è in incognito? */
+    private boolean incognitoInVista() {
+        Scheda s = schedaCorrente();
+        return s != null && s.incognito;
+    }
+
+    /**
+     * Colora la barra secondo la palette in uso: quella di NovaOS, oppure quella
+     * dell'incognito (barra scura viola).
+     *
+     * <p>Non è solo lo sfondo: in incognito cambiano <b>anche i testi e le icone</b>, perché
+     * la barra è scura comunque mentre il tema di NovaOS può essere chiaro. Tingere solo lo
+     * sfondo lasciava il testo nero su viola scuro — si vedeva la barra e non quello che
+     * c'era scritto.
+     */
     private void applicaTemaBarra(boolean inc) {
-        bar.setBackgroundColor(inc ? INC_BAR : BAR);
+        int cBar = inc ? INC_BAR : BAR;
+        int cCap = inc ? INC_CAP : CAP;
+        int cTxt = inc ? INC_TXT : TXT;
+        int cDim = inc ? INC_DIM : DIM;
+
+        bar.setBackgroundColor(cBar);
         GradientDrawable capBg = new GradientDrawable();
-        capBg.setColor(inc ? INC_CAP : CAP); capBg.setCornerRadius(dp(22));
+        capBg.setColor(cCap); capBg.setCornerRadius(dp(22));
         cap.setBackground(capBg);
-        incBadge.setVisibility(inc ? View.VISIBLE : View.GONE);
+        omnibox.setTextColor(cTxt);
+        omnibox.setHintTextColor(cDim);
         omnibox.setHint(inc ? "Cerca o digita (incognito)" : "Cerca o digita un indirizzo");
+        incBadge.setVisibility(inc ? View.VISIBLE : View.GONE);
+        tabBtn.setTextColor(cTxt);
+        tabBtn.setBackground(squareBadge(cDim));
+        for (TextView t : testiTema) t.setTextColor(cTxt);
+        for (ImageView i : iconeTema) i.setColorFilter(cTxt, PorterDuff.Mode.SRC_IN);
+
+        // La barra «trova» è la seconda riga della stessa testata, e la riga di
+        // avanzamento ne è il bordo inferiore: seguono la stessa palette.
+        findBar.setBackgroundColor(cBar);
+        findInfo.setTextColor(cDim);
+        findInput.setTextColor(cTxt);
+        findInput.setHintTextColor(cDim);
+        progress.setProgressBackgroundTintList(ColorStateList.valueOf(cBar));
+
+        // La stella dei preferiti ha un colore suo (blu quando la pagina è salvata) che
+        // non è né quello del testo né quello delle icone: si ricalcola qui.
+        aggiornaStellaUI();
     }
 
     // ================================================================== il motore
@@ -1147,6 +1243,9 @@ public class BrowserActivity extends Activity {
         Button prev = iconBtn("↑"); prev.setOnClickListener(v -> salta(false));
         Button next = iconBtn("↓"); next.setOnClickListener(v -> salta(true));
         Button x = iconBtn("✕"); x.setOnClickListener(v -> mostraBarraTrova(false));
+        // La barra «trova» sta sotto quella superiore e ne segue i colori: in incognito
+        // deve essere scura come lei, altrimenti è una striscia chiara in mezzo al viola.
+        testiTema.add(prev); testiTema.add(next); testiTema.add(x);
         f.addView(findInput); f.addView(findInfo); f.addView(prev); f.addView(next); f.addView(x);
         return f;
     }
@@ -1294,6 +1393,34 @@ public class BrowserActivity extends Activity {
         if (url == null || url.isEmpty()) return;
         if (eNeiPreferiti(url)) { rimuoviPreferito(url); Toast.makeText(this, "Rimosso dai preferiti", Toast.LENGTH_SHORT).show(); }
         else addPreferito(titolo, url);
+        // La stella del menu si ridisegna qui, non alla riapertura del menu: il pannello
+        // resta aperto dopo il tocco, ed è la stella a dire se il salvataggio è avvenuto.
+        aggiornaStellaUI();
+    }
+
+    /** Il tocco sulla stella (della fila in alto o della voce): agisce sulla scheda in vista. */
+    private void invertiPreferitoDaMenu(View v) {
+        Scheda c = schedaCorrente();
+        if (c == null || c.indirizzo == null || c.indirizzo.isEmpty()) return;
+        invertiPreferito(c.titolo, c.indirizzo);
+    }
+
+    /**
+     * Ridisegna le stelle dei preferiti secondo lo stato <b>vero</b> della pagina.
+     *
+     * <p>Blu quando la pagina è salvata — è il segno che il salvataggio è avvenuto — e del
+     * colore del testo quando non lo è. Prima la stella della fila restava com'era al
+     * momento dell'apertura del menu: il salvataggio si vedeva solo chiudendo e riaprendo.
+     * I riferimenti sono nulli quando il menu è chiuso, e in quel caso non c'è nulla da
+     * ridisegnare.
+     */
+    private void aggiornaStellaUI() {
+        Scheda s = schedaCorrente();
+        boolean bm = s != null && eNeiPreferiti(s.indirizzo);
+        int su = bm ? ACC : (s != null && s.incognito ? INC_TXT : TXT);
+        if (stellaFila != null) { stellaFila.setText(bm ? "★" : "☆"); stellaFila.setTextColor(su); }
+        if (stellaVoceIcona != null) { stellaVoceIcona.setText(bm ? "★" : "☆"); stellaVoceIcona.setTextColor(su); }
+        if (stellaVoceTesto != null) stellaVoceTesto.setText(bm ? "Rimuovi dai preferiti" : "Aggiungi ai preferiti");
     }
 
     private void rimuoviPreferito(String url) {
@@ -1533,9 +1660,11 @@ public class BrowserActivity extends Activity {
         return v;
     }
 
-    private GradientDrawable squareBadge() {
+    private GradientDrawable squareBadge() { return squareBadge(DIM); }
+
+    private GradientDrawable squareBadge(int colore) {
         GradientDrawable g = new GradientDrawable();
-        g.setStroke(dp(2), DIM); g.setCornerRadius(dp(5)); g.setColor(Color.TRANSPARENT);
+        g.setStroke(dp(2), colore); g.setCornerRadius(dp(5)); g.setColor(Color.TRANSPARENT);
         return g;
     }
     private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density + 0.5f); }
@@ -1578,7 +1707,7 @@ public class BrowserActivity extends Activity {
 
     // ------------------------------------------------------------------ schermo intero
     private boolean fullscreen = false;
-    private Button fsRestore;   // pulsante fluttuante per tornare alla vista normale
+    private ImageView fsRestore;   // pulsante flottante per tornare alla vista normale
 
     private void setSchermoIntero(boolean on) {
         fullscreen = on;
@@ -1598,17 +1727,27 @@ public class BrowserActivity extends Activity {
         }
     }
 
-    /** Piccolo pulsante semitrasparente in basso a destra per uscire dallo schermo intero. */
+    /**
+     * Il pulsante flottante in basso a destra per uscire dallo schermo intero.
+     *
+     * <p>Il disegno è bianco su un cerchio nero semitrasparente, e i colori sono fissi —
+     * non quelli del tema. Il pulsante sta sopra la pagina, di cui non si sa nulla: qualunque
+     * colore preso dal tema può finire su una pagina dello stesso colore, mentre il nero
+     * semitrasparente col disegno bianco dentro si vede su qualunque sfondo. Con il colore
+     * del testo del tema chiaro (quasi nero) su questo cerchio il segno spariva.
+     */
     private void addRestoreButton() {
         if (fsRestore != null) return;
-        fsRestore = new Button(this);
-        fsRestore.setText("⤢");
-        fsRestore.setTextColor(TXT);
-        fsRestore.setAllCaps(false);
-        fsRestore.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        fsRestore = new ImageView(this);
+        fsRestore.setImageResource(R.drawable.ic_fullscreen_exit);
+        fsRestore.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
+        fsRestore.setScaleType(ImageView.ScaleType.CENTER);
+        fsRestore.setContentDescription("Esci dallo schermo intero");
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xCC000000); bg.setCornerRadius(dp(24));
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(0xCC000000);
         fsRestore.setBackground(bg);
+        fsRestore.setClickable(true);
         fsRestore.setOnClickListener(v -> setSchermoIntero(false));
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(48), dp(48));
         lp.gravity = Gravity.BOTTOM | Gravity.END;

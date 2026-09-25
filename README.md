@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.57** (build 59). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.58** (build 60). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -383,6 +383,24 @@ Fatto:
   Messaggi, Fotocamera, Browser) non riempiono più la cella: restano a **48px** centrate
   (come la griglia), così non appaiono più enormi né nel Drawer reale né nella simulazione
   del reale dello Studio (il modello in scala resta invariato).
+Ultime novità (0.1.58) — tre difetti del browser, trovati usandolo:
+- **La stella dei preferiti non lo diceva.** Toccandola il preferito veniva salvato, ma la
+  stella restava com'era: il salvataggio si vedeva solo chiudendo e riaprendo il menu. Ora
+  diventa **blu** appena la pagina è salvata — e il menu resta aperto, quindi il segno arriva
+  subito, e la voce accanto cambia fra «Aggiungi» e «Rimuovi». Vale anche quando il preferito
+  si toglie: la stella torna vuota sul momento.
+- **Con NovaOS in chiaro, nella scheda in incognito non si leggeva niente.** La barra
+  dell'incognito è scura per forza, ma testi, icone, indirizzo e suggerimento seguivano il
+  tema di NovaOS: col tema chiaro erano neri su viola scuro. Ora l'incognito ha una sua
+  palette completa per testi e icone, e la seguono anche la barra «trova nella pagina» e il
+  menu del browser, che in incognito è scuro con testo chiaro. Sistemate anche le caselle
+  delle schede nel selettore: il titolo della scheda in incognito era scuro su casella scura.
+- **Il pulsante per uscire dallo schermo intero era un cerchio vuoto.** Il segno dentro era
+  un carattere (⤢) che non tutti i caratteri di sistema hanno, e per giunta prendeva il
+  colore del tema chiaro — quasi nero su un cerchio nero. Ora è due disegni vettoriali (uno
+  per entrare, uno per uscire), bianchi su un cerchio nero semitrasparente: si vede su
+  qualunque pagina, chiara o scura.
+
 Ultime novità (0.1.57) — il browser diventa completo, e l'interruttore della torcia dice la verità:
 - **Il browser del dispositivo ha una faccia nuova.** Prima era una barra con una pagina sotto;
   ora è un browser vero, disegnato con la stessa lingua del resto di NovaOS: **pagina iniziale**
