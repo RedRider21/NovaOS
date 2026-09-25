@@ -1577,7 +1577,15 @@ const OS = (() => {
   const hasNativeSensors = () => NB().has("sensorStates");
   function readNativeSensors() { try { const j = NB().sensorStates(); return j ? JSON.parse(j) : null; } catch { return null; } }
   function syncQuickSensors() { const ns = readNativeSensors(); if (!ns) return;
-    ["wifi","bt","nfc","location","airplane"].forEach(k => { if (k in ns) state[k] = ns[k]; }); }
+    // mobileData e torch sono qui come gli altri, e non per simmetria: senza,
+    // l'interruttore «Dati» e quello «Torcia» restavano l'unico pezzo della tendina
+    // a mostrare ciò che la shell credeva invece di ciò che il telefono ha davanti.
+    // Il nativo li manda entrambi: mobileData da sempre, torch da quando la torcia
+    // è osservata con un callback (CameraManager.TorchCallback), perché la torcia
+    // si accende anche da fuori e uno stato che non si aggiorna è una bugia.
+    // Una chiave assente non è «spento»: `k in ns` la salta e il valore della shell
+    // resta — è il caso di un dispositivo senza torcia.
+    ["wifi","bt","nfc","location","airplane","mobileData","torch"].forEach(k => { if (k in ns) state[k] = ns[k]; }); }
 
   // ============================================================
   //  Aggiornamenti di sistema (OTA)
@@ -1757,30 +1765,46 @@ const OS = (() => {
       set("brightness", v);
     };
   }
-  function quickTap(el, native) {
+  async function quickTap(el, native) {
     const k = el.dataset.q, isSensor = el.dataset.sensor === "1", act = el.dataset.act;
     if (act) { quickAct(act, k, el); return; }
     if (isSensor && native) {
       // Esito a tre stati: true = commutato in-process (ridisegna) · false = rifiutato
       // o non disponibile (chiude la tendina) · null = esito non ancora noto, perché il
       // ponte a messaggi non risponde in modo sincrono → non decidiamo nulla qui.
+      //
+      // L'`await` è obbligatorio. Lo stesso comando torna un booleano sincrono sotto
+      // WebView (@JavascriptInterface) e una Promise sotto GeckoView (richiesta/risposta
+      // sul ponte a messaggi): senza l'attesa il confronto non combaciava mai, `applied`
+      // restava nullo per ogni interruttore e il ramo che ridisegna non si prendeva più.
+      // Await su un valore non-Promise restituisce il valore stesso, quindi la riga è
+      // corretta in entrambi i contenitori — ed è l'unica forma che non chiede alla shell
+      // di sapere dove sta girando.
+      const voluto = !state[k];
       let applied = null;
-      try { const fn = SETFN[k]; if (fn && NB().has(fn)) { const r = NB()[fn](!state[k]); applied = (r === true || r === false) ? r : null; } } catch (e) {}
-      if (applied === true) { syncQuickSensors(); renderQuick(); }
+      try { const fn = SETFN[k]; if (fn && NB().has(fn)) { const r = await NB()[fn](voluto); applied = (r === true || r === false) ? r : null; } } catch (e) {}
+      // Nel ramo true si scrive lo stato voluto e non si rilegge quello nativo: la
+      // lettura è l'ultimo annuncio del telefono e in quel momento è ancora quello
+      // vecchio (il sistema lo rimanda dopo il broadcast, ~250 ms). Rileggendolo si
+      // ridisegnava l'interruttore com'era, cioè un lampo nel verso sbagliato.
+      // La spinta successiva del nativo resta l'autorità e corregge comunque.
+      if (applied === true) { state[k] = voluto; renderQuick(); }
       else closeShade();
       return;
     }
     toggle(k);
     el.classList.toggle("on", quickOn(k));
   }
-  function quickAct(act, k, el) {
+  async function quickAct(act, k, el) {
     if (act === "torch") {
       // Come sopra: true = accesa · false = il dispositivo l'ha rifiutata (avvisa)
       // · null con ponte presente = esito ignoto (non decidiamo) · null senza ponte =
       // nessun nativo, si simula come in anteprima.
+      // L'attesa serve qui più che altrove: la torcia non ha un broadcast che rimedi,
+      // quindi senza di essa l'interruttore restava spento con la torcia accesa.
       const on = !state.torch;
       let applied = null;
-      try { if (NB().has("setTorch")) { const r = NB().setTorch(on); applied = (r === true || r === false) ? r : null; } } catch {}
+      try { if (NB().has("setTorch")) { const r = await NB().setTorch(on); applied = (r === true || r === false) ? r : null; } } catch {}
       if (applied === false) { notify({ app:"camera", title:"Torcia", text:"Torcia non disponibile su questo dispositivo." }); return; }
       if (applied === null && NB().has("setTorch")) return;
       set("torch", on); el.classList.toggle("on", state.torch); return;

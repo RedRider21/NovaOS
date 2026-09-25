@@ -49,7 +49,7 @@ cat > "$SHELL_SRC/version.json" <<JSON
   "minNative": $MINNATIVE,
   "date": "$VDATE",
   "notes": "$NOTES",
-  "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1.52/NovaOS-0.1.52.apk",
+  "apk": "https://github.com/RedRider21/NovaOS/releases/download/v$VNAME/NovaOS-$VNAME.apk",
   "files": [
 $FILES_JSON
   ]
@@ -70,17 +70,30 @@ rm -rf "$ASSETS/www"; mkdir -p "$ASSETS/www"
 cp -r "$SHELL_SRC"/. "$ASSETS/www/"
 rm -f "$ASSETS/www"/_t*.html   # non impacchettare gli harness di test
 
-echo "[1/6] aapt2 compile risorse (icona) + link (manifest + assets)"
+echo "[1/6] aapt2 compile risorse (icone) + link (manifest + assets)"
 "$BT/aapt2" compile --dir "$RES" -o "$OUT/res.zip"
+# --java: genera R.java, la classe con i numeri delle risorse. Serve perché il codice Java
+# possa nominare un'icona (@drawable/…): senza, R.drawable.ic_home non esiste e il browser
+# non compila. Il modulo Gecko passa da Gradle, che lo fa da sé; qui la pipeline è manuale.
 "$BT/aapt2" link -o "$OUT/base.apk" -I "$AJAR" \
   --manifest "$MANIFEST" -A "$ASSETS" "$OUT/res.zip" \
   --min-sdk-version 26 --target-sdk-version 34 \
+  --java "$OUT/gen" \
   --auto-add-overlay
 
-echo "[2/6] javac"
+echo "[2/6] javac (+ R generato da aapt2)"
 find "$JAVA_SRC" -name '*.java' > "$OUT/sources.txt"
-"$JAVAC" -source 17 -target 17 -classpath "$CP" \
-  -d "$OUT/classes" @"$OUT/sources.txt" 2>&1 | grep -v "bootstrap class path" || true
+find "$OUT/gen" -name 'R.java' >> "$OUT/sources.txt"
+# Un errore di compilazione deve fermare la build: proseguendo, d8 impacchetterebbe un
+# APK che si installa e va in crash all'avvio del browser — un guasto che si scopre sul
+# telefono, non qui.
+if ! "$JAVAC" -source 17 -target 17 -classpath "$CP" \
+     -d "$OUT/classes" @"$OUT/sources.txt" > "$OUT/javac.log" 2>&1; then
+  grep -v "bootstrap class path" "$OUT/javac.log" || true
+  echo "ERRORE: la compilazione non è riuscita — log in $OUT/javac.log"
+  exit 1
+fi
+grep -v "bootstrap class path" "$OUT/javac.log" || true
 
 echo "[3/6] d8 (dex — include le librerie mail)"
 CLASSES=$(find "$OUT/classes" -name '*.class')

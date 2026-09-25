@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.56** (build 58). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.57** (build 59). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -65,7 +65,7 @@ web-phone-os/
 | Rubrica | contatti CRUD (nome/telefono/email), chiama/SMS/email dal contatto |
 | Messaggi | nuova conversazione dai contatti, elimina, orari per messaggio, risposte contestuali, avatar |
 | Mail | client email **reale** (SMTP/IMAP via bridge nativo JavaMail): schermata account con **selettore provider** (Gmail/Outlook/Yahoo/iCloud/Libero/Aruba/PEC/GMX/TIM che precompilano host e porte) **o configurazione manuale**, invio SMTP e sincronizzazione IMAP, **password cifrata nell'Android Keystore** (mai in chiaro). In assenza del bridge (browser) resta simulazione locale. Inoltre: cartelle (arrivo/inviati/bozze/cestino), **ricerca**, stella, **bozze reali**, **rispondi con citazione**, **inoltra**, **allegati** con anteprima, destinatari dai contatti, firma |
-| Browser | cronologia + preferiti; sul device apre i siti in **WebView nativa a schermo intero** (BrowserActivity) → nessun limite iframe (banche, Google, ecc.). **Vista desktop** (pulsante 🖥) attiva in automatico per **WhatsApp/Telegram Web** così compare il **QR** di accesso (con UA mobile reindirizzerebbero all'app). In shell web resta l'anteprima iframe |
+| Browser | sul device è **un browser completo a schermo intero** (BrowserActivity): pagina iniziale con **barra di ricerca, collegamenti rapidi e riquadri dei preferiti**, **schede multiple** con selettore e anteprime, **scheda in incognito** (barra scura, cronologia che non cresce), **preferiti e cronologia condivisi con la shell**, **trova nella pagina**, **download** in Download, **caricamento dei file** dai moduli, **permessi** di camera/microfono/posizione chiesti davvero, menu a icone (desktop, ricarica, condivisione, apri nel sistema). **Vista desktop** anche in automatico per **WhatsApp/Telegram Web** così compare il **QR** di accesso (con UA mobile reindirizzerebbero all'app). In shell web resta l'anteprima iframe |
 | Fotocamera | anteprima live `getUserMedia`, scatto salvato in Galleria, import da file |
 | Galleria | **clone di Google Foto**: tab **Foto · Cerca · Raccolte** (le raccolte si **creano** e si **eliminano** — l'eliminazione non tocca le foto — e le foto selezionate si aggiungono a una raccolta esistente o creata al volo), **Ricordi** (striscia + per mese), giorni (Oggi/Ieri/data), **selezione multipla** (pressione lunga) con azioni (preferito/condividi/cestino), **preferiti**, **cestino** con ripristino (30 giorni) e **svuota**, **archivio**, ricerca per nome/album/data, **viewer** con swipe, zoom doppio-tap, **info scatto** e menu azioni (ruota, imposta come sfondo, sposta nel cestino), **editor** (filtri + luminosità/contrasto/saturazione + rotazione, salvataggio come nuova foto). Gli **esempi di primo avvio sono foto reali** (canvas JPEG) salvate nello store: si eliminano davvero e non ricompaiono. Il cestino tiene traccia del **momento della cancellazione** (non dello scatto): anche una foto vecchia resta 30 giorni nel cestino e si può ripristinare |
 | Orologio | orologio, **sveglie** (picker integrato), **cronometro**, **fusi orari CRUD** (copertura mondiale) |
@@ -383,6 +383,38 @@ Fatto:
   Messaggi, Fotocamera, Browser) non riempiono più la cella: restano a **48px** centrate
   (come la griglia), così non appaiono più enormi né nel Drawer reale né nella simulazione
   del reale dello Studio (il modello in scala resta invariato).
+Ultime novità (0.1.57) — il browser diventa completo, e l'interruttore della torcia dice la verità:
+- **Il browser del dispositivo ha una faccia nuova.** Prima era una barra con una pagina sotto;
+  ora è un browser vero, disegnato con la stessa lingua del resto di NovaOS: **pagina iniziale**
+  con barra di ricerca, i siti più visitati e i **preferiti come riquadri**, **schede multiple**
+  con selettore e anteprime delle pagine, **scheda in incognito** (barra scura, e la cronologia
+  non cresce), menu a icone vettoriali (desktop, ricarica, condivisione, apri nel browser di
+  sistema). Il menu si apre **dentro lo schermo**, ancorato al suo pulsante: prima poteva
+  sporgere fuori dal bordo destro su schermi stretti.
+- **Trova nella pagina.** Cerca il testo nella pagina che stai leggendo e dice **quante volte
+  compare**. Il conteggio lo dà la pagina stessa, perché il contatore interno della vista
+  incorporata su questa piattaforma riporta numeri sbagliati (totali a zero, indici fuori
+  scala): meglio nessun numero che un numero falso. Per questo non viene mostrata la posizione
+  («2 di 5»): si può dire quante occorrenze ci sono, non a quale sei arrivato.
+- **Preferiti e cronologia in comune con la shell.** Il browser nativo legge e scrive lo stesso
+  archivio della shell: un preferito aggiunto nel browser si vede nella shell e viceversa.
+  Quando l'elenco cambia, la shell viene avvisata e si aggiorna da sola.
+- **Le tre cose che prima non funzionavano sono chiuse.** Il **caricamento dei file** dai moduli
+  (un allegato, una foto da spedire) apre la scelta file di Android; i **permessi** di camera,
+  microfono e posizione vengono **chiesti davvero** invece di essere negati in silenzio (con la
+  coda dei permessi, perché Android ne accetta uno per volta); **download** e anteprime delle
+  schede funzionano.
+- **La tendina non mente più sulla torcia.** L'interruttore «Torcia» acceso nella tendina
+  riportava lo stato precedente al tocco anche quando il comando non era andato a buon fine, e
+  dopo un riavvio dell'app poteva mostrare spento un flash acceso. Ora il valore mostrato è
+  quello che il sistema riferisce davvero all'app, e il tocco aggiorna l'interruttore **solo se
+  il comando è riuscito** (verificato sul dispositivo: acceso e spento rispecchiano il flash).
+- **Il numero della build non può più mentire sull'indirizzo dell'APK.** `version.json` — il
+  file da cui la shell capisce se c'è un aggiornamento — dichiarava la versione nuova ma
+  l'indirizzo del pacchetto vecchio, così l'aggiornamento automatico avrebbe scaricato la
+  versione sbagliata e riprovato all'infinito. Ora l'indirizzo si costruisce dal numero di
+  versione: non possono più separarsi.
+
 Ultime novità (0.1.56) — la Galleria: scegliere più elementi senza perdere il posto, e il suono dentro il filmato:
 - **Scegliendo più foto, la videata tornava in cima.** Ogni tocco su una cella ridisegnava l'intera
   griglia, e con essa si azzerava la posizione di scorrimento: per prendere la quinta foto di una

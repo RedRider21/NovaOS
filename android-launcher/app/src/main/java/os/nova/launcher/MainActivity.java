@@ -25,6 +25,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
@@ -45,6 +46,8 @@ import android.widget.Toast;
  */
 public class MainActivity extends Activity {
 
+    private static final String TAG = "NovaLauncher";
+
     // Sviluppo: shell servita dall'host (python -m http.server 8080/8091).
     // Produzione: shell impacchettata negli assets (SO autonomo/offline).
     private static final boolean DEV = false;
@@ -63,8 +66,71 @@ public class MainActivity extends Activity {
     private android.media.MediaRecorder audioRec;
     private String audioRecPath;
 
+    /** L'ultima MainActivity viva.
+     *
+     *  <p>Serve a chi manda un annuncio alla shell senza avere in mano la sua WebView: il
+     *  browser nativo è un'altra Activity dello stesso processo, e quando salva un
+     *  preferito deve poterlo dire alla shell. È anche il motivo per cui va azzerata in
+     *  {@link #onDestroy()}: un riferimento a una schermata finita terrebbe viva la sua
+     *  WebView, con dentro la shell e le sue pagine. */
+    private static MainActivity corrente;
+
     /** Esegue JS nella WebView dal thread UI (usato dai callback di rete della Mail). */
     void evalJs(String js) { runOnUiThread(() -> { if (web != null) web.evaluateJavascript(js, null); }); }
+
+    /** Annuncia alla shell che l'elenco dei preferiti è cambiato.
+     *
+     *  <p>Il browser a schermo intero e l'app Browser della shell sono due schermate dello
+     *  stesso processo ma non si vedono fra loro: scrivono entrambi nella copia condivisa
+     *  delle preferenze, e ognuno legge la propria al momento di disegnare. Chi scrive
+     *  avvisa, così l'altro non mostra un elenco vecchio.
+     *
+     *  <p>La shell potrebbe non essere ancora arrivata a definire la funzione (il ponte
+     *  esiste prima del codice delle app): per questo la chiamata è condizionata, e un
+     *  annuncio perso non è un guasto — alla prossima apertura l'elenco si legge comunque
+     *  fresco dalla copia condivisa. */
+    static void preferitiCambiati() {
+        MainActivity m = corrente;
+        if (m != null) m.evalJs("window.__novaPreferiti && window.__novaPreferiti()");
+    }
+
+    // ---- Torcia ----
+    /** Lo stato della torcia: acceso, spento, o «non c'è una torcia».
+     *
+     *  <p>Non si legge a richiesta, si riceve: CameraManager non annuncia la torcia con un
+     *  Intent ma con un callback, e il valore cambia anche senza di noi — un'altra app può
+     *  accenderla e spegnerla. Si tiene quindi l'ultimo annuncio invece di interrogare il
+     *  sistema a ogni disegno della tendina.
+     *
+     *  <p>{@code null} significa «questo dispositivo non ha una torcia comandabile», non
+     *  «è spenta»: è la distinzione che rende vera la frase che la shell mostra in quel
+     *  caso, e vale anche quando la fotocamera è occupata — {@code onTorchModeUnavailable}
+     *  non dice che la torcia è spenta, dice che non è comandabile, e affermare «spenta»
+     *  sarebbe una risposta inventata. */
+    private volatile Boolean torciaAccesa = null;
+    private android.hardware.camera2.CameraManager.TorchCallback callbackTorcia;
+
+    /** Registra l'ascolto della torcia. Il primo annuncio arriva subito con lo stato
+     *  attuale, quindi questo metodo è anche l'inizializzazione di {@link #torciaAccesa}. */
+    private void ascoltaLaTorcia() {
+        try {
+            android.hardware.camera2.CameraManager cm =
+                    (android.hardware.camera2.CameraManager) getSystemService(CAMERA_SERVICE);
+            if (cm == null) return;
+            callbackTorcia = new android.hardware.camera2.CameraManager.TorchCallback() {
+                @Override public void onTorchModeChanged(String id, boolean acceso) { torciaAccesa = acceso; }
+                @Override public void onTorchModeUnavailable(String id) { torciaAccesa = null; }
+            };
+            // Con questo Handler gli annunci arrivano già sul thread principale: qui si
+            // copia soltanto, e la tendina li legge quando si ridisegna.
+            cm.registerTorchCallback(callbackTorcia,
+                    new android.os.Handler(android.os.Looper.getMainLooper()));
+        } catch (Exception e) {
+            // Senza ascolto si perde la freschezza dell'interruttore, non l'avvio: la
+            // torcia resta comandabile via setTorch.
+            Log.w(TAG, "la torcia non è osservabile", e);
+        }
+    }
 
     /** Ferma e rilascia il MediaRecorder audio nativo se attivo. */
     private void stopNativeAudio() {
@@ -107,6 +173,34 @@ public class MainActivity extends Activity {
             return;
         }
         super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    /**
+     * La chiusura della schermata.
+     *
+     * <p>Si lascia dietro meno cose possibile, perché questa Activity viene ricreata spesso
+     * (Android la chiude quando serve memoria) e ogni cosa dimenticata si somma alla
+     * successiva.
+     *
+     * <p>L'ascolto della torcia va tolto: è un callback registrato sul sistema, e uno
+     * registrato due volte — una per ogni ricreazione — riceverebbe due annunci per lo
+     * stesso cambiamento. La registrazione audio va fermata: un MediaRecorder vivo
+     * trattiene il microfono, e la registrazione successiva fallirebbe senza dire perché.
+     * Il riferimento statico va azzerato: è l'unico modo che ha questa schermata di farsi
+     * tenere in vita da fuori.
+     */
+    @Override protected void onDestroy() {
+        if (corrente == this) corrente = null;
+        if (callbackTorcia != null) {
+            try {
+                android.hardware.camera2.CameraManager cm =
+                        (android.hardware.camera2.CameraManager) getSystemService(CAMERA_SERVICE);
+                if (cm != null) cm.unregisterTorchCallback(callbackTorcia);
+            } catch (Exception e) { /* già tolto */ }
+            callbackTorcia = null;
+        }
+        stopNativeAudio();
+        super.onDestroy();
     }
 
     // ============================================================
@@ -205,6 +299,9 @@ public class MainActivity extends Activity {
 
         web = new WebView(this);
         setContentView(web);
+
+        corrente = this;      // l'insegna che il browser nativo usa per parlare alla shell
+        ascoltaLaTorcia();    // da qui in poi lo stato della torcia è quello vero
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -730,6 +827,10 @@ public class MainActivity extends Activity {
             b.append(",\"location\":").append(readLocation());
             b.append(",\"airplane\":").append(readAirplane());
             b.append(",\"mobileData\":").append(readMobileData());
+            // La torcia si dichiara solo se esiste: «non c'è» e «è spenta» sono due
+            // risposte diverse, e la shell ha una frase per ciascuna.
+            Boolean torcia = torciaAccesa;
+            if (torcia != null) b.append(",\"torch\":").append(torcia);
             b.append(",\"privileged\":").append(privilegedNative());   // true nel ROM (app di sistema)
             b.append(",\"native\":true}");
             return b.toString();

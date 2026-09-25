@@ -808,6 +808,16 @@ const NovaApps = (() => {
     }});
 
   /* ---------- Browser ---------- */
+  // Il browser NATIVO a schermo intero e questa app mostrano lo stesso elenco di
+  // preferiti: vivono nella stessa copia (le preferenze native «novaos», chiave
+  // nova:bookmarks) e ognuno la legge quando disegna. Quando è il browser nativo a
+  // salvarne uno, lo annuncia con questa funzione — altrimenti qui resterebbe l'elenco
+  // di prima, e un preferito appena aggiunto sembrerebbe non essere stato salvato.
+  // Chi riceve può non essere ancora nato (la schermata del Browser si disegna solo
+  // quando la si apre): la chiamata è condizionata, e un annuncio perso non è un guasto,
+  // perché l'elenco si rilegge comunque alla prossima apertura.
+  window.__novaPreferiti = () => { const f = window.__novaPreferitiApp; if (typeof f === "function") f(); };
+
   const browser = app({ id:"browser", name:"Browser", icon:"🌐", color:"#0a84ff", dock:true,
     render(root, os) {
       // sul device (launcher) apre a schermo intero: nessun limite iframe (banche ecc.)
@@ -893,6 +903,15 @@ const NovaApps = (() => {
         root.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => { e.stopPropagation(); bookmarks.splice(+b.dataset.rm,1); saveB(); if(!bookmarks.length) editBm=false; drawHome(); });
         root.querySelectorAll(".bm-name").forEach(inp => inp.onchange = () => { const i=+inp.dataset.i; if(bookmarks[i]){ bookmarks[i].name = inp.value.trim()||host(bookmarks[i].url); saveB(); } });
         const clr = root.querySelector("#clrh"); if (clr) clr.onclick = () => { history=[]; saveH(); drawHome(); };
+      };
+
+      // Riceve l'annuncio del browser nativo (v. window.__novaPreferiti qui sopra):
+      // rilegge la copia condivisa invece di tenere l'elenco com'era all'apertura.
+      // Se nel frattempo si è usciti dall'app, il disegno si salta — `root` è staccata
+      // dal documento — e l'elenco fresco verrà letto quando la si riapre.
+      window.__novaPreferitiApp = () => {
+        bookmarks = os.store.get("bookmarks", bookmarks);
+        if (root.isConnected) drawHome();
       };
 
       const drawFrame = (u) => {
