@@ -1,10 +1,10 @@
 {
-  "version": "0.1.59",
-  "build": 61,
+  "version": "0.1.60",
+  "build": 62,
   "minNative": 12,
   "date": "2026-09-25",
   "notes": "Miglioramenti e correzioni.",
-  "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1.59/NovaOS-0.1.59.apk",
+  "apk": "https://github.com/RedRider21/NovaOS/releases/download/v0.1.60/NovaOS-0.1.60.apk",
   "files": [
     "css/style.css",    "icon.svg",    "index.html",    "js/apps.js",    "js/bridge.js",    "js/icons.js",    "js/os.js",    "js/version.js",    "manifest.webmanifest",    "sw.js",
     "version.json"

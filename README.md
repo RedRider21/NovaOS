@@ -5,7 +5,7 @@ spirito di Firefox OS / KaiOS: Android gestisce solo l'essenziale (kernel, drive
 radio, sensori), mentre tutta l'esperienza utente — home, lockscreen, app — è
 scritta in HTML/CSS/JS. Le applicazioni sono **web app / PWA**.
 
-> Nome in codice e versione: **NovaOS 0.1.59** (build 61). Nome placeholder,
+> Nome in codice e versione: **NovaOS 0.1.60** (build 62). Nome placeholder,
 > modificabile in un punto (`shell/index.html` e `manifest.webmanifest`).
 >
 > 📘 Per la distribuzione definitiva vedi **[docs/GUIDA-ROM.md](docs/GUIDA-ROM.md)**:
@@ -383,6 +383,45 @@ Fatto:
   Messaggi, Fotocamera, Browser) non riempiono più la cella: restano a **48px** centrate
   (come la griglia), così non appaiono più enormi né nel Drawer reale né nella simulazione
   del reale dello Studio (il modello in scala resta invariato).
+Ultime novità (0.1.60) — il browser traduce le pagine:
+- **«Traduci…» nel menu, e una barra che si offre da sola.** Aprendo una pagina scritta in
+  un'altra lingua compare sotto la barra degli indirizzi una riga che lo dice e propone la
+  traduzione: un tocco e la pagina è in italiano. Il pulsante è sempre lo stesso e cambia
+  mestiere — **Traduci**, poi **Mostra originale** per rimettere la pagina come l'ha scritta
+  il sito. La voce del menu fa la stessa cosa per le pagine che non dichiarano la lingua.
+- **La lingua si sceglie, e si sceglie una volta.** Il **⋮** della barra apre l'elenco delle
+  lingue (64, con il campo di ricerca: si cerca «portoghese» o «pt», uguale) più «**Non
+  tradurre mai questo sito**» per i siti che si vogliono leggere come sono. La lingua scelta
+  resta, e da lì in poi è quella in cui si traduce; se non se ne sceglie nessuna si usa la
+  lingua dell'interfaccia.
+- **Il testo lo manda il browser, non la pagina.** La traduzione si chiede a un servizio
+  esterno, e la richiesta parte dal browser: la pagina consegna i suoi testi e riceve il
+  risultato, senza vedere il canale e senza poterlo usare per altro. Un sito tradotto non
+  scopre per mano nostra a chi si sta mandando il proprio testo.
+- **Niente esce dal telefono prima che tu lo chieda.** La lingua della pagina si legge da
+  quello che la pagina stessa dichiara, non indovinandola dal testo: indovinarla vorrebbe
+  dire spedire la pagina al servizio per sapere di che lingua è, cioè mandarla fuori prima
+  che qualcuno l'abbia chiesto. Il prezzo è dichiarato: una pagina che non dichiara la lingua
+  non fa comparire la barra, e si passa dal menu.
+- **Come si traduce, e quanto ci mette.** Il testo viene diviso in blocchi (i testi di uno
+  stesso blocco viaggiano insieme, separati da ritorni a capo) e ogni blocco torna al suo
+  posto: se il servizio restituisce un numero di righe diverso da quello che ha ricevuto,
+  quel blocco **resta in originale** invece di spostare le frasi da un paragrafo all'altro.
+  La barra mostra a che punto è («Traduzione in corso… 12/34»). Le richieste sono **due alla
+  volta** con una pausa fra l'una e l'altra: il servizio è gratuito e non ha un contratto, e
+  a chi lo tempesta risponde con un blocco che dura minuti — cosa che è successa davvero
+  mentre lo si provava, e da lì viene il limite di due. Quando capita, il browser lo dice con
+  le sue parole («il servizio gratuito ha bloccato le richieste: riprova fra qualche
+  minuto») invece di restare in attesa; se il blocco arriva a metà, la parte tradotta si
+  mette e un avviso dice che è parziale.
+- **Ritradurre non costa niente.** La traduzione di una pagina resta in memoria finché la
+  pagina è quella: «Mostra originale» e poi di nuovo «Traduci» la rimette senza chiedere
+  nulla al servizio. Ogni richiesta risparmiata è una raffica in meno.
+- **La pagina non mente su quello che mostra.** La barra e il foglio dicono la lingua che è
+  **a video adesso**, non quella scelta: se la traduzione non è riuscita, o se la pagina non
+  ha accettato i testi (succede alle pagine che si riscrivono da sole), lo dice invece di
+  annunciare una traduzione che non c'è.
+
 Ultime novità (0.1.59) — il browser impara le cose che gli mancavano:
 - **Il menu ha le voci che non c'erano.** «Mostra modalità lettura», «Installa», «Crea
   scorciatoia», «Elimina cronologia» e «Impostazioni del sito». Prima si poteva leggere una

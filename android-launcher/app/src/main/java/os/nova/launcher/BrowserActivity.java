@@ -61,11 +61,19 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
 import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Il browser di NovaOS.
@@ -109,6 +117,18 @@ public class BrowserActivity extends Activity {
         // ricavato noi. Serve a due cose: non finire nella cronologia (l'indirizzo è quello
         // del sito, ma la pagina visitata è questa) e non riaprire una lettura su una lettura.
         boolean lettura = false;
+        // Traduzione. «linguaPagina» è quella che la pagina dichiara di essere (attributo
+        // lang): serve a decidere se proporre la traduzione, e si legge dalla pagina, senza
+        // mandare niente a nessuno. «linguaMostrata» è la lingua in cui la pagina è a video
+        // adesso: vuota vuol dire «originale». Stanno qui e non in una variabile della
+        // schermata perché ogni scheda ha la sua pagina, e cambiando scheda non si deve
+        // ereditare la traduzione dell'altra.
+        String linguaPagina = "";
+        String linguaMostrata = "";
+        // L'ultima traduzione di questa pagina, tenuta qui: rimettere l'originale e poi
+        // ritradurre nella stessa lingua non deve costare altre richieste al servizio.
+        List<String> blocchiTradotti = null;
+        String linguaBlocchi = "";
     }
 
     private FrameLayout selettore;   // selettore schede a griglia (null = chiuso)
@@ -128,6 +148,16 @@ public class BrowserActivity extends Activity {
     private LinearLayout findBar;    // barra "trova nella pagina"
     private EditText findInput;
     private TextView findInfo;       // "3/12": quante occorrenze e quale si sta guardando
+    // barra della traduzione: compare sotto quella superiore quando la pagina parla
+    // un'altra lingua. Il testo dice cosa sta succedendo, il pulsante cosa si può fare.
+    private LinearLayout tradBar;
+    private TextView tradTesto;
+    private Button tradAzione;      // «Traduci» / «Mostra originale» / spento durante il lavoro
+    private ImageView tradIcona;
+
+    /** Perché la traduzione non è riuscita, da dire nella barra. Si azzera a ogni tentativo:
+     *  un messaggio vecchio su un guasto nuovo sarebbe una mezza verità. */
+    private String tradMessaggio = "";
 
     private String mobileUa;
 
@@ -177,6 +207,74 @@ public class BrowserActivity extends Activity {
      * le decisioni si salvano per differenza e non per valore di partenza.
      */
     private static final String PREF_SITI = "nova:browserSiti";
+
+    /** La lingua in cui si traduce: è una scelta dell'utente, e resta finché non la cambia. */
+    private static final String PREF_LINGUA = "nova:browserLingua";
+
+    /** I siti per cui non si deve tradurre: un elenco di indirizzi. */
+    private static final String PREF_NO_TRAD = "nova:browserNoTraduzione";
+
+    /**
+     * Le lingue che si possono scegliere.
+     *
+     * <p>Non è l'elenco completo del servizio, e non vuole esserlo: sono le lingue in cui
+     * una persona ha davvero motivo di leggere, e ognuna è già scritta nella lingua sua
+     * accanto al nome italiano — chi cerca il polacco cerca «polski» o «polski», non
+     * necessariamente «polacco». Il codice è quello che si manda al servizio.
+     */
+    private static final String[][] LINGUE = {
+        { "it", "Italiano" },        { "en", "Inglese" },
+        { "es", "Spagnolo" },        { "fr", "Francese" },
+        { "de", "Tedesco" },         { "pt", "Portoghese" },
+        { "nl", "Olandese" },        { "sv", "Svedese" },
+        { "da", "Danese" },          { "nb", "Norvegese" },
+        { "fi", "Finlandese" },      { "is", "Islandese" },
+        { "ga", "Irlandese" },       { "cy", "Gallese" },
+        { "el", "Greco" },           { "pl", "Polacco" },
+        { "cs", "Ceco" },            { "sk", "Slovacco" },
+        { "hu", "Ungherese" },       { "ro", "Rumeno" },
+        { "bg", "Bulgaro" },         { "hr", "Croato" },
+        { "sr", "Serbo" },           { "sl", "Sloveno" },
+        { "bs", "Bosniaco" },        { "mk", "Macedone" },
+        { "sq", "Albanese" },        { "ru", "Russo" },
+        { "uk", "Ucraino" },         { "be", "Bielorusso" },
+        { "lt", "Lituano" },         { "lv", "Lettone" },
+        { "et", "Estone" },          { "tr", "Turco" },
+        { "az", "Azero" },           { "kk", "Kazako" },
+        { "hy", "Armeno" },          { "ka", "Georgiano" },
+        { "he", "Ebraico" },         { "ar", "Arabo" },
+        { "fa", "Persiano" },        { "ur", "Urdu" },
+        { "hi", "Hindi" },           { "bn", "Bengalese" },
+        { "ta", "Tamil" },           { "te", "Telugu" },
+        { "mr", "Marathi" },         { "gu", "Gujarati" },
+        { "pa", "Punjabi" },         { "ne", "Nepalese" },
+        { "si", "Singalese" },       { "th", "Thailandese" },
+        { "vi", "Vietnamita" },      { "id", "Indonesiano" },
+        { "ms", "Malese" },          { "tl", "Filippino" },
+        { "zh-CN", "Cinese (semplificato)" }, { "zh-TW", "Cinese (tradizionale)" },
+        { "ja", "Giapponese" },      { "ko", "Coreano" },
+        { "sw", "Swahili" },         { "am", "Amarico" },
+        { "af", "Afrikaans" },       { "eo", "Esperanto" }
+    };
+
+    /**
+     * Nomi delle lingue che la pagina può dichiarare, per parlarne all'utente.
+     *
+     * <p>L'attributo {@code lang} di una pagina è una sigla: «en», «en-GB», «pt-BR». Qui si
+     * traduce la sigla in un nome, e si guarda solo la parte prima del trattino: dire
+     * «inglese britannico» quando la pagina dice solo «inglese» sarebbe aggiungere
+     * un'informazione che non c'è.
+     */
+    private static String nomeLingua(String codice) {
+        if (codice == null) return "";
+        String c = codice.trim();
+        if (c.isEmpty()) return "";
+        if (c.contains("-") || c.contains("_")) c = c.split("[-_]")[0];
+        for (String[] l : LINGUE) {
+            if (l[0].equalsIgnoreCase(c)) return l[1].toLowerCase(Locale.ITALY);
+        }
+        return "";
+    }
 
     /** Legge il tema salvato da NovaOS (SharedPreferences "novaos", chiave nova:theme)
      *  e sceglie la palette chiara o scura, per andare di pari passo con il resto del sistema. */
@@ -315,10 +413,14 @@ public class BrowserActivity extends Activity {
 
         // barra "trova nella pagina" (nascosta)
         findBar = buildFindBar();
+        // barra della traduzione (nascosta): sta sotto quella di ricerca, come in un
+        // browser vero, e non la sostituisce — si può cercare dentro una pagina tradotta.
+        tradBar = creaTradBar();
 
         rootv.addView(bar);
         rootv.addView(progress);
         rootv.addView(findBar);
+        rootv.addView(tradBar);
         rootv.addView(holder);
         setContentView(rootv);
 
@@ -379,6 +481,10 @@ public class BrowserActivity extends Activity {
         // un'altra scheda.
         omnibox.clearFocus();
         syncBar(t.indirizzo);
+        // La barra della traduzione è della scheda, non della schermata: cambiando scheda si
+        // rimette quella della scheda che entra (o sparisce, se non c'è niente da dire).
+        if (!t.linguaMostrata.isEmpty()) barraTraduzione(t, T_TRADOTTA);
+        else mostraBarraTraduzione(false);
     }
 
     private void chiudiScheda(int i) {
@@ -627,6 +733,13 @@ public class BrowserActivity extends Activity {
         // «Mostra modalità lettura»: la pagina si legge senza il contorno del sito. Il testo
         // si ricava dalla pagina stessa (v. modalitaLettura) e si apre in una scheda a parte.
         pannello.addView(voceMenu(R.drawable.ic_reader, "Mostra modalità lettura", v -> modalitaLettura()));
+        // «Traduci…» cambia nome quando la pagina è già tradotta: la voce dice la prossima
+        // mossa, non lo stato — e la stessa cosa fa il pulsante della barra.
+        boolean tradotta = s != null && !s.linguaMostrata.isEmpty();
+        pannello.addView(voceMenu(R.drawable.ic_translate,
+                tradotta ? "Mostra originale" : "Traduci…",
+                v -> { Scheda c = schedaCorrente(); if (c == null) return;
+                       if (tradotta) mostraOriginale(c); else apriTraduzione(c); }));
         pannello.addView(voceMenu(s != null && s.desktop ? R.drawable.ic_mobile : R.drawable.ic_desktop,
                 s != null && s.desktop ? "Sito mobile" : "Sito desktop",
                 v -> { Scheda c = schedaCorrente(); if (c != null) cambiaModalita(c, !c.desktop); }));
@@ -1052,7 +1165,14 @@ public class BrowserActivity extends Activity {
         v.setWebViewClient(new WebViewClient() {
             @Override public void onPageStarted(WebView vw, String url, Bitmap f) {
                 tab.indirizzo = url == null ? "" : url;
-                if (vw == webCorrente()) syncBar(tab.indirizzo);
+                // Una pagina nuova è una pagina non tradotta: la barra sparisce adesso e
+                // ricompare, se serve, a caricamento finito. Lasciarla su vorrebbe dire
+                // offrire la traduzione di un testo che a video non c'è ancora.
+                tab.linguaPagina = "";
+                tab.linguaMostrata = "";
+                tab.blocchiTradotti = null;
+                tab.linguaBlocchi = "";
+                if (vw == webCorrente()) { mostraBarraTraduzione(false); syncBar(tab.indirizzo); }
             }
             @Override public void onPageFinished(WebView vw, String url) {
                 tab.indirizzo = url == null ? "" : url;
@@ -1061,6 +1181,9 @@ public class BrowserActivity extends Activity {
                     if (t != null && !t.isEmpty()) tab.titolo = t;
                 }
                 if (vw == webCorrente()) syncBar(tab.indirizzo);
+                // La lingua si legge solo per la scheda in vista: la barra riguarda quella,
+                // e chiederla a tutte le schede a ogni caricamento è lavoro sprecato.
+                if (vw == webCorrente()) leggiLinguaPagina(tab);
                 // La cronologia si scrive a caricamento finito: a pagina iniziata il titolo
                 // non c'è ancora, e le voci sarebbero tutte senza nome.
                 // Una scheda di lettura non è una pagina visitata: l'indirizzo è quello del
@@ -1473,7 +1596,630 @@ public class BrowserActivity extends Activity {
         }
     }
 
-    // ------------------------------------------------------------------ preferiti / cronologia
+    // ---------------------------------------------------------------- traduzione
+    //
+    // La pagina si legge in un'altra lingua, con la barra che compare sotto quella superiore
+    // e la lingua che si sceglie dal menu.
+    //
+    // Due decisioni si pagano, e vale la pena scriverle.
+    //
+    // 1. Il testo lo manda fuori il browser, non la pagina. La traduzione si chiede a un
+    //    servizio esterno; se la richiesta la facesse la pagina con una «fetch», il sito
+    //    tradotto vedrebbe a chi si manda il proprio testo, e una pagina ostile potrebbe
+    //    usare quel canale per i fatti suoi. La richiesta parte da qui, con il solo testo
+    //    che si sta traducendo, e la pagina riceve il risultato e nient'altro.
+    //
+    // 2. La lingua della pagina si legge da quello che la pagina dichiara (l'attributo
+    //    «lang» di <html>), non indovinandola dal testo. Indovinarla vorrebbe dire mandare
+    //    il testo al servizio prima che l'utente abbia chiesto niente: la barra comparirebbe
+    //    dopo aver già spedito la pagina. Così invece la barra si limita a offrire, e il
+    //    testo esce solo al tocco. Il prezzo è che le pagine che non dichiarano la lingua
+    //    non fanno comparire la barra: si passa dal menu, «Traduci…».
+
+    /** Il traduttore. È l'indirizzo pubblico del servizio gratuito: nessuna chiave, nessun
+     *  account — e nessuna garanzia, quindi ogni risposta si controlla prima di usarla. */
+    private static final String TRADUCI_URL = "https://translate.googleapis.com/translate_a/single";
+
+    /** Quanto testo si manda in una richiesta. Più blocchi si mandano insieme, meno
+     *  richieste si fanno; troppo lunghi, e una riga persa dal servizio fa saltare tutto il
+     *  blocco (v. applica). Il numero è un compromesso fra i due, e sta alto perché il
+     *  servizio è gratuito e non gradisce le raffiche: meglio poche richieste grandi. */
+    private static final int TRAD_BLOCCO = 2500;
+
+    /** Quante richieste insieme. Due, non dodici: il servizio non ha una chiave né un
+     *  contratto, e risponde a chi lo tempesta con un blocco che dura minuti. */
+    private static final int TRAD_FILI = 2;
+
+    /** La pausa fra una richiesta e la successiva dello stesso filo. Fa perdere qualche
+     *  secondo su una pagina lunga e evita di farsi riconoscere come una raffica. */
+    private static final long TRAD_PAUSA = 400;
+
+    // Gli stati della barra.
+    private static final int T_OFFERTA = 0;   // la pagina è in un'altra lingua: si propone
+    private static final int T_LAVORO = 1;    // richieste in corso
+    private static final int T_TRADOTTA = 2;  // la pagina a video è tradotta
+    private static final int T_GUASTO = 3;    // non è riuscita
+
+    private LinearLayout creaTradBar() {
+        LinearLayout f = new LinearLayout(this);
+        f.setOrientation(LinearLayout.HORIZONTAL);
+        f.setGravity(Gravity.CENTER_VERTICAL);
+        f.setBackgroundColor(BAR);
+        f.setPadding(dp(12), dp(6), dp(8), dp(6));
+        f.setVisibility(View.GONE);
+
+        tradIcona = iconaVista(R.drawable.ic_translate, 17, TXT);
+        tradIcona.setPadding(dp(2), 0, dp(6), 0);
+
+        tradTesto = new TextView(this);
+        tradTesto.setTextColor(TXT);
+        tradTesto.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        tradTesto.setLayoutParams(new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        // Il testo può essere lungo («Tradotta in italiano · …»): va a capo invece di
+        // spingere fuori dalla barra i pulsanti, che sono la sola via d'uscita.
+        tradTesto.setMaxLines(2);
+
+        tradAzione = new Button(this);
+        tradAzione.setAllCaps(false);
+        tradAzione.setTextColor(ACC);
+        tradAzione.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        tradAzione.setBackgroundColor(Color.TRANSPARENT);
+        tradAzione.setPadding(dp(8), dp(4), dp(8), dp(4));
+        tradAzione.setMinWidth(0); tradAzione.setMinimumWidth(0);
+
+        Button opzioni = iconBtn("⋮");
+        Button x = iconBtn("✕");
+        opzioni.setOnClickListener(v -> foglioTraduzione(schedaCorrente()));
+        x.setOnClickListener(v -> mostraBarraTraduzione(false));
+        testiTema.add(opzioni); testiTema.add(x);
+
+        f.addView(tradIcona);
+        f.addView(tradTesto);
+        f.addView(tradAzione);
+        f.addView(opzioni);
+        f.addView(x);
+        return f;
+    }
+
+    /** Mostra o nasconde la barra della traduzione. */
+    private void mostraBarraTraduzione(boolean mostra) {
+        if (tradBar == null) return;
+        tradBar.setVisibility(mostra ? View.VISIBLE : View.GONE);
+        if (!mostra) { tradTesto.setText(""); tradAzione.setOnClickListener(null); }
+    }
+
+    /**
+     * Mette la barra nello stato voluto.
+     *
+     * <p>Il pulsante è uno solo e cambia mestiere con lo stato — «Traduci» quando si offre,
+     * «Mostra originale» quando la pagina è tradotta. Due pulsanti contemporanei sarebbero
+     * due cose da leggere per una decisione sola; uno che dice sempre la prossima mossa è
+     * quello che serve.
+     */
+    private void barraTraduzione(final Scheda t, int stato) {
+        if (tradBar == null || t == null) return;
+        String mia = nomeLingua(linguaPreferita());
+        switch (stato) {
+            case T_LAVORO:
+                tradTesto.setText("Traduzione in corso…");
+                tradAzione.setText("");
+                tradAzione.setOnClickListener(null);
+                tradAzione.setEnabled(false);
+                break;
+            case T_TRADOTTA:
+                // La lingua la dice la scheda, non la preferenza: se si cambia la lingua
+                // scelta senza ritradurre, la barra deve continuare a dire quella che si sta
+                // leggendo adesso, non quella che si è scelta nel frattempo.
+                String fatta = nomeLingua(t.linguaMostrata);
+                tradTesto.setText(fatta.isEmpty() ? "Pagina tradotta" : "Tradotta in " + fatta);
+                tradAzione.setText("Mostra originale");
+                tradAzione.setEnabled(true);
+                tradAzione.setOnClickListener(v -> mostraOriginale(t));
+                break;
+            case T_GUASTO:
+                tradTesto.setText(tradMessaggio.isEmpty()
+                        ? "Traduzione non riuscita: il servizio non ha risposto"
+                        : tradMessaggio);
+                tradAzione.setText("Riprova");
+                tradAzione.setEnabled(true);
+                tradAzione.setOnClickListener(v -> traduci(t, linguaPreferita()));
+                break;
+            default:
+                String sua = nomeLingua(t.linguaPagina);
+                String testo = sua.isEmpty() ? "Questa pagina è in un'altra lingua" : "Questa pagina è in " + sua;
+                tradTesto.setText(mia.isEmpty() ? testo + ". Tradurla?" : testo + ". Tradurla in " + mia + "?");
+                tradAzione.setText("Traduci");
+                tradAzione.setEnabled(true);
+                tradAzione.setOnClickListener(v -> traduci(t, linguaPreferita()));
+                break;
+        }
+        tradBar.setVisibility(View.VISIBLE);
+        // Il colore dell'icona segue la barra: in incognito la barra è scura e questa è
+        // l'unica cosa che non lo seguiva da sé.
+        if (tradIcona != null) tradIcona.setColorFilter(t.incognito ? INC_TXT : TXT);
+    }
+
+    /** La lingua dell'interfaccia: è quella del sistema, e l'italiano resta il ripiego. */
+    private String linguaInterfaccia() {
+        String l = Locale.getDefault().getLanguage();
+        if (l == null || l.isEmpty()) return "it";
+        for (String[] x : LINGUE) {
+            if (x[0].equalsIgnoreCase(l)) return x[0];
+        }
+        return "it";
+    }
+
+    /** La lingua in cui si traduce: quella scelta, o quella dell'interfaccia. */
+    private String linguaPreferita() {
+        String l = prefs().getString(PREF_LINGUA, "");
+        return l == null || l.isEmpty() ? linguaInterfaccia() : l;
+    }
+
+    private void impostaLingua(String codice) {
+        prefs().edit().putString(PREF_LINGUA, codice).apply();
+    }
+
+    /** I siti per cui non si deve tradurre: un elenco di indirizzi. */
+    private List<String> sitiNoTraduzione() {
+        List<String> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(prefs().getString(PREF_NO_TRAD, "[]"));
+            for (int i = 0; i < a.length(); i++) out.add(a.optString(i, ""));
+        } catch (Exception e) { /* elenco illeggibile: vale come vuoto */ }
+        return out;
+    }
+
+    private boolean noTraduzione(String host) {
+        return host != null && !host.isEmpty() && sitiNoTraduzione().contains(host);
+    }
+
+    private void aggiungiNoTraduzione(String host) {
+        if (host == null || host.isEmpty()) return;
+        List<String> l = sitiNoTraduzione();
+        if (!l.contains(host)) l.add(host);
+        JSONArray a = new JSONArray();
+        for (String s : l) a.put(s);
+        prefs().edit().putString(PREF_NO_TRAD, a.toString()).apply();
+        // Chi dice «non tradurre mai questo sito» lo dice anche della pagina che ha davanti:
+        // togliere la barra e lasciare il testo tradotto sarebbe mezzo servizio.
+        Scheda t = schedaCorrente();
+        if (t != null && !t.linguaMostrata.isEmpty()) mostraOriginale(t);
+        else mostraBarraTraduzione(false);
+        Toast.makeText(this, "Non tradurrò più " + host, Toast.LENGTH_SHORT).show();
+    }
+
+    /**
+     * Chiede alla pagina che lingua dichiara, e da lì decide se offrire la traduzione.
+     *
+     * <p>Si legge l'attributo e basta: niente testo, niente domande a nessuno. Una pagina che
+     * non dichiara la lingua resta senza barra, e chi la vuole tradurre lo chiede dal menu.
+     */
+    private void leggiLinguaPagina(final Scheda t) {
+        if (t == null || t.web == null) return;
+        t.web.evaluateJavascript("(function(){try{return document.documentElement.getAttribute('lang')||'';}catch(e){return '';}})()", r -> {
+            String l = testoDaJs(r == null ? "" : r);
+            t.linguaPagina = l == null ? "" : l.trim();
+            if (t != schedaCorrente()) return;
+            if (!t.linguaMostrata.isEmpty()) { barraTraduzione(t, T_TRADOTTA); return; }
+            String mia = linguaInterfaccia();
+            String sua = t.linguaPagina;
+            String base = sua.contains("-") ? sua.split("-")[0] : sua;
+            if (base.isEmpty() || base.equalsIgnoreCase(mia) || noTraduzione(hostDi(t.indirizzo))) {
+                mostraBarraTraduzione(false);
+                return;
+            }
+            barraTraduzione(t, T_OFFERTA);
+        });
+    }
+
+    /**
+     * Traduce la pagina nella lingua indicata.
+     *
+     * <p>Tre passi: la pagina consegna i suoi testi, il servizio li traduce uno o più blocchi
+     * per volta, la pagina li rimette a posto. Il primo e il terzo sono della pagina (solo lei
+     * sa quali nodi contengono testo visibile), il secondo è nostro — ed è la ragione per cui
+     * il testo non passa per il sito.
+     */
+    private void traduci(final Scheda t, final String verso) {
+        if (t == null || t.web == null) return;
+        tradMessaggio = "";
+        t.linguaMostrata = "";
+        barraTraduzione(t, T_LAVORO);
+        // Se una traduzione c'è già (si sta cambiando lingua) si rimette prima l'originale:
+        // tradurre un testo già tradotto lo allontana dal suo senso a ogni passaggio.
+        t.web.evaluateJavascript(JS_TRADUCI + ";(function(){try{var t=window.__novaTraduzione;if(!t)return null;t.ripristina();return t.raccogli();}catch(e){return null;}})()", r -> {
+            JSONArray blocchi = null;
+            try {
+                Object o = new JSONTokener(r == null ? "null" : r).nextValue();
+                if (o instanceof JSONArray) blocchi = (JSONArray) o;
+            } catch (Exception e) { /* la pagina non ha risposto come doveva */ }
+            if (blocchi == null || blocchi.length() == 0) {
+                tradMessaggio = "In questa pagina non c'è testo da tradurre";
+                barraTraduzione(t, T_GUASTO);
+                return;
+            }
+            final List<String> daTradurre = new ArrayList<>();
+            for (int i = 0; i < blocchi.length(); i++) daTradurre.add(blocchi.optString(i, ""));
+            // La stessa traduzione, già fatta per questa pagina: si rimette invece di
+            // richiederla. È il caso di chi torna all'originale e poi vuole di nuovo la
+            // traduzione — e ogni richiesta risparmiata è una raffica in meno.
+            if (t.blocchiTradotti != null && verso.equals(t.linguaBlocchi)
+                    && t.blocchiTradotti.size() == daTradurre.size()) {
+                applica(t, t.blocchiTradotti, verso, "");
+                return;
+            }
+            traduciBlocchi(t, daTradurre, verso);
+        });
+    }
+
+    /**
+     * Manda i blocchi al servizio e, quando sono tornati, li mette nella pagina.
+     *
+     * <p>Le richieste vanno in parallelo, ma poche e con una pausa fra l'una e l'altra: il
+     * servizio è gratuito, non ha una chiave né un contratto, e a chi lo tempesta risponde
+     * con un blocco che dura minuti. Due fili con una pausa breve traducono una pagina lunga
+     * in una ventina di secondi, che è il tempo che serve; sei fili senza pause l'avrebbero
+     * tradotta in cinque, una volta, e poi bloccata per un quarto d'ora.
+     *
+     * <p>L'ordine è quello dei blocchi, non quello delle risposte: il posto di ogni pezzo lo
+     * decide il suo indice, e chi arriva prima aspetta gli altri nella sua casella. Un blocco
+     * che non torna resta nullo, e il suo pezzo di pagina resta in originale — meglio una
+     * frase non tradotta che una frase nel posto sbagliato.
+     */
+    private void traduciBlocchi(final Scheda t, final List<String> daTradurre, final String verso) {
+        final int quanti = daTradurre.size();
+        final String[] tradotti = new String[quanti];
+        final AtomicInteger prossimo = new AtomicInteger(0);
+        final AtomicInteger fatti = new AtomicInteger(0);
+        final AtomicInteger riusciti = new AtomicInteger(0);
+        final AtomicBoolean bloccato = new AtomicBoolean(false);
+        final String[] rilevata = { "" };
+
+        Thread[] fili = new Thread[Math.min(TRAD_FILI, quanti)];
+        for (int i = 0; i < fili.length; i++) {
+            fili[i] = new Thread(() -> {
+                int k;
+                while (!bloccato.get() && (k = prossimo.getAndIncrement()) < quanti) {
+                    Risposta ris = chiediTraduzione(daTradurre.get(k), verso);
+                    if (ris != null && ris.bloccato) { bloccato.set(true); break; }
+                    if (ris != null && ris.ok) {
+                        tradotti[k] = ris.testo;
+                        synchronized (rilevata) { if (rilevata[0].isEmpty()) rilevata[0] = ris.lingua; }
+                        riusciti.incrementAndGet();
+                    }
+                    final int avanti = fatti.incrementAndGet();
+                    runOnUiThread(() -> {
+                        if (t != schedaCorrente() || tradBar == null || tradBar.getVisibility() != View.VISIBLE) return;
+                        tradTesto.setText(quanti > 1
+                                ? "Traduzione in corso… " + avanti + "/" + quanti
+                                : "Traduzione in corso…");
+                    });
+                    try { Thread.sleep(TRAD_PAUSA); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+                }
+            }, "traduzione-" + i);
+            fili[i].start();
+        }
+
+        new Thread(() -> {
+            for (Thread f : fili) { try { f.join(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); } }
+            final boolean interrotto = bloccato.get();
+            final List<String> risultati = new ArrayList<>();
+            for (int i = 0; i < quanti; i++) risultati.add(tradotti[i]);
+            runOnUiThread(() -> {
+                if (isFinishing() || t.web == null) return;
+                if (riusciti.get() == 0) {
+                    tradMessaggio = interrotto
+                            ? "Il servizio gratuito ha bloccato le richieste: riprova fra qualche minuto"
+                            : "Traduzione non riuscita: il servizio non ha risposto";
+                    barraTraduzione(t, T_GUASTO);
+                    return;
+                }
+                // Se il blocco è arrivato a metà, la pagina si traduce a pezzi: la parte
+                // tradotta si mette, e si dice che è parziale invece di far credere che sia
+                // tutta — le frasi rimaste in originale si vedono, ma il perché no.
+                if (interrotto) Toast.makeText(this, "Traduzione parziale: il servizio ha bloccato il resto delle richieste", Toast.LENGTH_LONG).show();
+                applica(t, risultati, verso, rilevata[0]);
+            });
+        }, "traduzione-attesa").start();
+    }
+
+    /** Mette i blocchi tradotti nella pagina e aggiorna la barra. */
+    private void applica(final Scheda t, final List<String> tradotti, final String verso, final String linguaRilevata) {
+        if (t.web == null) return;
+        JSONArray arr = new JSONArray();
+        for (String s : tradotti) arr.put(s == null ? JSONObject.NULL : s);
+        t.web.evaluateJavascript(JS_TRADUCI + ";(function(){try{return window.__novaTraduzione.applica(" + arr.toString() + ");}catch(e){return null;}})()", esito -> {
+            if (t != schedaCorrente()) return;
+            // La pagina dice quanti pezzi ha accettato: se non ne ha accettato nessuno, la
+            // traduzione non c'è, e dire «Tradotta in…» sarebbe una bugia con la pagina in
+            // originale sotto gli occhi. Succede quando i nodi di testo cambiano fra la
+            // lettura e la scrittura — cioè su una pagina che si riscrive da sola.
+            int posati = 0;
+            boolean rispostaValida = false;
+            try {
+                Object o = new JSONTokener(esito == null ? "null" : esito).nextValue();
+                if (o instanceof JSONObject) { rispostaValida = true; posati = ((JSONObject) o).optInt("fatti", 0); }
+            } catch (Exception e) { /* risposta illeggibile: vale come nessun pezzo posato */ }
+            if (posati == 0) {
+                tradMessaggio = rispostaValida
+                        ? "La pagina è cambiata mentre la si traduceva: ricaricala e riprova"
+                        : "Traduzione non riuscita: i testi non sono arrivati alla pagina";
+                barraTraduzione(t, T_GUASTO);
+                return;
+            }
+            // Si tiene la traduzione solo se la pagina è rimasta la stessa: se nel frattempo
+            // si è navigato, questi blocchi sono di un'altra pagina e non servono più.
+            t.blocchiTradotti = new ArrayList<>(tradotti);
+            t.linguaBlocchi = verso;
+            t.linguaMostrata = verso;
+            // La lingua che la pagina dichiara la sappiamo ora per certo: se non la
+            // dichiarava, il servizio l'ha riconosciuta, e la barra può dirlo.
+            if (t.linguaPagina.isEmpty() && linguaRilevata != null && !linguaRilevata.isEmpty()) t.linguaPagina = linguaRilevata;
+            barraTraduzione(t, T_TRADOTTA);
+        });
+    }
+
+    /**
+     * La voce «Traduci…» del menu.
+     *
+     * <p>Se la pagina dichiara una lingua diversa da quella in cui si traduce, si va dritti:
+     * chi tocca «Traduci» ha già detto cosa vuole, e fermarsi a chiedere la lingua sarebbe una
+     * domanda in più per una risposta che c'è già (è quello che fa il browser di sempre). Se
+     * invece la lingua non è dichiarata, o è la stessa, si apre l'elenco: lì la scelta è
+     * l'unica cosa che si può chiedere, perché non c'è niente da indovinare.
+     */
+    private void apriTraduzione(final Scheda t) {
+        if (t == null || t.web == null) return;
+        if (t.linguaPagina.isEmpty()) { foglioLingue(); return; }
+        String sua = t.linguaPagina.contains("-") ? t.linguaPagina.split("-")[0] : t.linguaPagina;
+        if (sua.equalsIgnoreCase(linguaPreferita()) || sua.equalsIgnoreCase(linguaInterfaccia())) {
+            foglioLingue();
+            return;
+        }
+        traduci(t, linguaPreferita());
+    }
+
+    /** Rimette la pagina come l'ha scritta il sito. */
+    private void mostraOriginale(final Scheda t) {
+        if (t == null || t.web == null) return;
+        t.web.evaluateJavascript(JS_TRADUCI + ";(function(){try{return window.__novaTraduzione.ripristina();}catch(e){return null;}})()", r -> {
+            t.linguaMostrata = "";
+            if (t != schedaCorrente()) return;
+            // Un sito escluso non deve ritrovarsi la barra «Traduci» sotto gli occhi: chi
+            // l'ha escluso ha già detto che lì non si traduce.
+            if (noTraduzione(hostDi(t.indirizzo))) mostraBarraTraduzione(false);
+            else barraTraduzione(t, T_OFFERTA);
+        });
+    }
+
+    /** Quello che torna dal servizio: il testo tradotto e la lingua che ha riconosciuto. */
+    private static class Risposta {
+        boolean ok;
+        /** Il servizio ci ha risposto di no, e non per un guasto: ci ha bloccati. */
+        boolean bloccato;
+        String testo = "";
+        String lingua = "";
+    }
+
+    /**
+     * Chiede la traduzione di un blocco al servizio.
+     *
+     * <p>La lingua di partenza si lascia decidere a lui («auto»): la pagina può dichiarare
+     * una lingua e contenerne un'altra, e chi traduce lo vede meglio di chi legge un
+     * attributo. La risposta si controlla prima di usarla — lunghezza, forma, e che il
+     * numero di righe sia quello che gli abbiamo dato: il servizio è gratuito e non
+     * promette niente, quindi non ci si fida.
+     *
+     * <p>Il blocco si riconosce e si distingue da un guasto, perché le due cose vogliono
+     * due risposte diverse: un guasto si riprova subito, un blocco si aspetta. Chi ci ha
+     * bloccati non risponde con un errore ma con un rimando a una pagina di scuse: gli si
+     * dice di non seguire i rimandi, e quel rimando diventa la notizia.
+     */
+    private Risposta chiediTraduzione(String testo, String verso) {
+        HttpURLConnection c = null;
+        try {
+            String corpo = "client=gtx&sl=auto&tl=" + URLEncoder.encode(verso, "UTF-8")
+                    + "&dt=t&q=" + URLEncoder.encode(testo, "UTF-8");
+            c = (HttpURLConnection) new URL(TRADUCI_URL).openConnection();
+            c.setRequestMethod("POST");
+            c.setDoOutput(true);
+            c.setInstanceFollowRedirects(false);
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(20000);
+            c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=utf-8");
+            c.setRequestProperty("User-Agent", UA_DESKTOP);
+            OutputStream out = c.getOutputStream();
+            out.write(corpo.getBytes("UTF-8"));
+            out.flush(); out.close();
+
+            int codice = c.getResponseCode();
+            if (codice == 429 || (codice >= 300 && codice < 400)) {
+                Risposta ris = new Risposta();
+                ris.bloccato = true;
+                return ris;
+            }
+            if (codice != 200) return null;
+
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"))) {
+                String riga;
+                while ((riga = r.readLine()) != null) sb.append(riga);
+            }
+            JSONArray radice = new JSONArray(sb.toString());
+            JSONArray segmenti = radice.getJSONArray(0);
+            StringBuilder t = new StringBuilder();
+            for (int i = 0; i < segmenti.length(); i++) {
+                JSONArray s = segmenti.optJSONArray(i);
+                if (s != null && s.length() > 0 && !s.isNull(0)) t.append(s.optString(0, ""));
+            }
+            Risposta ris = new Risposta();
+            ris.testo = t.toString();
+            ris.ok = !ris.testo.isEmpty();
+            if (radice.length() > 2 && !radice.isNull(2)) ris.lingua = radice.optString(2, "");
+            return ris;
+        } catch (Exception e) {
+            Log.w(TAG, "traduzione non riuscita", e);
+            return null;
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
+    /**
+     * Il codice che gira dentro la pagina: prende i testi, li consegna, li rimette a posto.
+     *
+     * <p>Sta tutto qui dentro e non nel file della pagina: la pagina non deve poterlo
+     * intercettare né modificare, e l'unica cosa che riceve è il testo tradotto.
+     *
+     * <p>Si saltano gli elementi in cui il testo non è prosa — script, stili, moduli, codice —
+     * e i nodi troppo corti: tradurre «·», «1» o «» costa una richiesta e non serve a niente.
+     * I testi di uno stesso blocco si uniscono con un ritorno a capo, e il numero di righe
+     * della risposta deve tornare: se non torna, quel blocco resta in originale invece di
+     * spostare le frasi da un nodo all'altro (v. «applica»).
+     *
+     * <p>La definizione è **idempotente** (`window.__novaTraduzione = window.__novaTraduzione
+     * || …`) e questo non è un dettaglio: la traduzione si fa in tre iniezioni distinte —
+     * raccogliere, applicare, ripristinare — e se ciascuna ridefinisse il traduttore
+     * azzererebbe l'elenco dei nodi raccolti, lasciando «applica» senza niente da riempire.
+     * Il primo giro del codice girava così, e sul dispositivo la traduzione finiva con zero
+     * nodi riempiti su una pagina intera.
+     */
+    private static final String JS_TRADUCI =
+        "window.__novaTraduzione=window.__novaTraduzione||(function(){"
+      + "var nodi=[],orig=[],blocchi=[];"
+      + "function salta(t){return /^(SCRIPT|STYLE|NOSCRIPT|TEXTAREA|IFRAME|CODE|PRE|SVG|CANVAS|SELECT|OPTION|MATH)$/.test(t);}"
+      + "function raccogli(){"
+      + "  nodi=[];orig=[];blocchi=[];"
+      + "  if(!document.body)return [];"
+      + "  var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode:function(n){"
+      + "    var v=n.nodeValue; if(!v||!v.trim())return NodeFilter.FILTER_REJECT;"
+      + "    var p=n.parentNode;"
+      + "    while(p&&p!==document.body){ if(salta(p.nodeName))return NodeFilter.FILTER_REJECT; p=p.parentNode; }"
+      + "    if(v.trim().length<2)return NodeFilter.FILTER_REJECT;"
+      + "    return NodeFilter.FILTER_ACCEPT; }});"
+      + "  var n; while((n=w.nextNode())){ nodi.push(n); orig.push(n.nodeValue); }"
+      + "  var cur=[],lung=0;"
+      + "  for(var i=0;i<nodi.length;i++){"
+      + "    var s=nodi[i].nodeValue.replace(/\\s+/g,' ').trim();"
+      + "    if(lung+s.length>" + TRAD_BLOCCO + "&&cur.length){ blocchi.push(cur); cur=[]; lung=0; }"
+      + "    cur.push(s); lung+=s.length+1; }"
+      + "  if(cur.length)blocchi.push(cur);"
+      + "  var out=[]; for(var i=0;i<blocchi.length;i++)out.push(blocchi[i].join('\\n'));"
+      + "  return out; }"
+      + "function applica(tradotti){"
+      + "  var k=0,fatti=0,saltati=0;"
+      + "  for(var i=0;i<blocchi.length;i++){"
+      + "    var grezzo=(tradotti&&tradotti[i]!=null)?String(tradotti[i]):'';"
+      + "    var righe=grezzo.split('\\n');"
+      + "    if(righe.length!==blocchi[i].length){ k+=blocchi[i].length; saltati+=blocchi[i].length; continue; }"
+      + "    for(var j=0;j<blocchi[i].length;j++){"
+      + "      try{"
+      + "        var o=orig[k]||'';"
+      + "        var pre=o.match(/^\\s*/)[0], post=o.match(/\\s*$/)[0];"
+      + "        nodi[k].nodeValue=pre+righe[j].replace(/^\\s+|\\s+$/g,'')+post; fatti++;"
+      + "      }catch(e){}"
+      + "      k++; } }"
+      + "  try{ document.documentElement.setAttribute('data-nova-tradotta','1'); }catch(e){}"
+      + "  return {'fatti':fatti,'saltati':saltati}; }"
+      + "function ripristina(){"
+      + "  for(var i=0;i<nodi.length;i++){ try{ nodi[i].nodeValue=orig[i]; }catch(e){} }"
+      + "  nodi=[];orig=[];blocchi=[];"
+      + "  try{ document.documentElement.removeAttribute('data-nova-tradotta'); }catch(e){}"
+      + "  return true; }"
+      + "return {raccogli:raccogli,applica:applica,ripristina:ripristina};"
+      + "})();";
+
+    /**
+     * Il foglio per scegliere la lingua.
+     *
+     * <p>Le lingue si cercano: l'elenco è lungo e chi sa già cosa cerca non deve scorrerlo.
+     * La ricerca guarda il nome italiano e il codice, perché «pt» si cerca così come
+     * «portoghese»; la lingua in uso ha la spunta.
+     */
+    private void foglioLingue() {
+        final String attuale = linguaPreferita();
+        LinearLayout corpo = apriFoglio("Traduci in…", "Annulla");
+
+        EditText cerca = new EditText(this);
+        cerca.setSingleLine(true);
+        cerca.setHint("Cerca una lingua");
+        cerca.setHintTextColor(colDim());
+        cerca.setTextColor(colTxt());
+        cerca.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        GradientDrawable sfondo = new GradientDrawable();
+        sfondo.setColor(colCap());
+        sfondo.setCornerRadius(dp(20));
+        cerca.setBackground(sfondo);
+        cerca.setPadding(dp(16), dp(10), dp(16), dp(10));
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        clp.setMargins(dp(16), dp(4), dp(16), dp(10));
+        cerca.setLayoutParams(clp);
+        corpo.addView(cerca);
+
+        final LinearLayout lista = new LinearLayout(this);
+        lista.setOrientation(LinearLayout.VERTICAL);
+        corpo.addView(lista);
+
+        cerca.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            public void afterTextChanged(Editable s) {}
+            public void onTextChanged(CharSequence s, int a, int b, int c) { riempiLingue(lista, s.toString(), attuale); }
+        });
+        riempiLingue(lista, "", attuale);
+    }
+
+    private void riempiLingue(LinearLayout lista, String filtro, final String attuale) {
+        lista.removeAllViews();
+        String f = filtro == null ? "" : filtro.trim().toLowerCase(Locale.ITALY);
+        for (final String[] l : LINGUE) {
+            if (!f.isEmpty() && !l[1].toLowerCase(Locale.ITALY).contains(f) && !l[0].toLowerCase(Locale.ITALY).startsWith(f)) continue;
+            lista.addView(rigaScelta(l[1], l[0].equalsIgnoreCase(attuale), () -> {
+                impostaLingua(l[0]);
+                Scheda t = schedaCorrente();
+                if (t != null) traduci(t, l[0]);
+            }));
+        }
+        if (lista.getChildCount() == 0) {
+            TextView n = new TextView(this);
+            n.setText("Nessuna lingua con questo nome.");
+            n.setTextColor(colDim());
+            n.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            n.setPadding(dp(22), dp(16), dp(22), dp(16));
+            lista.addView(n);
+        }
+    }
+
+    /** Il ⋮ della barra: la lingua, il silenzio per questo sito, e nient'altro. */
+    private void foglioTraduzione(final Scheda t) {
+        if (t == null) return;
+        final String host = hostDi(t.indirizzo);
+        final String fatta = nomeLingua(t.linguaMostrata);
+        // Il titolo dice quello che c'è a video, non quello che si vorrebbe: aprendo questo
+        // foglio dalla barra di un guasto, «Tradotto in italiano» sarebbe una bugia scritta
+        // in cima a una pagina che è ancora in inglese.
+        LinearLayout corpo = apriFoglio(fatta.isEmpty() ? "Traduzione" : "Tradotto in " + fatta, "Chiudi");
+        corpo.addView(rigaFoglio("Scegli la lingua", nomeLingua(linguaPreferita()), this::foglioLingue));
+        if (!t.linguaMostrata.isEmpty()) {
+            corpo.addView(rigaFoglio("Mostra originale", nomeLingua(t.linguaPagina).isEmpty() ? "la pagina come l'ha scritta il sito" : "in " + nomeLingua(t.linguaPagina), () -> mostraOriginale(t)));
+        } else if (!t.linguaPagina.isEmpty()) {
+            corpo.addView(rigaFoglio("Traduci questa pagina", nomeLingua(t.linguaPagina), () -> traduci(t, linguaPreferita())));
+        }
+        if (!host.isEmpty()) {
+            corpo.addView(rigaFoglio("Non tradurre mai questo sito", host, () -> aggiungiNoTraduzione(host)));
+        }
+        // La cosa da dire, e va detta qui dove si decide: tradurre vuol dire mandare il testo
+        // della pagina a un servizio esterno. In incognito vale lo stesso, e va detto doppio.
+        TextView nota = new TextView(this);
+        nota.setText("Per tradurre, il testo della pagina viene inviato al servizio di traduzione."
+                + (t.incognito ? "\n\nQuesta scheda è in incognito: qui non si salva niente sul telefono, ma il testo esce lo stesso dal dispositivo." : ""));
+        nota.setTextColor(colDim());
+        nota.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        nota.setPadding(dp(22), dp(12), dp(22), dp(6));
+        corpo.addView(nota);
+    }
+
+    // ---------------------------------------------------------- preferiti / cronologia
+
     // Un elenco solo, condiviso con la shell.
     //
     // Il browser nativo e l'app Browser dentro la shell avevano due elenchi indipendenti:
@@ -2956,6 +3702,7 @@ public class BrowserActivity extends Activity {
         if (selettore != null) { chiudiSelettore(); return; }
         if (fullscreen) { setSchermoIntero(false); return; }
         if (findBar.getVisibility() == View.VISIBLE) { mostraBarraTrova(false); return; }
+        if (tradBar != null && tradBar.getVisibility() == View.VISIBLE) { mostraBarraTraduzione(false); return; }
         Scheda s = schedaCorrente();
         if (s != null && s.web != null && s.web.canGoBack()) s.web.goBack();
         else if (schede.size() > 1) chiudiScheda(corrente);

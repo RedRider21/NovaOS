@@ -22,7 +22,7 @@
 
 <header class="topbar">
   <div class="container">
-    <a class="brand" href="index.html"><img src="img/logo.svg" alt=""><b>NovaOS</b><span class="tagline">0.1.56</span></a>
+    <a class="brand" href="index.html"><img src="img/logo.svg" alt=""><b>NovaOS</b><span class="tagline">0.1.60</span></a>
     <nav class="nav">
       <a href="index.html">Presentazione</a>
       <a href="manuale.html">Manuale</a>
@@ -165,8 +165,10 @@
         <p>Client email reale SMTP/IMAP con selettore di provider (Gmail, Outlook, Libero, Aruba, PEC…),
         cartelle, ricerca e allegati. Le password sono cifrate nell'Android Keystore.</p></div></div>
       <div class="app"><div class="glyph" style="background:#8e8e93">🌐</div><div><h4>Browser</h4>
-        <p>Cronologia e preferiti. Sul dispositivo apre i siti in una WebView nativa a schermo intero,
-        con vista desktop automatica per WhatsApp e Telegram Web.</p></div></div>
+        <p>Schede multiple con anteprime, incognito, cronologia e preferiti condivisi con la home, modalità
+        lettura, trova nella pagina, download, aggiunta di un sito alla home e <b>traduzione delle pagine</b>
+        in 64 lingue. Sul dispositivo apre i siti in una WebView nativa a schermo intero, con vista desktop
+        automatica per WhatsApp e Telegram Web.</p></div></div>
       <div class="app"><div class="glyph" style="background:#ff375f">📷</div><div><h4>Fotocamera</h4>
         <p>Anteprima live, scatto salvato in Galleria e import da file.</p></div></div>
       <div class="app"><div class="glyph" style="background:#ff9f0a">🖼️</div><div><h4>Galleria</h4>
@@ -276,6 +278,35 @@
       con l'APK sono su GitHub; la shell si aggiorna da sola via OTA leggendo
       <code>shell/version.json</code>.</p>
     <ol class="road">
+      <li><span class="s">fatto</span><div><b>Release 0.1.60 — il browser traduce le pagine</b><p>Aprendo una
+        pagina scritta in un'altra lingua compare sotto la barra degli indirizzi una riga che propone la
+        traduzione: un tocco e la pagina è in italiano, un altro e torna com'era. La lingua si sceglie da un
+        elenco di 64 con il campo di ricerca, e si può dire a un sito di non essere mai tradotto. La lingua
+        della pagina si legge da quello che la pagina dichiara, non indovinandola dal testo, e la richiesta
+        parte dal browser e non dalla pagina: niente esce dal telefono prima che l'utente lo chieda, e la
+        pagina tradotta non vede il canale. Limite dichiarato: il servizio è gratuito e non ha un contratto,
+        quindi le richieste vanno due alla volta con una pausa, e se blocca il browser lo dice invece di
+        restare in attesa. Aggiornamento completo (APK).</p></div></li>
+      <li><span class="s">fatto</span><div><b>Release 0.1.59 — il browser impara le cose che gli mancavano</b><p>Cinque
+        voci che nel menu non c'erano: «Mostra modalità lettura» (il testo in colonna, senza il contorno del
+        sito, in una scheda a parte), «Installa» e «Crea scorciatoia» (una pagina diventa un'icona nella home,
+        con l'icona vera del sito e la conferma per i siti in chiaro), «Elimina cronologia» (con la casella per
+        cancellare anche cookie, dati e cache) e «Impostazioni del sito» (fotocamera, microfono, posizione,
+        pop-up, sito desktop, cookie e spazio occupato). L'elenco dei download è disegnato dal browser invece
+        di passare all'app di sistema, così la via d'uscita non dipende da un'app che può non esserci; e
+        cronologia e preferiti hanno la faccia di una schermata di browser, non di una finestra di sistema.
+        Aggiornamento completo (APK).</p></div></li>
+      <li><span class="s">fatto</span><div><b>Release 0.1.58 — tre difetti del browser, trovati usandolo</b><p>La
+        stella dei preferiti salvava ma non cambiava aspetto; con NovaOS in chiaro nella scheda in incognito
+        non si leggeva niente (testi e icone seguivano il tema chiaro su una barra scura per forza); e il
+        pulsante per uscire dallo schermo intero era un cerchio vuoto, perché il segno dentro era un carattere
+        che non tutti i sistemi hanno. Aggiornamento completo (APK).</p></div></li>
+      <li><span class="s">fatto</span><div><b>Release 0.1.57 — il browser diventa completo</b><p>Il browser del
+        dispositivo ha una faccia nuova: pagina iniziale con ricerca, siti più visitati e preferiti come
+        riquadri, schede multiple con anteprime, scheda in incognito, menu a icone vettoriali ancorato al suo
+        pulsante. «Trova nella pagina» dice quante volte il testo compare — il conteggio lo dà la pagina,
+        perché il contatore interno della vista incorporata riporta numeri sbagliati, e meglio nessun numero
+        che un numero falso. Preferiti e cronologia sono gli stessi della shell. Aggiornamento completo (APK).</p></div></li>
       <li><span class="s">fatto</span><div><b>Release 0.1.56 — la Galleria apre l'elemento giusto</b><p>La
         griglia di Foto è divisa per giorno e ogni giorno riparte da zero: il numero scritto sulla cella
         era la posizione <i>dentro il giorno</i>, mentre il visualizzatore lo leggeva come posizione
@@ -374,7 +405,7 @@
       <a href="https://github.com/RedRider21/NovaOS/blob/main/docs/GUIDA-MAIL.md">Guida alla Mail</a>
       <a href="https://github.com/RedRider21/NovaOS" target="_blank" rel="noopener">GitHub</a>
     </nav>
-    <small>NovaOS 0.1.56 (build 58) · sistema operativo con interfacce web su base Android ·
+    <small>NovaOS 0.1.60 (build 62) · sistema operativo con interfacce web su base Android ·
       progetto open source, senza affiliazioni con Firefox OS o KaiOS.</small>
   </div>
 </footer>
