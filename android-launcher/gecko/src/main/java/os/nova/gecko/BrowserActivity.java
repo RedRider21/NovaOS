@@ -838,7 +838,7 @@ GeckoSession.PermissionDelegate {
         boolean desk = t != null && t.desktop;
         Scheda nuova = this.schedaNonAperta(inc, desk);
         this.mostraScheda(this.schede.size() - 1);
-        return GeckoResult.fromValue((Object)nuova.sessione);
+        return GeckoResult.fromValue(nuova.sessione);
     }
 
     public GeckoResult<String> onLoadError(GeckoSession s, String uri, WebRequestError errore) {
@@ -1029,19 +1029,19 @@ GeckoSession.PermissionDelegate {
     }
 
     public GeckoResult<GeckoSession.PromptDelegate.PromptResponse> onAlertPrompt(GeckoSession s, GeckoSession.PromptDelegate.AlertPrompt p) {
-        GeckoResult esito = new GeckoResult();
-        new AlertDialog.Builder((Context)this, 4).setTitle((CharSequence)BrowserActivity.titoloDi(p.title)).setMessage((CharSequence)(p.message == null ? "" : p.message)).setPositiveButton((CharSequence)"OK", (d, w) -> esito.complete((Object)p.dismiss())).setOnCancelListener(d -> esito.complete((Object)p.dismiss())).show();
+        GeckoResult<GeckoSession.PromptDelegate.PromptResponse> esito = new GeckoResult<>();
+        new AlertDialog.Builder((Context)this, 4).setTitle((CharSequence)BrowserActivity.titoloDi(p.title)).setMessage((CharSequence)(p.message == null ? "" : p.message)).setPositiveButton((CharSequence)"OK", (d, w) -> esito.complete(p.dismiss())).setOnCancelListener(d -> esito.complete(p.dismiss())).show();
         return esito;
     }
 
     public GeckoResult<GeckoSession.PromptDelegate.PromptResponse> onButtonPrompt(GeckoSession s, GeckoSession.PromptDelegate.ButtonPrompt p) {
-        GeckoResult esito = new GeckoResult();
-        new AlertDialog.Builder((Context)this, 4).setTitle((CharSequence)BrowserActivity.titoloDi(p.title)).setMessage((CharSequence)(p.message == null ? "" : p.message)).setPositiveButton((CharSequence)"OK", (d, w) -> esito.complete((Object)p.confirm(0))).setNegativeButton((CharSequence)"Annulla", (d, w) -> esito.complete((Object)p.confirm(2))).setOnCancelListener(d -> esito.complete((Object)p.confirm(2))).show();
+        GeckoResult<GeckoSession.PromptDelegate.PromptResponse> esito = new GeckoResult<>();
+        new AlertDialog.Builder((Context)this, 4).setTitle((CharSequence)BrowserActivity.titoloDi(p.title)).setMessage((CharSequence)(p.message == null ? "" : p.message)).setPositiveButton((CharSequence)"OK", (d, w) -> esito.complete(p.confirm(0))).setNegativeButton((CharSequence)"Annulla", (d, w) -> esito.complete(p.confirm(2))).setOnCancelListener(d -> esito.complete(p.confirm(2))).show();
         return esito;
     }
 
     public GeckoResult<GeckoSession.PromptDelegate.PromptResponse> onTextPrompt(GeckoSession s, GeckoSession.PromptDelegate.TextPrompt p) {
-        GeckoResult esito = new GeckoResult();
+        GeckoResult<GeckoSession.PromptDelegate.PromptResponse> esito = new GeckoResult<>();
         EditText campo = new EditText((Context)this);
         campo.setText((CharSequence)(p.defaultValue == null ? "" : p.defaultValue));
         campo.setSelectAllOnFocus(true);
@@ -1049,22 +1049,22 @@ GeckoSession.PermissionDelegate {
         FrameLayout box = new FrameLayout((Context)this);
         box.setPadding(pad, pad / 2, pad, 0);
         box.addView((View)campo);
-        new AlertDialog.Builder((Context)this, 4).setTitle((CharSequence)BrowserActivity.titoloDi(p.title)).setMessage((CharSequence)(p.message == null ? "" : p.message)).setView((View)box).setPositiveButton((CharSequence)"OK", (d, w) -> esito.complete((Object)p.confirm(campo.getText().toString()))).setNegativeButton((CharSequence)"Annulla", (d, w) -> esito.complete((Object)p.dismiss())).setOnCancelListener(d -> esito.complete((Object)p.dismiss())).show();
+        new AlertDialog.Builder((Context)this, 4).setTitle((CharSequence)BrowserActivity.titoloDi(p.title)).setMessage((CharSequence)(p.message == null ? "" : p.message)).setView((View)box).setPositiveButton((CharSequence)"OK", (d, w) -> esito.complete(p.confirm(campo.getText().toString()))).setNegativeButton((CharSequence)"Annulla", (d, w) -> esito.complete(p.dismiss())).setOnCancelListener(d -> esito.complete(p.dismiss())).show();
         return esito;
     }
 
     public GeckoResult<GeckoSession.PromptDelegate.PromptResponse> onBeforeUnloadPrompt(GeckoSession s, GeckoSession.PromptDelegate.BeforeUnloadPrompt p) {
-        GeckoResult esito = new GeckoResult();
-        new AlertDialog.Builder((Context)this, 4).setTitle((CharSequence)"Uscire dalla pagina?").setMessage((CharSequence)"I dati inseriti nel modulo potrebbero andare persi.").setPositiveButton((CharSequence)"Esci", (d, w) -> esito.complete((Object)p.confirm(AllowOrDeny.ALLOW))).setNegativeButton((CharSequence)"Resta", (d, w) -> esito.complete((Object)p.confirm(AllowOrDeny.DENY))).setOnCancelListener(d -> esito.complete((Object)p.confirm(AllowOrDeny.DENY))).show();
+        GeckoResult<GeckoSession.PromptDelegate.PromptResponse> esito = new GeckoResult<>();
+        new AlertDialog.Builder((Context)this, 4).setTitle((CharSequence)"Uscire dalla pagina?").setMessage((CharSequence)"I dati inseriti nel modulo potrebbero andare persi.").setPositiveButton((CharSequence)"Esci", (d, w) -> esito.complete(p.confirm(AllowOrDeny.ALLOW))).setNegativeButton((CharSequence)"Resta", (d, w) -> esito.complete(p.confirm(AllowOrDeny.DENY))).setOnCancelListener(d -> esito.complete(p.confirm(AllowOrDeny.DENY))).show();
         return esito;
     }
 
     public GeckoResult<GeckoSession.PromptDelegate.PromptResponse> onPopupPrompt(GeckoSession s, GeckoSession.PromptDelegate.PopupPrompt p) {
-        return GeckoResult.fromValue((Object)p.confirm(AllowOrDeny.ALLOW));
+        return GeckoResult.fromValue(p.confirm(AllowOrDeny.ALLOW));
     }
 
     public GeckoResult<GeckoSession.PromptDelegate.PromptResponse> onFilePrompt(GeckoSession s, GeckoSession.PromptDelegate.FilePrompt p) {
-        GeckoResult esito = new GeckoResult();
+        GeckoResult<GeckoSession.PromptDelegate.PromptResponse> esito = new GeckoResult<>();
         this.fileInAttesa = p;
         this.esitoFile = esito;
         this.svuotaCaricamenti();
@@ -1082,7 +1082,7 @@ GeckoSession.PermissionDelegate {
             Log.w((String)TAG, (String)"nessuna app per scegliere un file", (Throwable)e);
             this.fileInAttesa = null;
             this.esitoFile = null;
-            esito.complete((Object)p.dismiss());
+            esito.complete(p.dismiss());
         }
         return esito;
     }
@@ -1100,7 +1100,7 @@ GeckoSession.PermissionDelegate {
             return;
         }
         if (esito != -1 || dati == null) {
-            r.complete((Object)p.dismiss());
+            r.complete(p.dismiss());
             return;
         }
         ArrayList<Uri> scelti = new ArrayList<Uri>();
@@ -1114,7 +1114,7 @@ GeckoSession.PermissionDelegate {
             scelti.add(dati.getData());
         }
         if (scelti.isEmpty()) {
-            r.complete((Object)p.dismiss());
+            r.complete(p.dismiss());
             return;
         }
         ArrayList<Uri> locali = new ArrayList<Uri>();
@@ -1124,9 +1124,9 @@ GeckoSession.PermissionDelegate {
             locali.add(locale);
         }
         if (locali.isEmpty()) {
-            r.complete((Object)p.dismiss());
+            r.complete(p.dismiss());
         } else {
-            r.complete((Object)p.confirm((Context)this, locali.toArray(new Uri[0])));
+            r.complete(p.confirm((Context)this, locali.toArray(new Uri[0])));
         }
     }
 
@@ -1298,18 +1298,18 @@ GeckoSession.PermissionDelegate {
 
     public GeckoResult<Integer> onContentPermissionRequest(GeckoSession s, GeckoSession.PermissionDelegate.ContentPermission richiesta) {
         if (richiesta.permission == 0) {
-            GeckoResult esito;
+            GeckoResult<Integer> esito;
             if (this.checkSelfPermission("android.permission.ACCESS_FINE_LOCATION") == 0) {
-                return GeckoResult.fromValue((Object)1);
+                return GeckoResult.fromValue(1);
             }
             this.posizioneInAttesa = esito = new GeckoResult();
             this.unPermessoAllaVolta(() -> this.requestPermissions(new String[]{"android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION"}, 4812));
             return esito;
         }
         if (richiesta.permission == 1) {
-            return GeckoResult.fromValue((Object)2);
+            return GeckoResult.fromValue(2);
         }
-        return GeckoResult.fromValue((Object)1);
+        return GeckoResult.fromValue(1);
     }
 
     public void onAndroidPermissionsRequest(GeckoSession s, String[] richiesti, GeckoSession.PermissionDelegate.Callback callback) {
@@ -1346,7 +1346,7 @@ GeckoSession.PermissionDelegate {
             GeckoResult<Integer> r = this.posizioneInAttesa;
             this.posizioneInAttesa = null;
             if (r != null) {
-                r.complete((Object)(tutti ? 1 : 2));
+                r.complete((tutti ? 1 : 2));
             }
         } else if (codice == 4813) {
             GeckoSession.PermissionDelegate.Callback cb = this.callbackInAttesa;

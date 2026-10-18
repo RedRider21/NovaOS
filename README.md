@@ -512,6 +512,12 @@ Prossimi passi (aggiornati al 2026-09-18, **due tracce** — vedi
 6. **Pulizia dei fallback WebView-specifici** resi inutili da Gecko: audio nativo, `os.confirm`,
    doppia persistenza.
 
+> **2026-10-18 — sorgenti recuperati e modulo ricompilato.** I sorgenti Java del modulo erano
+> andati persi su questa macchina: sono stati ricostruiti per decompilazione dal build del
+> 2026-09-25 e il modulo è stato ricompilato con successo (APK `gecko-debug.apk`, 504 MB).
+> Metodo, correzioni necessarie e limiti in
+> **[docs/MIGRAZIONE-GECKOVIEW.md §19](docs/MIGRAZIONE-GECKOVIEW.md)**.
+
 **Traccia B — ROM su telefono secondario** *(differita)*
 7. **ROM su hardware reale** via GSI (flash del solo `system`, kernel e driver originali intatti).
 8. **ROM definitiva** con GeckoView come UI di sistema (priv-app firmata + whitelist + SELinux).

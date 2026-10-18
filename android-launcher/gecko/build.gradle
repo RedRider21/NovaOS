@@ -77,4 +77,7 @@ android {
 
 dependencies {
     implementation "org.mozilla.geckoview:geckoview:155.0.20260903215306"
+    // Posta reale (JavaMail + Activation): MailBridge legge IMAP e invia SMTP,
+    // esattamente come il modulo :app. Le librerie stanno in android-launcher/libs/.
+    implementation fileTree(dir: "${rootProject.projectDir}/libs", include: ['*.jar'])
 }

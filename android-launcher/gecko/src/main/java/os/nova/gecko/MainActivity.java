@@ -1414,38 +1414,18 @@ extends Activity {
     }
 
     private int buildDegliAsset() {
-        int n;
-        block9: {
-            InputStream in = this.getAssets().open("www/version.json");
-            try {
-                int n2;
-                ByteArrayOutputStream bo = new ByteArrayOutputStream();
-                byte[] buf = new byte[4096];
-                while ((n2 = in.read(buf)) > 0) {
-                    bo.write(buf, 0, n2);
-                }
-                n = this.parseBuild(bo.toString("UTF-8"));
-                if (in == null) break block9;
+        try (InputStream in = this.getAssets().open("www/version.json")) {
+            int n2;
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            while ((n2 = in.read(buf)) > 0) {
+                bo.write(buf, 0, n2);
             }
-            catch (Throwable throwable) {
-                try {
-                    if (in != null) {
-                        try {
-                            in.close();
-                        }
-                        catch (Throwable throwable2) {
-                            throwable.addSuppressed(throwable2);
-                        }
-                    }
-                    throw throwable;
-                }
-                catch (Exception e) {
-                    return -1;
-                }
-            }
-            in.close();
+            return this.parseBuild(bo.toString("UTF-8"));
         }
-        return n;
+        catch (Exception e) {
+            return -1;
+        }
     }
 
     private int parseBuild(String json) {
@@ -1676,7 +1656,7 @@ extends Activity {
             if (message instanceof GeckoBundle) {
                 GeckoBundle b = (GeckoBundle)message;
                 nome = b.getString("nova");
-                a = b.get("args");
+                Object a = b.get("args");
                 if (a instanceof Object[]) {
                     args = (Object[])a;
                 } else if (a instanceof List) {
@@ -1688,7 +1668,7 @@ extends Activity {
                 JSONObject o = (JSONObject)message;
                 nome = o.optString("nova", null);
                 idRichiesta = o.optInt("id", -1);
-                a = o.optJSONArray("args");
+                JSONArray a = o.optJSONArray("args");
                 if (a != null) {
                     args = new Object[a.length()];
                     for (int i = 0; i < a.length(); ++i) {
