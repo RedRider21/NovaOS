@@ -1490,6 +1490,66 @@ Emulatore, origine `local`, dopo `./gradlew :gecko:assembleDebug` e `adb install
 3. Pulizia: ripieghi resi inutili da Gecko, sonde di fase 1, sottotitolo NFC di §17.4.
 4. Fase 8: la ROM.
 
+## 19 · Recupero dei sorgenti del modulo (2026-10-18)
+
+Il 2026-10-18, riprendendo il progetto su una macchina nuova, i **sorgenti Java del modulo
+`android-launcher/gecko` non c'erano più**: sul ramo `gecko-spike` si fermavano al 2026-09-21
+(prima del §18), mentre il build del 2026-09-25 era ancora presente in
+`android-launcher/gecko/build/` insieme all'APK `gecko-debug.apk`.
+
+I sorgenti sono stati ricostruiti **dagli artefatti di quel build**, senza riscrivere a mano:
+
+| Pezzo | Fonte del recupero |
+|-------|--------------------|
+| 8 classi Java (`MainActivity`, `BrowserActivity`, `MailBridge`, `MotoreGecko`, `CallHub`, `ShareProvider`, `ShellServer`, `NovaInCallService`) | `build/intermediates/javac/debug/.../classes`, decompilate con **CFR 0.152** (JAR verificato con SHA-1 da Maven Central) |
+| 11 drawable della barra del browser | `build/intermediates/packaged_res/debug/.../drawable/` (copie esatte dei sorgenti XML) |
+| Estensione aggiornata (`background.js`, `content.js`) | `build/intermediates/assets/debug/mergeDebugAssets/extension/` |
+| Permessi `ACCESS_FINE/COARSE_LOCATION` e `REQUEST_INSTALL_PACKAGES` | righe del manifest sorgente citate nel `manifest-merger-debug-report.txt` del build |
+
+Cosa è fedele e cosa no:
+
+- **Fedele**: la logica compilata, le firme, le stringhe, i nomi di classi e di quasi tutte le
+  variabili locali (il build debug conserva la tabella delle variabili). `MainActivity` mostra i
+  metodi aggiunti dopo il ramo (`inviaSchermata`, `installaAggiornamento`, `condividiTanti`,
+  `scriviInCache`, `mimeDi`), e `BrowserActivity` è la riscrittura GeckoView completa, con nomi di
+  metodo in italiano.
+- **Perso**: i commenti originali e parte della formattazione; alcuni cast ridondanti introdotti
+  dal decompilatore (es. `(String) TAG`). Il codice è leggibile e compilabile, ma va considerato
+  una base da ricompilare e verificare, non l'originale.
+### 19.1 · Ricompilazione riuscita (2026-10-18)
+
+Il modulo è stato ricompilato con la stessa catena del build originale e **`BUILD SUCCESSFUL`**.
+Tutta la toolchain è stata installata dentro `os/privato/` (escluso da git), così nessuna
+scrittura finisce fuori dal progetto:
+
+| Strumento | Versione / posizione |
+|-----------|----------------------|
+| JDK | Temurin 21.0.12.1+1 in `privato/jdk21` (verificato SHA-256) |
+| Gradle | 9.7.1 in `privato/gradle-9.7.1` (verificato SHA-256) |
+| Android SDK | cmdline-tools 23.0, platform `android-37.1`, build-tools 37.0.0 in `privato/android-sdk` |
+| Cache Gradle | `GRADLE_USER_HOME=privato/gradle-home` |
+| GeckoView | `155.0.20260903215306` da Maven |
+
+La ricompilazione ha richiesto tre correzioni, tutte dovute a ciò che il decompilatore non
+poteva conservare:
+
+1. **JavaMail mancante** — `MailBridge` usa `javax.mail`, ma il `build.gradle` del ramo era
+   precedente alla classe. Aggiunta la stessa `fileTree` su `android-launcher/libs/*.jar` che usa
+   il modulo `:app`.
+2. **Variabile perduta in `MainActivity.BridgeMessages`** — CFR non aveva emesso la dichiarazione
+   di `a` nei rami `GeckoBundle`/`JSONObject`. Ridichiarata nei due rami (`Object`/`JSONArray`).
+3. **Generici e risorse persi** — `GeckoResult<T>` e `complete(...)` erano grezzi in
+   `BrowserActivity` (10 errori di inferenza), e `buildDegliAsset()` aveva perso il
+   try-with-resources. Tipizzati i risultati e riscritto il metodo nella forma originale.
+
+Esito: APK `android-launcher/gecko/build/outputs/apk/debug/gecko-debug.apk`, 504 MB,
+`package os.nova.gecko`, `versionCode 1`, `versionName spike`, SHA-256
+`4eadeb8478f911a8bc175c55b7c5a69fef57e2f983209ab368e0617967af4f17`. **Non è stato installato né
+provato**: la verifica su emulatore/dispositivo resta il passo successivo.
+
+Lo strumento di decompilazione e i materiali intermedi stanno in `os/privato/`, escluso da git:
+nel repository restano solo i sorgenti recuperati e questo resoconto.
+
 ---
 
 *Documento di pianificazione — l'implementazione vive sul ramo `gecko-spike`. La shell è già stata

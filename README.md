@@ -35,7 +35,7 @@ Livello 0  system/              ricetta AOSP per la ROM (il "SO di base" sotto)
 ## Struttura
 
 ```
-web-phone-os/
+NovaOS/
 ├─ shell/                     web shell (cuore del progetto)
 │  ├─ index.html              boot · lockscreen · home · app view · shade · navbar
 │  ├─ css/style.css           design flat, tema chiaro/scuro, componenti
@@ -45,6 +45,7 @@ web-phone-os/
 │  ├─ manifest.webmanifest    PWA installabile
 │  ├─ icon.svg                logo Nova
 │  └─ sw.js                   service worker (offline, network-first)
+├─ themes/                    temi `.novatheme/2` di esempio + catalog.json
 ├─ android-launcher/          app Android (Java, WebView) + bridge NovaNative
 │  ├─ app/src/main/java/os/nova/launcher/MainActivity.java
 │  ├─ app/src/main/AndroidManifest.xml
@@ -338,7 +339,7 @@ rifletta lo schermo nella fotocamera.
 Prototipo completo e funzionante, testato su emulatore Android (AOSP 14).
 
 Fatto:
-- 15 app operative (molte con dati/contenuti reali: Meteo via open-meteo, File
+- 16 app operative (molte con dati/contenuti reali: Meteo via open-meteo, File
   collegato a foto e note, cronologia chiamate, ecc.).
 - Chiamate reali verificate: la web app apre il dialer nativo che instrada sulla radio.
 - **APK compilato** (build manuale senza Gradle: `android-launcher/build-apk.sh`) con

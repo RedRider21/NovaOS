@@ -10,6 +10,10 @@ con conferme/attestazione).
 > un Android **minimale**. Non riscriviamo Android: ne teniamo il nucleo (kernel,
 > driver, radio, WebView) e sostituiamo solo lo *strato interfaccia*.
 
+> **Percorso a tappe:** l'ordine pratico degli interventi, con i requisiti di
+> spazio e le verifiche sul telefono, è in
+> [`PROSSIMI-STEP-ROM.md`](PROSSIMI-STEP-ROM.md).
+
 ---
 
 ## 1. I tre livelli (e cosa diventa la ROM)

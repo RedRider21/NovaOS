@@ -1,5 +1,8 @@
 # Artefatti di build APK (rigenerabili con android-launcher/build-apk.sh)
 android-launcher/build/
+android-launcher/app/build/
+*.apk
+*.aab
 
 # Copia della shell impacchettata negli assets (generata: cp -r shell/* .../assets/www/)
 android-launcher/app/src/main/assets/www/
@@ -14,12 +17,17 @@ android-launcher/gecko/src/main/assets/extension/www/
 shell/_t*.html
 _t*.html
 
-# Sistema
+# Sistema / editor
 .DS_Store
 *.log
+*~
+*.swp
 
 # Android Studio / Gradle locale (sync non deve sporcare lo status git)
 .gradle/
 .idea/
 local.properties
 *.iml
+
+# Materiali di lavoro locali (strumenti, decompilazioni, appunti): mai pubblicati
+privato/
