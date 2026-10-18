@@ -5,10 +5,18 @@ che oggi fa da contenitore alla shell con **GeckoView** (il motore di Firefox), 
 invariata tutta la parte web. Questo documento è la base di lavoro per lo spike isolato sul
 ramo parallelo `novaos-rom/`; la shell (`shell/`) non deve cambiare.
 
-- Stato: **fase 0 (§9) e fase 2 (§10) verificate su emulatore il 2026-09-18**, in **entrambi i
-  versi**: i comandi della shell arrivano al nativo e gli eventi del nativo (es. chiamata in
-  arrivo) compaiono nella shell. Restano da cablare la maggior parte dei comandi e le fasi 3–8.
-  Nulla di quanto descritto qui è stato pubblicato: lo spike vive su un ramo isolato.
+- Stato: **fasi 0 (§9), 2 (§10), 3 (§11), 4 (§13), 5 (§14), 6 (§15) e 7 (§16) verificate su
+  emulatore**, più il tasto Indietro (§12). In concreto: i comandi della shell arrivano al
+  nativo, gli eventi del nativo (es. chiamata in arrivo) compaiono nella shell, i getter di stato
+  rispondono con il valore vero, il canale richiesta/risposta si scioglie con il valore giusto,
+  **l'aggiornamento OTA della shell funziona nei tre momenti che contano** — commit, sopravvivenza
+  al riavvio, ripristino — e **la shell sotto Gecko telefona e condivide** come l'APK pubblicato.
+  Il **punto 2** (§17 e la fase dei sei comandi) è chiuso, e il **punto 3 — il browser** — è portato
+  a GeckoView e verificato (§18): nel progetto non ci sono più due motori contemporaneamente.
+  Restano la fase 8 (ROM) e quattro voci dichiarate fuori di proposito: `prefGet`/`prefKeys`
+  (sotto Gecko non esistono letture sincrone) e `audioRecStart`/`audioRecStop` (resi inutili da
+  `getUserMedia`). Nulla di quanto descritto qui è stato pubblicato come rilascio: lo spike vive su
+  un ramo isolato.
 - Interessati: livello `android-launcher/` (contenitore + ponte), `shell/` (minimi ritocchi),
   `system/` (ROM definitiva)
 - **Il codice dello spike vive sul ramo `gecko-spike`** (non linkato di proposito: un link
@@ -24,6 +32,21 @@ ramo parallelo `novaos-rom/`; la shell (`shell/`) non deve cambiare.
 > privilegiata) invalidano il piano originale del §4 e sono il motivo per cui la shell è servita
 > da un server HTTP locale invece che dagli asset. Il verso nativo → pagina, che era il rischio
 > più serio del piano, è risolto e descritto in **§10.7**.
+
+> **Da leggere per primo se si riprende il lato getter:** §11.2. La semantica di `has()` rende
+> obbligatorio esporre i getter nello stub — non esporli non è prudenza, è un guasto silenzioso —
+> e lo `store` della shell ripiega già su `localStorage`, quindi le preferenze non hanno bisogno
+> del nativo.
+
+> **Da leggere per primo se si tocca l'avvio o l'OTA:** §14.1. La copia degli asset in
+> `files/shell` non è più incondizionata, ed è deliberato: una ricopiatura a ogni avvio cancella
+> l'aggiornamento e lo fa sparire **al riavvio successivo**, senza errori. È il guasto peggiore
+> incontrato finora proprio perché sembra un successo.
+
+> **Da leggere per primo se si tocca il browser:** §18.1. Sotto Gecko tre cose si rompono **senza
+> un errore** — la memoria della scheda (omnibox, titolo e voci del menu che restano vuoti), i
+> dialoghi delle pagine (`confirm` che risponde sempre «no») e il ponte che, con il browser
+> aperto, si inietterebbe in qualunque pagina servita da `localhost`.
 
 ---
 
@@ -177,8 +200,11 @@ migrare un componente alla volta e tenere sempre un'istanza avviabile.
   `GeckoSession` (oggi via `onPermissionRequest` WebChromeClient).
 - **File/allegati**: `<input type=file>` e download passano per i delegate Gecko
   (`PromptDelegate`, `ContentDelegate`), non più `onShowFileChooser`/DownloadListener.
-- **User-Agent / vista desktop**: la `BrowserActivity` esterna oggi imposta la UA via WebView;
-  in Gecko la UA si configura a livello di `GeckoSessionSettings`.
+- **User-Agent / vista desktop**: la `BrowserActivity` esterna impostava la UA via WebView; in Gecko
+  la UA si dà come *override* su `GeckoSessionSettings` (`userAgentOverride`,
+  `useDesktopUserAgent`). **Fatto in §18**: la vista desktop sotto Gecko ha richiesto **due**
+  impostazioni e non una — la stringa del browser *e* la larghezza della vista — perché cambiando
+  solo la stringa il sito resterebbe impaginato da telefono.
 - **Service worker offline** (`sw.js`, cache `novaos-vNN`): Gecko supporta i service worker;
   va verificato che la strategia network-first della shell resti valida con la policy di cache
   di GeckoView e che l'update della cache (bump `CACHE` a ogni rilascio) continui a funzionare.
@@ -233,8 +259,13 @@ migrare un componente alla volta e tenere sempre un'istanza avviabile.
   pagina, perché vive in un mondo isolato. Lo stub soddisfa il contratto di `js/bridge.js` e va
   iniettato a `document_start`, prima che `bridge.js` catturi `window.NovaNative`.
   Resta da aggiungere l'iniezione di `__NOVA_PREFS` nello stesso momento.
-- [ ] Persistenza dati shell (preferenze/IndexedDB) nello storage di GeckoView: migrazione o
-  convivenza col percorso attuale.
+- [x] **Persistenza dati shell (preferenze/IndexedDB) nello storage di GeckoView** — **deciso:
+  si convive col percorso attuale** (§11.3), nessuna migrazione. Le preferenze restano scritte
+  **in entrambi i posti** — la pagina le tiene in `localStorage` e il nativo ne tiene una copia
+  aggiornata — esattamente come fa il launcher pubblicato: così i due binari restano coerenti e
+  il browser legge il tema dalla copia nativa, come già faceva. Non si importa nulla dalla vecchia
+  app: i dati del launcher pubblicato stanno in cartelle private di **un'altra app**, leggibili
+  solo con root o dalla ROM, e la decisione presa è di ripartire puliti.
 - [ ] Policy UA per la vista desktop del Browser.
 - [ ] Impatto di `?preview=1` / anteprime (nessuna differenza attesa).
 - [x] **Probe di presenza del nativo** — risolto: la shell non interroga più `window.NovaNative`.
@@ -457,10 +488,10 @@ computer non esiste. Il server locale invece è autosufficiente.
 | Shell servita dal server locale, avvio e interattività | ✅ verificato |
 | Ponte a tre salti, con sonda dalla pagina | ✅ verificato: `__probe_stub` arriva a Java |
 | `openBrowser` → `BrowserActivity` nativa | ✅ verificato dal dock |
-| Comandi cablati in Java | **22 su 53** (aggiornato al passo di §11): gli altri arrivano e finiscono nel log |
-| Getter e richiesta/risposta (14 + 11) | ❌ da fare: sono asincroni, servono cache all'avvio (fase 3) |
+| Comandi cablati in Java | **3 su 53** (`toast`, `vibrate`, `openBrowser`): tutti gli altri arrivano e finiscono nel log |
+| Getter e richiesta/risposta (14 + 11) | ❌ in questa fase; **risolti in §11** (fase 3): gli 11 getter sono cablati, restano i 14 asincroni |
 | Ritorno nativo → pagina, con evento consegnato alla shell | ✅ verificato (§10.7) |
-| `BrowserActivity` | copiata da `:app`, **ancora basata su WebView**: il port a GeckoView è un passo a sé |
+| `BrowserActivity` | all'inizio copiata da `:app` e basata su WebView; **portata a GeckoView in §18** |
 | Pulizia | la fascia diagnostica è già stata tolta; le sonde `__probe_bg` / `__probe_stub` **restano** finché servono alla fase 3 come spia di canale vivo |
 
 **Nota pratica.** La fascia diagnostica copriva il dock e ne intercettava i tocchi: per un giro di
@@ -524,11 +555,588 @@ getter (fase 3), e le differenze di comportamento di fase 5.
 
 ---
 
-## 11 · Esito del passo: telefonia e condivisione (2026-09-18)
+## 11 · Esito della fase 3 — i getter e i primi eventi veri (2026-09-18)
 
-Il gruppo più numeroso rimasto — 12 comandi su 53 — è cablato e verificato sull'emulatore. Sotto
-Gecko la shell adesso **chiama, riceve, risponde, riaggancia, muta, mette in vivavoce, manda DTMF,
-invia SMS e condivide foto, file e testo**: le stesse cose che fa l'APK WebView pubblicato.
+**Esito: verificato.** Lo stato del telefono (versione app, batteria, permessi, ruolo dialer, stato
+chiamata) parte da Java, attraversa la porta nativa, e la shell lo legge dai getter del contratto
+come se fosse sotto WebView. Un comando vero — `requestMic` — chiede il permesso di sistema e ne
+rimanda l'esito alla pagina, in entrambi gli esiti.
+
+### 11.1 · Perché i getter sono un problema diverso dai comandi
+
+Un comando è fire-and-forget: la pagina chiama, il nativo fa. Un getter **restituisce un valore che
+la pagina legge subito**, e questa differenza non è aggirabile: il ponte è asincrono per
+costruzione, quindi il valore non può essere la risposta della chiamata. Il nativo manda lo stato
+una volta, all'avvio; lo stub lo tiene in una variabile; il getter restituisce quella copia. La
+finestra fra `document_start` (quando lo stub esiste) e `load` (quando lo stato arriva) è coperta
+dal valore `null`, che i chiamanti già trattano come «non noto».
+
+Conseguenza sul contratto: **il valore può essere vecchio.** Sotto WebView `micDiag()` interrogava
+il sistema nel momento della chiamata; qui risponde con una fotografia. Da qui l'obbligo, in
+`onRequestPermissionsResult`, di rimandare lo stato aggiornato subito dopo aver risposto: senza,
+`micDiag` resterebbe quello di prima fino al riavvio successivo, e la shell crederebbe a
+un'informazione che il sistema ha già smentito.
+
+### 11.2 · `has()` è un interruttore, non una guardia
+
+Questa è la scoperta che ha deciso la forma della fase, e va letta prima di toccare lo stub.
+
+In `shell/js/bridge.js`:
+
+```js
+has(n)  = !!(CONTRACT[n] && raw && typeof raw[n] === "function")
+get(n)  = has(n) ? raw[n]() : cache[n] !== undefined ? cache[n] : default
+```
+
+Il chiamante però non usa `get()`. Scrive quasi sempre così:
+
+```js
+has("micDiag") ? micDiag() : "granted"
+```
+
+Il ragionamento istintivo è: «se il nativo non sa rispondere, `has()` è falso e la shell ripiega
+sul default — un degrado prudente». **È falso.** Il default di `micDiag` è `"granted"`: con
+`has()` falso la shell si dichiara con il permesso mentre il nativo dice `"blocked"`. Il ripiego
+non è prudente, è **ottimista**, e senza lo stub il ponte sembrerebbe assente mentre sta invece
+mentendo a favore del permesso.
+
+Non esporre i getter non era quindi una scelta conservativa, era **un guasto silenzioso**. La
+scelta giusta è esporli (come fa WebView, dove esistono tutti e 53 i metodi), e restituire il
+valore vero.
+
+**L'elenco non è tutto `CONTRACT`.** Sono cablati gli 11 getter puri:
+
+`sensorStates`, `appVersion`, `mailAccount`, `isDialer`, `currentCallState`, `micGranted`,
+`micDiag`, `batteryLevel`, `micReady`, `privileged`, `shellSource`.
+
+Restano fuori, deliberatamente, due gruppi:
+- i **14 di richiesta/risposta** (`audioRec*`, `saveDownload`, `setWifi`…): devono restituire una
+  Promise, e un metodo esposto che risponde `undefined` li farebbe sembrare *falliti* invece che
+  *non noti* — un guasto peggiore del degrado;
+- **`prefGet` / `prefKeys`**: con `has()` vero partirebbe la migrazione una tantum di `os.js`, che
+  copierebbe la `localStorage` verso un nativo che non ha preferenze. Cablarli senza implementarle
+  sarebbe stato distruttivo.
+
+### 11.3 · Le preferenze non hanno bisogno del nativo
+
+Scoperta che riduce di molto la fase 3, e che vale la pena fissare perché sembra controintuitiva.
+
+`shell/js/os.js` definisce `store` con **due livelli**: prima il nativo, e se il nativo non c'è,
+`localStorage`. Sotto Gecko su `http://127.0.0.1` la seconda via c'è, è affidabile ed è **sincrona
+al parse** — cioè le impostazioni sono già lette e applicate prima che qualunque getter asincrono
+possa rispondere.
+
+Quindi la fase 3 non deve cablare l'intera superficie dei getter: le preferenze funzionano già.
+Restano i getter che riguardano lo *stato del dispositivo*, che è esattamente la lista di §11.2.
+Nella ROM (traccia B) il discorso è diverso e va riaperto: lì l'origine cambia e la `localStorage`
+non è più la stessa cosa.
+
+### 11.4 · Il primo evento che non è una sonda
+
+Le fasi precedenti si erano verificate con sonde (`__probe_bg`, `__probe_stub`, una chiamata in
+arrivo finta). Una sonda prova che il canale è vivo; non prova che il canale **serva**. Il primo
+evento generato da un fatto vero è `mic.result`: il nativo chiede il permesso di sistema e rimanda
+l'esito.
+
+```java
+case "requestMic":
+  if (già concesso) inviaEvento("mic.result", true);
+  else requestPermissions(new String[]{RECORD_AUDIO}, RICHIESTA_MIC);
+```
+
+e in `onRequestPermissionsResult`: `inviaEvento("mic.result", concesso)` seguito da
+`inviaStatoAllaShell()`.
+
+Dall'altra parte non serve nulla di nuovo: `mic.result` è già nella mappa `MSG` di `bridge.js`, e
+la shell lo consegna a `window.__novaMic(ok)`, la funzione che `apps.js` usa per mostrare o
+nascondere l'avviso. **Verificato in entrambi gli esiti:**
+
+- **concesso** → `micGranted: true`, `micDiag` passa da `"blocked"` a `"granted"`, nessun avviso a
+  schermo (corretto: non c'è nulla da segnalare);
+- **negato** → `mic.result` con `false`, e il Registratore disegna «Serve il permesso del microfono
+  per registrare» con il pulsante «Consenti microfono». **Lo stesso avviso che disegna sotto
+  WebView**, perché entra dalla stessa porta.
+
+Il valore di questa prova non è il microfono: è che un fatto del sistema operativo arriva
+all'interfaccia senza che sia stata toccata una riga di `shell/`.
+
+**Due cose da sapere prima, che sembrano dettagli e non lo sono.**
+- **Il permesso va dichiarato nel manifest del modulo.** Senza `<uses-permission
+  android:name="android.permission.RECORD_AUDIO"/>` `requestPermissions` non mostra alcun dialogo
+  e risponde «negato» all'istante: il comando sembra rotto mentre è il modulo a essere incompleto.
+  Nel modulo `:app` il permesso c'è già. (È una precondizione nota di Android, non un guasto
+  incontrato qui: la dichiarazione è stata aggiunta prima della build.)
+- **La richiesta parte dal thread principale, e la riga che lo garantisce è una sola.**
+  `requestPermissions` va chiamata dal thread UI, e `esegui` ci gira — ma **non** perché Gecko
+  consegni `MessageDelegate.onMessage` lì: lo consegna sul suo thread, e il salto è esplicito,
+  `runOnUiThread(() -> esegui(n2, a2, id2))` (`MainActivity.java:321`; stessa cosa per
+  `esegui` in `:203`). Detta com'era scritta prima — «il delegate viene consegnato sul thread
+  principale» — la frase era meccanicamente falsa e faceva sembrare una garanzia del motore
+  ciò che è una riga scritta a mano. Chi in futuro tocca quella riga deve sapere che senza di
+  essa `requestPermissions` fallisce.
+
+**Un errore di metodo, per la seconda volta lo stesso.** Il primo tentativo «non ha fatto nulla»:
+nessun dialogo, nessuna callback. La causa non era nel codice — l'emulatore si era riaddormentato
+e il tocco era finito sul lockscreen, quindi `requestMic` non era mai partito. È esattamente la
+lezione di §10.7 in un'altra veste: **prima di attribuire un guasto al codice, verificare che
+l'azione sia arrivata.** La differenza è che qui il log lo diceva in modo netto — `requestMic` non
+compariva affatto — e questo avrebbe dovuto chiudere il sospetto in un minuto invece che in un
+giro di prove. Un comando che *non arriva* e un comando che *arriva e non fa nulla* sono due
+problemi diversi, e il log li distingue sempre.
+
+### 11.5 · Stato dopo la fase 3
+
+| Cosa | Stato |
+|---|---|
+| Ponte pagina → nativo | ✅ verificato (§10) |
+| Ponte nativo → pagina, con evento vero e non sonda | ✅ verificato: `mic.result` (§11.4) |
+| Getter di stato (11) | ✅ cablati e verificati: `has(micDiag)=true`, valore `"blocked"` |
+| Preferenze | ✅ già funzionanti via `localStorage`, senza Java (§11.3) |
+| Richiesta/risposta (14) | ❌ da fare: servono Promise, quindi un disegno a parte |
+| Comandi cablati in Java | **5 su 53** (`toast`, `vibrate`, `openBrowser`, `requestMic`, `openAppSettings`) |
+| `BrowserActivity` | all'inizio copiata da `:app` e basata su WebView; **portata a GeckoView in §18** |
+| Tasto Indietro | ✅ cablato e verificato (§12) |
+| Sonde `__probe_bg` / `__probe_stub` | restano: costano due righe di log e servono a distinguere «canale morto» da «comando sbagliato» |
+
+La fase 3 non ha richiesto **nessuna modifica a `shell/`**. È il segno che §8 aveva preparato bene
+il terreno: la shell non interroga più il motore, quindi cambiare motore non la tocca.
+
+---
+
+## 12 · Il tasto Indietro: quando la stessa API significa un'altra cosa (2026-09-18)
+
+**Esito: corretto e verificato.** Da Impostazioni, Indietro riporta alla home. Prima non faceva
+nulla.
+
+Questo è il primo difetto del porting che **non** è «l'API non esiste». È la categoria più
+insidiosa, e vale la pena isolarla perché ne incontreremo altre.
+
+Lo spike aveva scritto:
+
+```java
+public void onBackPressed() {
+    if (session != null) { session.goBack(); return; }
+    super.onBackPressed();
+}
+```
+
+`GeckoSession.goBack()` esiste, compila, e fa esattamente ciò che il nome promette: la navigazione
+**indietro del browser**. Il launcher però intende un'altra cosa — «chiudi lo shade, oppure esci
+dall'app aperta» — ed è ciò che `:app` faceva con
+`web.evaluateJavascript("window.NovaBack && window.NovaBack()")` (`:app` `MainActivity.java:1084`).
+
+Il guasto non somiglia a un guasto: nessuna eccezione, nessun log, **nessun errore da nessuna
+parte**. Il tasto risponde (il tocco arriva, l'Activity lo riceve) e semplicemente non succede
+niente di visibile, perché la shell è una pagina sola e la sua cronologia ha un elemento. Da qui
+la diagnosi è difficile: sembra che il tasto sia rotto a livello di sistema, mentre sta facendo
+con scrupolo una cosa che non è quella richiesta.
+
+**La correzione non aggiunge un'API: cambia il destinatario.** Il nativo manda l'evento `back`
+sulla porta nativa — lo stesso canale di `mic.result` — e dall'altra parte non serve nulla:
+`back` è già nella mappa `MSG` di `bridge.js` e arriva a `window.NovaBack` (`shell/js/os.js:1899`),
+la stessa funzione che chiamava WebView.
+
+Il ripiego su `super.onBackPressed()` scatta **solo a ponte spento** (shell non servita, estensione
+non caricata): lì la shell non riceverebbe nulla, e senza ripiego l'app diventerebbe impossibile
+da chiudere. A ponte vivo il comportamento è identico a `:app`, che inoltra sempre e non chiude mai
+l'Activity — quindi anche `:app`, sulla home senza app aperte e senza shade, ingoia il tasto. Non è
+una svista del porting: è il comportamento da riprodurre, ed è bene saperlo prima di «correggerlo».
+
+**Regola da tenere per le fasi successive:** quando un'API del motore *sembra* fare la cosa giusta,
+il porting è finito solo se si è verificato **cosa fa dall'altra parte**, non se compila.
+
+---
+
+## 13 · Esito della fase 4 — il canale richiesta/risposta (2026-09-18)
+
+**Esito: il canale funziona, verificato end-to-end con `saveDownload`.** Il backup scrive davvero
+il file (216 byte in `Download/`), Java risponde col percorso, la pagina lo riceve **intatto**, la
+shell vibra — il suo ramo di successo. Nessuna riga di `shell/` modificata.
+
+### 13.1 · Perché serviva un canale a parte
+
+Le fasi 2 e 3 avevano costruito due versi che non si toccavano: la pagina **chiede** (28 comandi
+fire-and-forget) e riceve **eventi** (11 getter sincroni, più `mic.result` e `back`). Manca la
+forma che serve alla maggior parte dei 14 comandi di `CONTRACT` rimasti: una domanda che vuole una
+risposta. La shell li chiama con `await` — `await NB().audioRecStart()` — perché sotto WebView
+`NovaNative` li espone come metodi che restituiscono un valore.
+
+Il canale: lo stub espone il comando, gli assegna un **id progressivo** e restituisce una Promise;
+Java la scioglie postando `__novaRisposta` sulla porta nativa con lo stesso id. Un id e non il nome
+del comando: due richieste uguali in volo (due salvataggi insieme) devono poter ricevere risposte
+diverse.
+
+`await` su un valore semplice e `await` su una Promise sono la stessa cosa per il chiamante, quindi
+**la sostituzione è invisibile alla shell**. È il motivo per cui il canale si è potuto aggiungere
+senza toccare una riga di `shell/`.
+
+### 13.2 · La trappola simmetrica a `has()`
+
+§11.2 ha stabilito che `has()` è un interruttore, non una guardia: esporre un getter che il nativo
+non riempie fa prendere ai chiamanti un default ottimista invece del valore vero. Il canale
+richiesta/risposta ha lo stesso problema **rovesciato**, e peggiore:
+
+| | Getter (§11.2) | Richiesta/risposta (§13) |
+|---|---|---|
+| Esposto ma non risposto | `has()` vero → default ottimista, silenzioso | la Promise non si scioglie → **la shell si blocca su quel gesto** |
+| Sintomo | un valore sbagliato | nessun valore, per sempre |
+| Come si scopre | confrontando col nativo | non si scopre: nessun errore, nessuna scadenza |
+
+Un `await` che non torna non produce un'eccezione, non logga nulla e non ha scadenza: la shell
+resta appesa sul gesto. Perciò tre regole, tutte e tre necessarie:
+
+1. **L'elenco `RR` nello stub è la copia esatta di ciò che Java risponde.** Un nome in più è un
+   blocco. Non è un elenco «dei comandi che esisterebbero»: è l'elenco dei `case` realmente cablati.
+2. **`id >= 0` distingue una richiesta da un comando fire-and-forget.** Solo la prima va risolta;
+   il `default:` di Java risponde `null` invece di tacere, così un comando che qualcuno aggiunge a
+   `RR` senza cablarlo si scopre subito invece di bloccare la shell.
+3. **Un timeout di sicurezza nello stub (10 s)** che risolve comunque, e **lo dice in console**:
+   un timeout silenzioso sarebbe una bugia, e il chiamante deve poter distinguere «non riuscito»
+   da «il nativo non ha risposto». Scaduto, il valore è `null`, che i chiamanti già trattano come
+   «non riuscito».
+
+### 13.3 · Il difetto trovato durante la verifica, e cosa insegna
+
+Il primo giro è **sembrato** riuscito e non lo era. La risposta passava per l'array `{evento, args}`
+usato dagli eventi:
+
+```
+Java:   risposta inviata: id=1 valore=Download/novaos-backup-2026-09-18.json
+porta:  {"evento":"__novaRisposta","args":[1,0]}
+pagina: risposta per id 1: 0
+```
+
+L'id arrivava, la Promise si scioglieva, **il canale funzionava** — e il valore era `0`. La
+diagnosi: un `JSONArray` di **tipi misti** non sopravvive alla conversione `JSONObject` →
+`GeckoBundle` che sta dietro `WebExtension.Port.postMessage`. Il numero è passato, la stringa è
+diventata `0`. La correzione sono campi con un nome — `{"evento":"__novaRisposta","id":1,
+"valore":"…"}` — che non dipendono da come il motore serializza gli array.
+
+Tre cose da portare avanti:
+
+- **Gli eventi non se n'erano accorti per fortuna, non per disegno.** I loro array sono vuoti
+  (`back`) o contengono un solo elemento dello stesso tipo (`mic.result` con un booleano,
+  `shell.state` con un oggetto). Un array di un tipo solo passa; uno misto no. La regola generale
+  è di non contare sulla serializzazione degli array per trasportare valori di tipo imprevedibile.
+- **Un dato che attraversa un confine va guardato dall'altra parte.** Il log di Java diceva
+  `valore=Download/…json`, corretto. Se la verifica si fosse fermata lì — «Java ha inviato il
+  valore giusto» — il difetto sarebbe passato. La riga che conta è quella della pagina: *cosa è
+  arrivato*. È la stessa lezione di §12 in un'altra veste.
+- **Un id giusto non è una risposta giusta.** Il canale era corretto in ogni sua parte
+  meccanica; a essere sbagliato era solo il carico. Verificare che il meccanismo giri non dice
+  nulla su ciò che trasporta: vanno provati **entrambi**, e con un valore che si possa
+  riconoscere.
+
+### 13.4 · Un difetto preesistente, ora visibile
+
+Il file scritto è `Download/novaos-backup-2026-09-18 (1).json` mentre Java ha risposto
+`Download/novaos-backup-2026-09-18.json`: **MediaStore rinomina in caso di collisione** e il
+percorso che l'app comunica non è quello del file su disco. Non è una regressione di GeckoView —
+lo stesso identico codice sta in `:app` (`MainActivity.java:898`), quindi il comportamento è già
+quello dell'app pubblicata. La differenza è che sotto WebView questo valore finiva in un
+`JavascriptInterface` e la shell lo scriveva a schermo; qui finora diventava `0` e il difetto era
+invisibile. Da correggere quando si toccherà `saveDownload`: il nome vero si legge dall'URI
+restituito da MediaStore, non si presume da quello richiesto.
+
+### 13.5 · Stato dopo la fase 4
+
+| Cosa | Stato |
+|---|---|
+| Ponte pagina → nativo | ✅ verificato (§10) |
+| Ponte nativo → pagina, con evento vero | ✅ verificato: `mic.result` (§11.4), `back` (§12) |
+| Getter di stato (11) | ✅ cablati e verificati |
+| Preferenze | ✅ già funzionanti via `localStorage`, senza Java (§11.3) |
+| **Canale richiesta/risposta** | ✅ **verificato end-to-end** (§13) — ma con **1 comando su 14** |
+| Comandi cablati in Java | **5 su 53** (`toast`, `vibrate`, `openBrowser`, `requestMic`, `openAppSettings`) |
+| `BrowserActivity` | all'inizio copiata da `:app` e basata su WebView; **portata a GeckoView in §18** |
+| Tasto Indietro | ✅ cablato e verificato (§12) |
+
+Il canale è la parte difficile; i comandi che lo usano sono ora quasi tutti una riga in `RR` più
+un `case` in Java. L'ordine utile è: **`shellWrite`/`shellCommit`** (è il percorso dell'OTA sotto
+Gecko), poi **`audioRecStart`/`audioRecStop`** — che Gecko dovrebbe rendere superflui via
+`getUserMedia`, quindi vanno provati in quest'ordine, non cablati a scatola chiusa — e infine i
+sette `set*`, che **non sono lavoro di porting**: sotto Android stock rispondono già `false` oggi,
+anche nell'app pubblicata, perché richiedono `WRITE_SECURE_SETTINGS`. Sono lavoro della traccia B.
+
+---
+
+## 14 · Esito della fase 5 — l'OTA sotto Gecko (2026-09-18)
+
+**Esito: il percorso di aggiornamento della shell funziona, verificato nei tre momenti che
+contano** — commit, sopravvivenza al riavvio, ripristino. È il passo senza il quale la migrazione
+non starebbe in piedi: l'aggiornamento della sola interfaccia è il modo con cui NovaOS si aggiorna
+senza reinstallare l'APK, e sotto WebView passava da `addJavascriptInterface` e da `loadUrl`.
+
+### 14.1 · Il difetto che avrebbe reso tutto inutile, in silenzio
+
+`copiaShellInInterno()` ricopiava gli asset in `files/shell` **a ogni avvio**. Finché la shell era
+solo quella dell'APK era la cosa giusta — si riparte da zero, nessun residuo di un avvio
+precedente. Con l'OTA diventa un guasto silenzioso:
+
+1. `shellCommit` sostituisce `files/shell` con la shell scaricata;
+2. l'utente riavvia l'app (o il telefono);
+3. la copia incondizionata cancella la shell nuova e rimette quella dell'APK.
+
+Il sintomo è il peggiore possibile: **l'aggiornamento sembra riuscito** — e lo è, fino al riavvio
+successivo — poi sparisce senza un errore, senza un log, senza che nessuno possa collegare la
+cosa al commit di ieri. Un aggiornamento che fallisce subito è molto meglio di uno che riesce e
+poi si disfa.
+
+La correzione non inventa nulla: è la regola che `:app` usa già in `resolveShellUrl()` — la shell
+interna si tiene solo se la sua `build` è più alta di quella degli asset, confrontata sul
+`version.json`, non sulle date dei file (le date di una copia non significano nulla, e dopo un OTA
+sarebbero «adesso» per entrambe). La funzione ora si chiama `preparaShell()`, perché non è più una
+copia.
+
+**Il caso peggiore di qualunque guasto qui è «si torna alla shell dell'APK»**, mai «niente shell»:
+una cartella interna senza `index.html`, o con un `version.json` illeggibile, non è una shell e
+viene ricopiata. È il degrado progettato del resto del ponte.
+
+### 14.2 · I tre comandi
+
+| Comando | Tipo | Cosa fa |
+|---|---|---|
+| `shellStageBegin` | fire-and-forget | svuota e ricrea `files/shell_stage` |
+| `shellWrite(rel, base64)` | richiesta/risposta → `boolean` | scrive un file nella staging |
+| `shellCommit()` | richiesta/risposta → `boolean` | valida la staging, sostituisce `files/shell`, ricarica |
+| `shellReset` | fire-and-forget | cancella tutto e ricopia dagli asset |
+
+Tre cose non ovvie, tutte con lo stesso schema — *un errore qui non si vede subito*:
+
+- **La risposta parte prima della ricarica.** `os.js` fa `done = await NB().shellCommit()` e solo
+  dopo si aspetta di essere ricaricata: il commit vero è la ricarica, ma l'esito è la Promise.
+  Ricaricando mentre la Promise è in volo, il chiamante non riceverebbe mai la risposta — e non
+  potrebbe riceverla dopo, perché la pagina che l'aspettava non esiste più. Da qui i 400 ms fra
+  la risposta e `session.reload()`.
+- **`true` vero, non un valore qualsiasi.** `os.js` confronta con `ok !== true`, non con `!ok`:
+  un esito ancora ignoto (`null`) brickerebbe la shell al commit successivo. I tre comandi devono
+  quindi rispondere un booleano, e il `default:` di Java che risponde `null` resta la rete di
+  sicurezza, non un comportamento accettabile.
+- **Il controllo di path-traversal non è pignoleria.** `rel` arriva **dalla rete**, e senza il
+  controllo su `..` e sul percorso canonico un `../../shared_prefs/…` scriverebbe dentro i dati
+  privati dell'app. È la stessa logica di `:app`, e va tenuta identica.
+
+### 14.3 · La cache del server locale, e perché `no-store`
+
+Dopo un commit la shell ricarica chiedendo **gli stessi percorsi, sulla stessa porta, dalla stessa
+origine**. Le risposte di `ShellServer` non avevano intestazioni di cache: il motore poteva
+servirle dalla propria e mostrare l'**interfaccia vecchia con dentro il `version.json` nuovo** —
+di nuovo un aggiornamento che sembra riuscito e non è applicato, con l'aggravante che stavolta la
+versione dichiarata sarebbe quella giusta.
+
+Aggiunto `Cache-Control: no-store`. Servendo pochi file da disco, la cache qui non guadagna nulla
+che valga il rischio.
+
+### 14.4 · Come è stato provato senza pubblicare nulla
+
+Il percorso vero si prova solo con una `version.json` su GitHub con `build` più alta — cioè
+**pubblicando**, e attivando l'aggiornamento su tutti i dispositivi. Non è una prova, è un rilascio.
+
+La prova è stata fatta con una **sonda temporanea nello stub** (rimossa nello stesso commit che
+l'ha introdotta) che esercita i tre comandi con una shell finta, contando i giri in `localStorage`
+per distinguere i momenti dentro un solo avvio:
+
+| Momento | Come | Esito |
+|---|---|---|
+| **Commit** | giro 0: `shellStageBegin`, due `shellWrite`, `shellCommit` | `commit eseguito: shell sostituita, build 999`; la pagina a schermo è davvero quella nuova; `commit=true` |
+| **Sopravvivenza** | `force-stop` + riavvio dell'app | `shell interna tenuta: build 999 > asset 57` — **la riga che prima non esisteva** |
+| **Ripristino** | giro 2: `shellReset` | `shell dagli asset (interna=-1 asset=57)`, la shell torna NovaOS |
+
+La sonda ha anche sbagliato una volta, ed è l'unico difetto banale della giornata: `btoa` rifiuta i
+caratteri sopra `0xFF`, e la pagina finta conteneva un trattino lungo. È il tipo di errore che si
+corregge in un minuto — ma vale la pena notarlo perché la sonda era codice vero, non una
+simulazione: **una prova che non passa dal percorso reale va comunque scritta bene**, altrimenti
+non sta provando quello che dice.
+
+### 14.5 · Stato dopo la fase 5
+
+| Cosa | Stato |
+|---|---|
+| Ponte pagina → nativo | ✅ verificato (§10) |
+| Ponte nativo → pagina, con evento vero | ✅ verificato: `mic.result` (§11.4), `back` (§12) |
+| Getter di stato (11) | ✅ cablati e verificati |
+| Preferenze | ✅ già funzionanti via `localStorage`, senza Java (§11.3) |
+| Canale richiesta/risposta (14) | ✅ il canale è verificato (§13) — cablati **3 su 14** |
+| **OTA della shell** | ✅ **verificato nei tre momenti** (§14) |
+| Comandi cablati in Java | **10 su 53** — 7 dei 28 fire-and-forget, 3 dei 14 di richiesta/risposta |
+| `BrowserActivity` | all'inizio copiata da `:app` e basata su WebView; **portata a GeckoView in §18** |
+| Tasto Indietro | ✅ cablato e verificato (§12) |
+
+Resta da fare, in ordine di utilità: **`audioRecStart`/`audioRecStop`** — che Gecko dovrebbe rendere
+superflui via `getUserMedia`, quindi vanno *provati* prima di cablarli, non cablati a scatola
+chiusa — poi i comandi di telefonia e condivisione, e infine i sette `set*`, che **non sono lavoro
+di porting**: sotto Android stock rispondono già `false` oggi, anche nell'app pubblicata, perché
+richiedono `WRITE_SECURE_SETTINGS`. Sono lavoro della traccia B.
+
+## 15 · Esito della fase 6 — i permessi media (2026-09-18)
+
+La fase 6 non nasce da una voce della tabella dei comandi ma da una domanda: **sotto GeckoView
+`getUserMedia` cattura davvero?** La shell prova *prima* la via web (`getUserMedia` +
+`MediaRecorder`) e ripiega sul nativo solo se quella fallisce (`shell/js/apps.js:4111-4139`).
+Quindi la risposta decide due cose insieme: se il registratore funziona, e se i comandi
+`audioRecStart`/`audioRecStop` — il ripiego nativo, con l'audio che viaggia in base64 — servono
+ancora su questa traccia.
+
+### 15.1 · Senza `PermissionDelegate` Gecko non risponde, e non lo dice
+
+GeckoView non concede i media da solo: se la sessione non ha un `PermissionDelegate`, ogni
+`getUserMedia` viene **negata** e la pagina riceve un `NotAllowedError`. Il sintomo però non
+somiglia a un guasto del contenitore: `getUserMedia` fallisce, la shell ripiega sul registratore
+nativo (non cablato), e **mostra l'avviso sul microfono**. Chi guarda cerca il problema nel
+microfono, che non c'entra nulla.
+
+Da qui `PermessiMedia`, più `<uses-permission android:name="android.permission.CAMERA" />` nel
+manifest — la stessa assenza che con `RECORD_AUDIO` faceva rispondere «negato» all'istante, senza
+nemmeno mostrare un dialogo.
+
+L'ordine dentro `PermessiMedia` è deliberato: **prima il permesso di sistema, poi la risposta a
+Gecko**. Concedere a Gecko senza il permesso di Android darebbe alla pagina un microfono che non
+capta niente — di nuovo un guasto che non somiglia a un guasto.
+
+### 15.2 · L'audio è web-puro: `audioRecStart` e `audioRecStop` non vanno cablati
+
+Provato sull'emulatore con la shell servita dall'origine locale:
+
+```
+la pagina chiede i media: video=false audio=true
+permessi media per la pagina: concessi
+media già consentiti: concedo senza un secondo dialogo
+```
+
+Il registratore parte e resta in `Registrazione...`; fermato, salva in elenco una registrazione di
+**00:40**. E soprattutto: **`audioRecStart` e `audioRecStop` non sono mai stati chiamati** — nel log
+non c'è nessuna riga `comando dal ponte: audioRecStart`, e nessun `comando riconosciuto ma non
+ancora cablato`. La shell è passata interamente dalla via web.
+
+Conseguenza per la traccia A: **i due comandi non vanno cablati affatto**. Spariscono il ripiego
+nativo, l'audio in base64 su un canale di messaggi e due voci di richiesta/risposta. È la prima
+volta in questa migrazione che una fase *toglie* lavoro invece di aggiungerne, ed è esattamente
+quello che il §1 prometteva.
+
+> Il §14.5 li indicava come «la prossima cosa da fare, ma vanno provati prima di cablarli, non
+> cablati a scatola chiusa». Provati: non servono. Vale la pena notare che la prudenza era
+> giustificata nei due sensi — cablarli per abitudine avrebbe aggiunto codice morto e una seconda
+> strada per lo stesso risultato.
+
+### 15.3 · Anche il video
+
+La fotocamera chiede `video=true audio=false`, e dopo il consenso:
+
+```
+Camera2Session: Camera device successfully started.
+CameraStatistics: Camera fps: 9.
+```
+
+L'anteprima è dal vivo. Da notare che il percorso video chiede `{video:true, audio:true}` e ripiega
+su `{video:true, audio:false}` se il primo fallisce (`apps.js:550-552`): è la stessa impronta del
+registratore, e la ragione per cui valeva la pena cablare *entrambi* i rami del `PermissionDelegate`
+invece del solo microfono.
+
+### 15.4 · Il difetto trovato provando: due richieste di permesso in volo insieme
+
+La shell chiama `NB().cmd("requestMic")` **e 77 ms dopo** `getUserMedia` (`apps.js:4116-4117`).
+Due richieste di permessi Android in volo insieme, e Android ne accetta una per volta:
+
+```
+10:13:42.340  comando dal ponte: requestMic (0 argomenti)
+10:13:42.417  la pagina chiede i media: video=false audio=true
+              W Activity: Can request only one set of permissions at a time
+              permessi media per la pagina: negati        ← 2 ms dopo
+```
+
+Quel rifiuto è **tecnico, non dell'utente**. Ma è indistinguibile da un diniego: `getUserMedia`
+fallisce, la shell ripiega sul nativo e mostra l'avviso sul microfono. Il registratore falliva per
+una ragione che non aveva niente a che vedere con il registratore — la stessa forma di guasto delle
+trappole già catalogate (§10, §13.2), con in più che qui il sintomo accusava un componente sano.
+
+La correzione è una coda: `unPermessoAllaVolta(Runnable)` esegue subito se nessun dialogo è aperto,
+altrimenti accoda; il turno passa in `onRequestPermissionsResult`, che è **l'unico punto in cui un
+dialogo si chiude**, quindi l'unico in cui la coda può avanzare.
+
+Il corpo accodato **ricontrolla i permessi al proprio turno** invece di fidarsi di quelli calcolati
+prima di mettersi in coda. Non è ridondanza: se nel frattempo l'utente ha concesso il microfono dal
+dialogo di `requestMic`, alla richiesta media non resta niente da chiedere. Un secondo dialogo
+identico, subito dopo il primo, sembrerebbe un'app che non prende la risposta.
+
+La stessa sequenza di prima, ora:
+
+```
+10:13:42.340  comando dal ponte: requestMic (0 argomenti)
+10:13:42.417  la pagina chiede i media: video=false audio=true
+10:13:42.417  richiesta di permessi in coda: ce n'è già una aperta
+10:14:02.214  permesso microfono: concesso
+10:14:02.215  evento inviato alla pagina: mic.result
+10:14:02.247  media già consentiti: concedo senza un secondo dialogo
+10:14:02.537  comando dal ponte: vibrate
+```
+
+Un solo dialogo, zero occorrenze di `Can request only one set of permissions at a time`, e la shell
+che riprende da sola (`vibrate` è il registratore che parte). Da notare che i due rami di
+`onRequestPermissionsResult` devono **entrambi** finire con `turnoSuccessivoDeiPermessi()`: liberare
+il turno solo sul ramo del microfono lascerebbe la coda ferma per sempre al primo caso video.
+
+### 15.5 · La trappola dell'origine: il ponte che tace senza dirlo
+
+Questa non è un difetto del codice — è una trappola dell'ambiente di prova, e va scritta perché
+è costata un'ora di diagnosi sbagliata.
+
+Lo spike sceglie la shell con un extra dell'intent, `origin`. Omesso, il valore predefinito è
+**`asset`**: `resource://android/assets/www/index.html`. Quella è la provenienza da cui il motore
+carica la shell, e **i content script non possono agganciarla** (§10) — è la ragione per cui esiste
+il server locale.
+
+Con l'origine sbagliata la shell **boota benissimo**: si disegna, risponde ai tocchi, tutte le app
+si aprono in modalità simulata. Quello che non succede è qualunque cosa di nativo. `window.NovaNative`
+non esiste, `bridge.js` costruisce `window.NovaBridge` sul ripiego — `{has: () => false, cmd: () => false}`
+— e **ogni comando della shell restituisce `false` in silenzio**. Nessun errore, nessun avviso,
+nemmeno in console: la shell è *progettata* per degradare con grazia senza nativo (§8), e lo fa.
+
+Il modo affidabile per accorgersene è chiedere al ponte di parlare per primo. A pagina caricata lo
+stub manda due messaggi:
+
+```
+comando dal ponte: __probe_stub    … da=moz-extension://…/_generated_background_page.html
+comando dal ponte: __pagina_pronta … da=moz-extension://…/_generated_background_page.html
+```
+
+**Se queste due righe non compaiono nel log all'avvio della shell, il ponte è morto** — qualunque
+cosa sembri funzionare. È il controllo più economico che esista su questo spike, e va fatto prima di
+qualunque prova che riguardi il nativo.
+
+Utile sapere, dalla stessa diagnosi: GeckoView 155 non ha più `ContentDelegate.onConsoleMessage`
+(§10), ma `GeckoRuntimeSettings.consoleOutput(true)` esiste e manda la console della pagina in
+logcat sotto il tag `GeckoConsole`. Con il ponte morto è l'unico posto dove la shell può ancora
+dire cosa le sta succedendo.
+
+### 15.6 · Stato dopo la fase 6
+
+| Cosa | Stato |
+|---|---|
+| Ponte pagina → nativo | ✅ verificato (§10) |
+| Ponte nativo → pagina, con evento vero | ✅ verificato: `mic.result` (§11.4), `back` (§12) |
+| Getter di stato (11) | ✅ cablati e verificati |
+| Preferenze | ✅ già funzionanti via `localStorage`, senza Java (§11.3) |
+| Canale richiesta/risposta (14) | ✅ il canale è verificato (§13) — cablati **3 su 14** |
+| OTA della shell | ✅ **verificato nei tre momenti** (§14) |
+| **Permessi media** | ✅ **microfono e fotocamera, entrambi verificati** (§15) |
+| **`audioRecStart`/`audioRecStop`** | ⛔ **non vanno cablati**: `getUserMedia` li rende inutili (§15.2) |
+| Comandi cablati in Java | **10 su 53** — invariato, ma il totale utile è sceso di 2 |
+| `BrowserActivity` | all'inizio copiata da `:app` e basata su WebView; **portata a GeckoView in §18** |
+| Tasto Indietro | ✅ cablato e verificato (§12) |
+
+La fase 6 non ha aggiunto comandi cablati: ha **verificato una capacità** e **tolto due comandi dal
+lavoro**. Restano i comandi di telefonia e condivisione, il port di `BrowserActivity`, e i sette
+`set*` — che restano lavoro della traccia B (§14.5). **Telefonia e condivisione sono arrivate con
+la fase 7: vedi §16.**
+
+---
+
+## 16 · Esito della fase 7 — telefonia e condivisione (2026-09-18)
+
+Il gruppo più numeroso rimasto, 12 comandi, è cablato e verificato sull'emulatore. Sotto Gecko la
+shell adesso **chiama, riceve, risponde, riaggancia, muta, mette in vivavoce, manda DTMF, invia SMS
+e condivide foto, file e testo**: le stesse cose che fa l'APK WebView pubblicato. **Comandi cablati
+in Java: 22 su 53** (erano 10).
 
 | Gruppo | Comandi | Esito |
 |---|---|---|
@@ -537,68 +1145,389 @@ invia SMS e condivide foto, file e testo**: le stesse cose che fa l'APK WebView 
 | Dentro la chiamata | `callAnswer`, `callHangup`, `callMute`, `callSpeaker`, `callDtmf` | ✅ inoltro a `CallHub` |
 | Condivisione | `shareImage`, `shareFile`, `shareText` | ✅ chooser di Android, file leggibile dall'app scelta |
 
-**Classi portate** in `os.nova.gecko`: `CallHub`, `NovaInCallService`, `ShareProvider` (con
-l'autorità cambiata in `os.nova.gecko.share`). Nel manifest sono entrati i quattro intent-filter su
-`MainActivity` (DIAL, DIAL+`tel`, VIEW `tel`, CALL `tel`), il `<service>` con
-`BIND_INCALL_SERVICE` e il `<provider>`. La sonda di fase 2 (`ATTESA_PROVA_MS`,
-`rispondiAllaPagina`) è stata rimossa: l'evento `call.update` ora lo genera una chiamata vera.
+### 16.1 · Cosa è stato portato
 
-### Come è stato verificato
+Tre classi da `:app` a `os.nova.gecko`: `CallHub` (nessuna dipendenza dal motore, porto pulito),
+`NovaInCallService` (idem) e `ShareProvider`, che cambia solo l'autorità —
+`os.nova.launcher.share` → `os.nova.gecko.share`, perché l'autorità è unica per dispositivo e due
+app che la dichiarano non convivono.
 
-```
-adb emu gsm call +393401234567                       # chiamata entrante: la schermata NovaOS compare da sola
-adb shell cmd role get-role-holders android.app.role.DIALER
-adb shell dumpsys telecom | grep InCallService       # os.nova.gecko/.NovaInCallService legato
-adb logcat | grep NovaGeckoSpike                     # comando dal ponte: … / evento inviato alla pagina: …
-adb shell run-as os.nova.gecko ls -l cache/share     # i file condivisi esistono davvero
-```
+Nel manifest: i **quattro intent-filter** su `MainActivity` (DIAL, DIAL+`tel`, VIEW `tel`, CALL
+`tel`), il `<service>` con `BIND_INCALL_SERVICE` e il meta-data `IN_CALL_SERVICE_UI`, il
+`<provider>` con `grantUriPermissions`. I filtri non sono decorazione: `RoleController` pretende
+**due** filtri DIAL — uno senza schema e uno con `tel` — e senza entrambi segnala
+«missing RequiredComponent» e il ruolo non è assegnabile, quindi `NovaInCallService` non viene mai
+legato e i cinque comandi di dentro-chiamata non hanno su cosa agire.
 
-Schermata di chiamata con numero giusto → `callAnswer` → `state=ACTIVE` e cronometro vivo →
-`callMute` (`changing microphone mute state to: true`) → `callDtmf` (`START_DTMF`/`STOP_DTMF`) →
-`callHangup` → `DISCONNECTED` e schermata che si chiude. Per la condivisione: galleria → Condividi
-→ chooser di **Android** → l'app scelta mostra l'anteprima dell'immagine (cioè ha letto il
-`content://` attraverso il provider: è il `setClipData` che rende trasferibile il permesso);
-note → Condividi (testo); registratore → Condividi → file audio. Nessun `SecurityException`, nessun
-`FileNotFoundException`.
+`shareImage` e `shareFile` di `:app` differivano solo nel nome da dare al file: sono diventati un
+solo metodo `condividi()`, con la tabella delle estensioni che in `:app` era già lì. `shareText`
+resta a sé: nessun file, nessun permesso da trasferire.
 
-### Il difetto più serio trovato, e perché vale più della prova
+La sonda di fase 2 (`ATTESA_PROVA_MS`, `rispondiAllaPagina`) è stata rimossa insieme al suo hook:
+serviva a dimostrare che `call.update` arrivasse, ora lo genera una chiamata vera.
+
+### 16.2 · `currentCallState` non è più un finto onesto
+
+Era la costante `{"state":"ended"}` con un commento che lo dichiarava tale. Ora legge `CallHub`, e
+questo è ciò che fa comparire la schermata di chiamata **dopo un riavvio**: la shell legge quel
+valore una volta all'avvio (`os.js` → `NovaCall`) e ritrova una conversazione già in corso.
+
+Perché la mappa stato→parola sia una sola, sta in `CallHub.stato()`, e la usano sia l'evento
+`call.update` sia il getter: due copie divergerebbero proprio nel caso che conta, con la shell che
+al boot crede a una parola e agli aggiornamenti a un'altra.
+
+### 16.3 · Il difetto più serio, trovato dalla prova che sembrava inutile
 
 Provando il recupero al riavvio — processo ucciso in background, chiamata in arrivo, telecom che ci
 riavvia — la shell si è aperta **senza ponte**: `origine=asset`. `NovaInCallService` avviava
-l'Activity con un Intent nudo, e il default era l'origine `asset`, quella che il content script non
-aggancia. Su un telefono vero: la chiamata arriva, NovaOS si apre, la schermata di chiamata non
-compare — e niente lo spiega. Corretto su entrambi i lati (`NovaInCallService` passa
-`ORIGIN_LOCAL`, e `local` è diventato il default anche per l'avvio dall'icona). **La lezione: i
-valori predefiniti silenziosi sono un guasto che aspetta il caso giusto**, e il caso giusto era uno
-che nessuna prova a mano avrebbe incontrato.
+l'Activity con un Intent nudo, e il valore predefinito dell'origine era quella che il content script
+non aggancia. Su un telefono vero: la chiamata arriva, NovaOS si apre, e la schermata di chiamata
+**non compare**, senza un errore che lo spieghi.
 
-### Limiti, dichiarati
+Corretto su entrambi i lati: il servizio dichiara `ORIGIN_LOCAL`, e `local` è diventato il default
+anche per l'avvio dall'icona (`asset` resta raggiungibile con `--es origin asset`). La lezione vale
+più della prova: **un valore predefinito silenzioso è un guasto che aspetta il caso giusto**, e
+quel caso nessuna prova a mano lo avrebbe incontrato.
+
+Difetto minore dello stesso giro: `CallHub.stato()` non controllava `call == null`, quindi
+`onResume` → `pushCall` a ogni avvio produceva una `NullPointerException` intercettata e registrata
+come guasto. Ora «nessuna chiamata» risponde `ended`.
+
+### 16.4 · Come è stato verificato
+
+```
+adb emu gsm call +393401234567                    # chiamata entrante finta dal modem emulato
+adb shell cmd role get-role-holders android.app.role.DIALER
+adb shell dumpsys telecom | grep InCallService     # os.nova.gecko/.NovaInCallService legato
+adb logcat | grep NovaGeckoSpike                   # comando dal ponte: … / evento inviato alla pagina: …
+adb shell run-as os.nova.gecko ls -l cache/share   # i file condivisi esistono davvero
+```
+
+Chiamata entrante → la schermata NovaOS compare **da sola** con il numero giusto → `callAnswer` →
+`state=ACTIVE` e cronometro vivo → `callMute` (`changing microphone mute state to: true`) →
+`callDtmf` (`START_DTMF`/`STOP_DTMF`) → `callHangup` → `DISCONNECTED` e schermata che si chiude.
+Il ruolo dialer è stato concesso dal pannello aperto da `requestDialerRole` e poi **restituito**
+(`com.google.android.dialer`, che era il titolare vero — non `os.nova.launcher` come si era
+presunto) e verificato con `get-role-holders`.
+
+Per la condivisione: galleria → Condividi → si apre il chooser di **Android** → l'app scelta
+(Messaggi) **mostra l'anteprima dell'immagine**, cioè ha letto il `content://` attraverso il
+provider: è la prova che il permesso è stato trasferito, ed è merito di `setClipData` — senza, il
+`FLAG_GRANT_READ_URI_PERMISSION` non raggiunge l'app scelta e la condivisione «non funziona» senza
+un errore. Poi note → Condividi (testo) e registratore → Condividi (audio, `.webm` perché è quello
+il mime del data URL: la tabella delle estensioni segue il mime, non il nome). Nessun
+`SecurityException`, nessun `FileNotFoundException`.
+
+Nota per chi prova a mano: nella finestra di sistema del ruolo, «Set as default» è **disabilitato
+finché non si tocca la riga dell'app**. Non è nostro, ma senza saperlo sembra che
+`requestDialerRole` non funzioni.
+
+### 16.5 · Limiti, dichiarati
 
 - **L'SMS è ottimistico.** `cmd()` è fire-and-forget: la shell scrive «inviato» appena il comando
   parte, senza sapere se è partito. Valeva identico sotto WebView — non è una regressione, ma non è
   nemmeno una verifica.
-- **Sull'emulatore non c'è SIM.** `adb emu gsm` simula la chiamata; l'invio vero non è provabile
+- **Sull'emulatore non c'è SIM**: `adb emu gsm` simula la chiamata, l'invio vero non è provabile
   qui, e non è stato dato per riuscito.
-- **Il vivavoce non è provabile su questo emulatore.** `dumpsys telecom` riporta
-  `supportedRouteMask: SPEAKER` e nessun auricolare: la richiesta arriva (`USER_SWITCH_EARPIECE`) e
-  il sistema la scarta con «Not available». È una limite dell'immagine, non del codice.
-- **`requestDialerRole` richiede un gesto in più** nella finestra di sistema: il pulsante «Set as
-  default» è disabilitato finché non si tocca la riga dell'app. Non è nostro, ma va saputo da chi
-  prova, altrimenti sembra che il comando non funzioni.
-- **Il registratore produce `.webm`**, non `.m4a`: i nomi dei file condivisi seguono il mime del
-  data URL, quindi la tabella delle estensioni in `estensione()` è quella che decide.
-
-### Residui noti, non toccati
-
-- Le sonde `__probe_bg` / `__probe_stub` **continuano a partire** ma Java non risponde più: nel log
+- **Il vivavoce non è provabile su questa immagine**: `dumpsys telecom` riporta
+  `supportedRouteMask: SPEAKER` e nessun auricolare — la richiesta arriva
+  (`USER_SWITCH_EARPIECE`) e il sistema la scarta con «Not available». È l'emulatore, non il codice.
+- **Le sonde `__probe_bg`/`__probe_stub` partono ancora** e Java non risponde più: nel log
   compaiono come «comando riconosciuto ma non ancora cablato», affermazione ormai falsa. Vanno
-  tolte (o riscritte) nel passo di pulizia.
-- Il comando `vibrate` resta l'unico punto in cui un permesso mancante uccideva il processo
-  (`VIBRATE`): è la ragione per cui `esegui` avvolge tutto in `try/catch(Throwable)`.
+  tolte nel passo di pulizia.
+
+### 16.6 · Da dove si riprende
+
+1. I comandi minori rimasti: `mail*` (4), `screenshot`, `installUpdate`, `openSetting`,
+   `prefSet`/`prefDel`.
+2. ~~`BrowserActivity` → `GeckoView`~~ — **fatto**, §18 (all'epoca era ancora la copia WebView: era
+   il pezzo che nel piano è un passo a sé).
+3. Pulizia dei fallback resi inutili da Gecko (audio nativo, `os.confirm`, doppia persistenza) e
+   delle sonde di fase 1.
+4. Fase 8: la ROM (§14.5 per i sette `set*`).
+
+---
+
+## 17 · Esito della fase 3 residua — getter, richiesta/risposta e lo stato dei sensori (2026-09-21)
+
+Il buco più grande rimasto: sotto Gecko **non esiste una chiamata sincrona al nativo**. I getter
+rispondevano vuoti e i comandi di richiesta/risposta non avevano niente da cui partire, perché
+all'avvio nessuno aveva ancora detto alla shell come stava il telefono. Adesso c'è uno stato che si
+popola da solo e si aggiorna quando cambia.
+
+**Comandi cablati in Java: 32 su 53** (erano 22), più **11 getter serviti dal payload di stato**.
+
+| Gruppo | Voci | Raggiungibili | Note |
+|---|---|---|---|
+| `cmd` (fire-and-forget) | 28 | 22 | mancano `mailConfigure`/`mailClear`/`mailSend`/`mailFetch`, `screenshot`, `installUpdate` |
+| `get` (getter sincroni) | 13 | 11 | `prefGet`/`prefKeys` fuori **di proposito**, vedi §17.3 |
+| `rr` (richiesta/risposta) | 12 | 10 | `audioRecStart`/`audioRecStop` fuori di proposito (§15.2) |
+| **Totale** | **53** | **43** | i 10 che mancano: 6 sono il punto 2, 4 sono scelte dichiarate |
+
+### 17.1 · Cosa è stato portato
+
+- **Lo stato sale, non si chiede.** `inviaStatoAllaShell()` pubblica `shell.state` con tutti i
+  getter, e lo **ripubblica** quando il sistema annuncia un cambio (Wi-Fi, Bluetooth, modalità
+  aereo, NFC), quando torna in primo piano (`onResume`, cioè il momento esatto in cui si esce dal
+  pannello di sistema) e quando cambia la torcia. Fra i due c'è un ritardo di 250 ms: un solo
+  cambio di Wi-Fi produce quattro broadcast (`ENABLING`, `ENABLED`, …) e senza la pausa ogni
+  interruttore riceverebbe quattro aggiornamenti completi.
+- **I sensori si leggono a tre stati: acceso, spento, non noto.** Una chiave assente dal JSON vuol
+  dire «non lo so», e la shell lascia il valore che ha (`if (k in ns) state[k] = ns[k]`). Non è
+  pignoleria: un `false` al posto di «non lo so» è un interruttore che mente, e sarebbe
+  indistinguibile da un dispositivo che ha davvero quella cosa spenta.
+- **La torcia entra nel modello** con un `CameraManager.TorchCallback`. È l'unico `set*` che
+  funziona da app normale, non ha un broadcast, e **si accende anche da fuori**: senza callback lo
+  stato della shell sarebbe stato solo l'ultima cosa che la shell credeva di aver fatto.
+  `onTorchModeUnavailable` scrive «non noto» e non «spenta», perché «non comandabile» non è
+  «spenta».
+- **`openSetting`** (router completo, otto destinazioni) e i **sette `set*`**. Ogni `set*`
+  restituisce `true` **solo** se ha commutato in-process, `false` se ha dovuto aprire il pannello
+  di sistema: è lo stesso codice che regge le due tracce — da app normale apre il pannello, da
+  priv-app nel ROM commuta direttamente (§14.5).
+- **`prefSet`/`prefDel`** scrivono uno specchio nativo di `localStorage`. **`prefGet`/`prefKeys`
+  restano non esposti**, e la ragione è nel `has()`: esponendoli `has("prefGet")` diventerebbe vero
+  e la shell avvierebbe la migrazione una tantum delle preferenze verso un nativo che non le ha —
+  distruttiva, non prudente. Sotto Gecko le preferenze restano `localStorage`.
+
+### 17.2 · Il difetto che la prova ha trovato
+
+La tendina dava per **sincrono** il ritorno del nativo:
+
+```js
+const r = NB()[fn](!state[k]);                       // sotto Gecko è una Promise
+applied = (r === true || r === false) ? r : null;    // …quindi sempre null
+```
+
+Sotto WebView `@JavascriptInterface` risponde con un booleano vero e la riga funziona. Sotto Gecko
+la stessa chiamata torna una Promise: `applied` cadeva **sempre** nel ramo «esito ignoto», quello
+che per progetto non decide nulla. Il ramo `true` — quello che ridisegna l'interruttore — non si
+prendeva più.
+
+Si vedeva così: **la torcia si accendeva davvero e il suo tile restava spento**, e non si
+correggeva più. Gli altri sensori si salvavano per caso, perché un broadcast li riportava indietro
+dopo ~250 ms; la torcia non ha un broadcast, quindi il tile mentiva e basta. La stessa svista stava
+in **Impostazioni → Rete**, dove faceva scegliere sempre il tempo di attesa del rifiuto (800 ms)
+anche quando la commutazione era riuscita.
+
+Corretto con l'`await`, che è **l'unica forma corretta in entrambi i contenitori**: su un valore
+non-Promise restituisce il valore stesso, quindi la shell non ha bisogno di sapere dove sta
+girando. Nel ramo riuscito lo stato si scrive invece di rileggerlo: la lettura è l'ultimo annuncio
+del telefono e in quel momento è ancora quello vecchio.
+
+Provando sono emersi anche due interruttori che mostravano lo stato della shell e non del
+telefono: `mobileData` e `torch` **non erano nella lista di sincronizzazione** — il nativo li
+mandava da sempre (la torcia, da oggi) e nessuno li leggeva.
+
+### 17.3 · Come è stato verificato
+
+Sull'emulatore `nova`, con la shell servita dagli asset (`shell dagli asset (interna=57 asset=57)`)
+e il log letto dal tag nativo:
+
+- **Getter**: `stato ricevuto: batteryLevel,micReady,privileged,isDialer,sensorStates,…` e
+  l'autodiagnosi del ponte conferma `has(micDiag)=true micDiag="granted"`, cioè la shell non legge
+  più il default ottimista ma il valore del telefono.
+- **Stato reale all'avvio**: `sensorStates: {"wifi":true,"bt":true,"location":true,"airplane":false,"mobileData":true,"torch":false, …}`,
+  che concorda con `settings get global airplane_mode_on` → 0 e con lo stato di Wi-Fi e dati del
+  sistema. La chiave **`nfc` è assente**, ed è il comportamento voluto: l'emulatore non ha un
+  adattatore NFC, quindi quel dato non esiste — non è «spento».
+- **`setWifi` da app normale**: `comando dal ponte: setWifi → apro il pannello di sistema: Wi-Fi →
+  risposta inviata: valore=false`, e la finestra in primo piano diventa
+  `com.android.settings/.panel.SettingsPanelActivity`. Il nativo non finge di aver commutato.
+- **La torcia, nei due versi**: `setTorch → valore=true`, poi il tile si accende e la tendina
+  **resta aperta**; il callback del dispositivo ripubblica `torch:true`. Secondo tocco:
+  `torch:false` con il tile che torna spento. Sono due conferme indipendenti — la shell che
+  ragiona e il telefono che annuncia.
+- **Impostazioni → Rete**: la sezione disegna lo stato vero (`Wi-Fi Attivo`, `Dati mobili Attivi`,
+  `Modalità aereo Disattivata`) e `Dati mobili` risponde `valore=false` aprendo il pannello.
+- **Ritorno dal pannello**: alla chiusura, `onResume` ripubblica lo stato completo.
+
+### 17.4 · Limiti, dichiarati
+
+- **Il ramo `SecurityException` non è stato esercitato su questa immagine.** `dumpsys package`
+  riporta `BLUETOOTH_CONNECT: granted=false`, ma il Bluetooth è stato letto lo stesso: il percorso
+  «permesso negato → dato assente» è quindi provato solo dal caso NFC (adattatore mancante), non
+  dal caso permesso. Non va raccontato come verificato.
+- **La torcia è verificata come comando, non come luce.** La fotocamera emulata accetta
+  `setTorchMode` senza sollevare eccezioni e risponde `true`, ma non ha un LED: cosa succede sul
+  ferro lo dice l'APK pubblicato sotto WebView, dove la torcia **si accende davvero** sul telefono.
+- **`mobileData` e `location` non hanno un broadcast pubblico affidabile**: si aggiornano
+  all'avvio e al ritorno in primo piano, non mentre la tendina è aperta. Un cambiamento fatto da
+  fuori si vede uscendo e rientrando. Per la posizione il pannello di sistema è già il percorso
+  normale, quindi il caso è raro.
+- **«NFC» compare fra i sottotitoli di Impostazioni** su un dispositivo che non ha NFC, perché
+  quella riga legge il valore di ripiego della shell quando il nativo non manda la chiave. È una
+  bugia cosmetica **della shell**, non del ponte: da correggere nel passo di pulizia.
+- **Le sonde `__probe_bg`/`__probe_stub`** continuano a partire e a essere registrate come
+  «comando riconosciuto ma non ancora cablato» (§16.5): rumore nel log che serve proprio a
+  diagnosticare. Passo di pulizia.
+
+### 17.5 · Da dove si riprende
+
+Il lavoro su `shell/js/os.js` e `shell/js/apps.js` è **condiviso con `main`** (i due rami avevano
+la stessa shell fino a qui, e la correzione dell'`await` vale identica sotto WebView: è una
+robustezza in più, non un cambio di comportamento). Va portato su `main` insieme alla migrazione,
+non lasciato indietro.
+
+1. **`mail*` (4), `screenshot`, `installUpdate`**: sono i sei `cmd` che restano del punto 2.
+   Portano `MailBridge` in `os.nova.gecko` con i jar di JavaMail, e il sink `JsSink.eval` diventa
+   un evento verso la pagina.
+2. ~~`BrowserActivity` → `GeckoView`~~ — **fatto**, §18.
+3. Pulizia: ripieghi resi inutili da Gecko, sonde di fase 1, e il sottotitolo NFC di §17.4.
+4. Fase 8: la ROM.
+
+---
+
+## 18 · Esito del punto 3 — il browser passa a GeckoView (2026-09-25)
+
+Il file che restava indietro non è più indietro: `BrowserActivity.java` smette di essere la copia
+WebView infilata dentro un progetto Gecko e diventa **il browser di NovaOS sul motore Gecko**. Con
+questo, nel progetto non ci sono più due motori contemporaneamente.
+
+Il file è riscritto per intero (circa 1.870 righe) **mantenendo la stessa interfaccia e le stesse
+funzioni di prima**: omnibox editabile, barra di avanzamento, schede multiple con selettore e
+anteprime, incognito, trova nella pagina, download, sito desktop, condividi, apri nel browser di
+sistema, schermo intero. Non ci sono schermate XML: la schermata è tutta programmatica, come era.
+
+### 18.1 · Le traduzioni, e le tre che si sarebbero rotte in silenzio
+
+Le traduzioni da WebView a Gecko sono quelle previste in §5. Tre di esse **non falliscono con un
+errore**: falliscono con un peggioramento che sembra normale, e sono il motivo per cui questo
+passo vale più di una traduzione parola per parola.
+
+| cosa | sotto Gecko | se non si chiude |
+|---|---|---|
+| **La memoria della scheda** | Gecko **non** sa dire da fuori «quale indirizzo stai mostrando», «che titolo ha», «si può tornare indietro»: non esiste un getter sincrono | omnibox, titolo e voci del menu restano vuoti o spenti **senza un messaggio**. Risolto facendo ricordare quei valori alla scheda, aggiornandoli dalle callback (`onLocationChange`, `onTitleChange`, `onProgressChange`) |
+| **I dialoghi delle pagine** | `alert`, `confirm`, `prompt` e il «vuoi davvero uscire?» dei moduli, senza un `PromptDelegate`, vengono **congedati in silenzio** | `confirm` risponde sempre «no», `prompt` sempre vuoto: una regressione rispetto a ieri, che si nota solo dalle pagine che li usano |
+| **Il ponte nei confronti di terzi** | l'estensione è dichiarata per `http://127.0.0.1/*` e **la porta non si può restringere** (la documentazione Mozilla è esplicita: i filtri delle estensioni non supportano la porta) | con il browser aperto, una pagina servita da `localhost` riceverebbe il ponte **completo** (chiamate, SMS, wifi…). Chiuso dal lato pagina: lo stub si installa solo se la porta è quella della shell |
+
+Altri due punti non si sarebbero rotti, ma sarebbero rimasti **a metà** senza che si vedesse:
+
+- **La vista desktop sotto Gecko sono due impostazioni, non una**: la stringa del browser *e* la
+  larghezza della vista. Cambiando solo la stringa il sito resterebbe impaginato da telefono — una
+  regressione che somiglia a un sito che «non ha la versione desktop».
+- **L'anteprima della scheda** si cattura con `capturePixels()`, che è **asincrono**, e va chiesto
+  **prima** di staccare la sessione: dopo lo stacco il compositore è spento e la cattura fallisce
+  senza sollevare nulla, lasciando la scheda con un riquadro vuoto per sempre.
+
+### 18.2 · Le tre lacune, chiuse
+
+- **Scelta dei file**: `<input type=file>` apre la schermata di scelta file di Android e il file
+  **arriva alla pagina**, con nome, dimensione, tipo e contenuto leggibile.
+- **Permessi di camera, microfono e posizione**: diventano una richiesta vera, con la coda dei
+  permessi (Android accetta un dialogo alla volta e la seconda richiesta viene rifiutata
+  all'istante — un rifiuto tecnico indistinguibile da un «no»).
+- **Preferiti e cronologia unificati**: il browser legge e scrive **la stessa copia** che la shell
+  aggiorna (le preferenze native `novaos`, chiavi `nova:bookmarks` e `nova:browserHistory`) e le
+  stesse forme delle voci. Un preferito salvato nella shell si vede nel browser senza alcun lavoro
+  in più. **Il verso opposto resta da fare** ed è dichiarato in §18.5.
+
+### 18.3 · Come è stato verificato
+
+Emulatore, origine `local`, dopo `./gradlew :gecko:assembleDebug` e `adb install -r`.
+
+| Prova | Esito |
+|---|---|
+| Un solo motore nel processo | ✅ `GeckoRuntime: Lifecycle: onCreate` **una volta sola** fra shell, browser e tre andate e ritorni; nessun «Failed to initialize» né «init failed» |
+| Memoria con dieci schede aperte | ✅ TOTAL PSS 194.198 → 200.292 KB (**+6 MB**): nessuna crescita lineare, quindi nessun tetto da mettere alle schede |
+| Chiusura del browser | ✅ la shell resta **viva nello stesso processo** (stesso pid prima e dopo) e il ponte risponde |
+| Dialoghi delle pagine | ✅ `alert`, `confirm` (la pagina legge `true`) e `prompt` (la pagina legge il testo scritto) con le finestrelle di sistema vere |
+| Popup (`window.open`) | ✅ `GeckoView:OnNewSession uri=https://it.wikipedia.org/` e il contatore delle schede passa da 1 a 2 |
+| Download | ✅ il file scaricato compare in `Download/` e il suo **md5 è identico** all'originale |
+| Scelta dei file | ✅ si apre la schermata di scelta file di Android; scelto un PNG la pagina legge `c.png · 219.640 byte · image/png` e i primi byte del file |
+| Preferiti condivisi | ✅ «Preferiti (2)» elenca sia un preferito aggiunto dal browser sia uno aggiunto dalla shell |
+| Permesso di posizione | ⚠️ **solo il consenso** (vedi §18.5) |
+
+### 18.4 · I difetti trovati provando, e cosa insegnano
+
+1. **L'omnibox mostrava il suggerimento invece dell'indirizzo.** Il sintomo sembrava un guasto
+   della memoria della scheda. La causa era altrove, nel **fuoco**: da Android 8 la prima vista
+   `focusableInTouchMode` prende il fuoco all'avvio, e togliendo il fuoco alle icone della barra
+   (vedi sotto) quel ruolo era passato all'omnibox — che, per non riscrivere l'indirizzo sotto le
+   dita di chi sta digitando, **salta deliberatamente l'aggiornamento quando ha il fuoco**.
+   Diagnosticato con `adb shell dumpsys input_method` (`mServedView=…EditText`), chiuso dando il
+   fuoco al contenitore invece che al campo.
+2. **Due evidenziazioni permanenti su un'icona.** `?attr/selectableItemBackgroundBorderless` e un
+   `RippleDrawable` disegnano entrambi un fondo **persistente** per lo stato «a fuoco»: sul
+   telefono si vedeva un cerchio pieno che non si spegneva. Un'icona della barra non ha niente da
+   fare col fuoco — non c'è una tastiera — quindi si è risolto con `setFocusable(false)`, e il
+   tocco resta con la sua onda.
+3. **Il menu restava aperto sopra la schermata che aveva appena aperto.** Un `PopupMenu` di sistema
+   si congeda da sé quando una voce è scelta; il pannello disegnato a mano **no**, ed è una finestra
+   nostra: «Trova nella pagina» finiva sotto le proprie righe. Chiuso esplicitamente a ogni voce.
+4. **La riga di PDF.js nell'aria.** Durante la prova di download compare
+   `NS_ERROR_FAILURE: Ignore PDF.js for this download.` sulla console della pagina: **non è un
+   guasto**, è Gecko che dichiara di non voler gestire come PDF un file `.bin`. Il download è
+   completo e verificato col checksum.
+
+### 18.5 · Limiti, dichiarati
+
+- **La posizione: il consenso è verificato, la consegna del punto no.** La catena del permesso è
+  intera — la pagina chiede, il delegato risponde, il sistema registra `os.nova.gecko` fra i
+  richiedenti di posizione (`dumpsys location`: richiesta ogni 100 ms sul provider fuso) — ma
+  l'emulatore **non ha una sorgente di posizione** (`last location=null`, provider GPS
+  `ProviderRequest[OFF]`, zero rapporti GNSS), quindi la pagina resta in attesa e non riceve né un
+  punto né un errore: la pagina di prova non mette un timeout, e senza timeout la richiesta può
+  restare appesa per sempre. **Non va raccontato come verificato**: la prova buona è su un telefono
+  vero, dove il GPS esiste.
+- **Un preferito aggiunto dal browser non compare ancora nella shell.** La shell legge la propria
+  `localStorage`, non la copia nativa: per il verso opposto serve che la shell **riceva la
+  notizia**, cioè un evento nuovo che le faccia rileggere l'elenco (~10 righe in `shell/js/`). È
+  **l'unico punto di questo passo che tocca la shell**, quindi passa dall'OTA e non si pubblica
+  senza il via di Daniele. Il resto della condivisione — quello che il browser legge — è fatto e
+  verificato.
+- **`installUpdate` resta non provabile** (§17.4): serve un download vero e l'installer di sistema.
+- **Il pieno schermo della pagina** (i video che si allargano) non c'è: non c'era nemmeno sotto
+  WebView, quindi non è una regressione.
+- **Le anteprime delle schede ci sono solo per la scheda che si sta lasciando**: le altre non hanno
+  un compositore attivo e mostrano un riquadro vuoto. Dichiarato in partenza, confermato in prova.
+
+### 18.6 · Da dove si riprende
+
+1. L'evento dei preferiti verso la shell (v. §18.5): è l'ultimo pezzo della lacuna, e l'unico che
+   richiede il via per l'OTA.
+2. La prova della posizione su un telefono vero.
+3. Pulizia: ripieghi resi inutili da Gecko, sonde di fase 1, sottotitolo NFC di §17.4.
+4. Fase 8: la ROM.
+
+## 19 · Recupero dei sorgenti del modulo (2026-10-18)
+
+Il 2026-10-18, riprendendo il progetto su una macchina nuova, i **sorgenti Java del modulo
+`android-launcher/gecko` non c'erano più**: sul ramo `gecko-spike` si fermavano al 2026-09-21
+(prima del §18), mentre il build del 2026-09-25 era ancora presente in
+`android-launcher/gecko/build/` insieme all'APK `gecko-debug.apk`.
+
+I sorgenti sono stati ricostruiti **dagli artefatti di quel build**, senza riscrivere a mano:
+
+| Pezzo | Fonte del recupero |
+|-------|--------------------|
+| 8 classi Java (`MainActivity`, `BrowserActivity`, `MailBridge`, `MotoreGecko`, `CallHub`, `ShareProvider`, `ShellServer`, `NovaInCallService`) | `build/intermediates/javac/debug/.../classes`, decompilate con **CFR 0.152** (JAR verificato con SHA-1 da Maven Central) |
+| 11 drawable della barra del browser | `build/intermediates/packaged_res/debug/.../drawable/` (copie esatte dei sorgenti XML) |
+| Estensione aggiornata (`background.js`, `content.js`) | `build/intermediates/assets/debug/mergeDebugAssets/extension/` |
+| Permessi `ACCESS_FINE/COARSE_LOCATION` e `REQUEST_INSTALL_PACKAGES` | righe del manifest sorgente citate nel `manifest-merger-debug-report.txt` del build |
+
+Cosa è fedele e cosa no:
+
+- **Fedele**: la logica compilata, le firme, le stringhe, i nomi di classi e di quasi tutte le
+  variabili locali (il build debug conserva la tabella delle variabili). `MainActivity` mostra i
+  metodi aggiunti dopo il ramo (`inviaSchermata`, `installaAggiornamento`, `condividiTanti`,
+  `scriviInCache`, `mimeDi`), e `BrowserActivity` è la riscrittura GeckoView completa, con nomi di
+  metodo in italiano.
+- **Perso**: i commenti originali e parte della formattazione; alcuni cast ridondanti introdotti
+  dal decompilatore (es. `(String) TAG`). Il codice è leggibile e compilabile, ma va considerato
+  una base da ricompilare e verificare, non l'originale.
+- **Non ancora verificato**: dopo il recupero il modulo **non è stato ricompilato**. La catena di
+  build del ramo (AGP 9.4.0, Gradle 9.7.1, compileSdk 37.1, GeckoView
+  `155.0.20260903215306`) coincide con quella citata nel report del build, quindi la ricompilazione
+  è il primo passo successivo.
+
+Lo strumento di decompilazione e i materiali intermedi stanno in `os/privato/`, escluso da git:
+nel repository restano solo i sorgenti recuperati e questo resoconto.
 
 ---
 
 *Documento di pianificazione — l'implementazione vive sul ramo `gecko-spike`. La shell è già stata
-predisposta (`js/bridge.js`) con comportamento invariato sul motore attuale, così le fasi 0–5
-lavorano su un'interfaccia stabile senza toccare l'app in uso. Finché la migrazione non è completa
-`main` resta la shell pubblicata: nessuna fase di questo documento, da sola, è un rilascio.*
+predisposta (`js/bridge.js`) con comportamento invariato sul motore attuale, così le fasi 0–7, la
+fase 3 residua e il punto 3 lavorano su un'interfaccia stabile senza toccare l'app in uso. Finché
+la migrazione non è completa `main` resta la shell pubblicata: nessuna fase di questo documento, da
+sola, è un rilascio.*
