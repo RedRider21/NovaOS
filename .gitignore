@@ -22,3 +22,6 @@ _t*.html
 .idea/
 local.properties
 *.iml
+
+# Materiali di lavoro locali (strumenti, decompilazioni, appunti): mai pubblicati
+privato/

@@ -90,11 +90,32 @@
     console.log("[nova-bridge] porta nativa non apribile: " + e);
   }
 
+  // Un array di argomenti di TIPI DIVERSI non attraversa sendNativeMessage: GeckoView lo
+  // rifiuta con «An unexpected error occurred» e il comando sparisce — la pagina non lo
+  // sa, perché `cmd()` ha già risposto true appena il postMessage è partito. Il caso vero
+  // è `mailFetch("INBOX", 25)`: stringa accanto a numero, cioè il pulsante «Aggiorna»
+  // della posta che non faceva nulla in silenzio (2026-09-22).
+  //
+  // È lo stesso vincolo che il nativo ha dal verso opposto, dove `evento()` manda
+  // `argsMisti`; qui però non serve un canale nuovo, perché Java legge già questi
+  // argomenti con String.valueOf(args[n]) (v. `mailFetch` in MainActivity). Basta quindi
+  // rendere l'array omogeneo — e solo quando serve, così un array di soli numeri o di
+  // soli booleani resta com'è e non perde il tipo.
+  function argsOmogenei(args) {
+    if (!Array.isArray(args) || args.length < 2) return args;
+    const tipi = new Set(args.map(a => (a === null ? "null" : typeof a)));
+    if (tipi.size < 2) return args;
+    console.log("[nova-bridge] argomenti di tipi diversi (" + [...tipi].join("+")
+                + "): li rendo omogenei perché il messaggio passi");
+    return args.map(a => (typeof a === "string" ? a : String(a)));
+  }
+
   // Il ponte vero: ogni comando che arriva dalla pagina prosegue verso il nativo.
-  // Il messaggio è già nella forma { nova, args } — non va toccato.
+  // Il messaggio è già nella forma { nova, args } — a parte gli argomenti misti (sopra).
   browser.runtime.onMessage.addListener((messaggio) => {
     try {
-      browser.runtime.sendNativeMessage("browser", messaggio)
+      const perIlNativo = Object.assign({}, messaggio, { args: argsOmogenei(messaggio.args) });
+      browser.runtime.sendNativeMessage("browser", perIlNativo)
         .catch(e => console.log("[nova-bridge] inoltro fallito: " + e));
     } catch (e) {
       console.log("[nova-bridge] inoltro non disponibile: " + e);

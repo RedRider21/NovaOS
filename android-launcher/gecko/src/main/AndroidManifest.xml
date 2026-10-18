@@ -15,6 +15,12 @@
          l'anteprima nera — senza un errore che spieghi perché. -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Posizione: il browser GeckoView (§18) la chiede alle pagine come un
+         browser vero. Senza queste due righe GeckoSession.onContentPermissionRequest
+         non può nemmeno mostrare la richiesta e la pagina riceve «denied». -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <!-- Telefonia. Come sopra, la dichiarazione non è una formalità: senza, il
          permesso non è nemmeno chiedibile e `call` resterebbe per sempre sul
          ramo ACTION_DIAL, cioè «sembra che chiami» invece di chiamare. Sono
@@ -46,6 +52,11 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.NFC" />
+
+    <!-- Aggiornamento della shell/APK dalla shell stessa (§18): serve per poter
+         lanciare l'installer di sistema su un file scaricato. Su Android 8+ senza
+         questa dichiarazione l'Intent verso il package installer viene rifiutato. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Permessi PRIVILEGIATI: un'app normale non li ottiene e qui non hanno
          effetto; nel ROM definitivo, con NovaOS come priv-app firmata + whitelist,
@@ -128,8 +139,9 @@
         <!-- Il browser clone-Chrome. Nel modulo :app è la destinazione di
              openBrowser; qui è la COPIA dello stesso file, per verificare che il
              dock apra davvero il browser nativo invece dell'anteprima in-app
-             della shell. Resta basato su WebView: portarlo a GeckoView è un
-             passo a sé, e questo spike serve a provare il ponte, non il browser. -->
+             della shell. Dal §18 è basato su GeckoView (schede, incognito,
+             preferiti/cronologia condivisi, download, permessi): non è più il
+             BrowserActivity WebView di :app. -->
         <activity
             android:name=".BrowserActivity"
             android:exported="false"

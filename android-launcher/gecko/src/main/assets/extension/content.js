@@ -53,12 +53,12 @@
 (() => {
   "use strict";
 
-  // I 28 comandi fire-and-forget, esattamente i "cmd" di CONTRACT in shell/js/bridge.js.
+  // I 29 comandi fire-and-forget, esattamente i "cmd" di CONTRACT in shell/js/bridge.js.
   const COMANDI = [
     "call", "sms", "sendSms", "vibrate", "toast",
     "callAnswer", "callHangup", "callMute", "callSpeaker", "callDtmf",
     "requestDialerRole", "requestMic", "openAppSettings", "openBrowser",
-    "shareImage", "shareFile", "shareText", "openSetting",
+    "shareImage", "shareFile", "shareFiles", "shareText", "openSetting",
     "installUpdate", "screenshot",
     "shellStageBegin", "shellReset",
     "mailConfigure", "mailClear", "mailSend", "mailFetch",
@@ -153,6 +153,14 @@
   //
   // Un template literal e non una concatenazione: a questa lunghezza le virgolette
   // sfuggite diventano illeggibili e sbagliarle costa un giro di build.
+  //
+  // ⚠️ DENTRO QUESTO LITERAL NON SI USANO BACKTICK, NEMMENO NEI COMMENTI (2026-09-22).
+  // Un backtick in un commento lo CHIUDE in anticipo: il resto della frase diventa
+  // codice, il content script va in SyntaxError e non esegue una riga — niente stub,
+  // niente window.NovaNative, e la shell degrada in simulazione come se il nativo
+  // non ci fosse. È costato mezza sessione, perché l'errore si vede solo in logcat
+  // sotto il tag "Isolated Web Content", che non si pensa a guardare. Se serve
+  // citare un identificatore, si scrive senza backtick.
   const sorgenteStub = `(() => {
   const C = ${JSON.stringify(COMANDI)};
   const G = ${JSON.stringify(GETTER)};
@@ -247,7 +255,15 @@
 
     try {
       if (window.NovaMsg) {
-        window.NovaMsg(m.evento, ...(m.args || []));
+        // Argomenti di tipo diverso non viaggiano in args: GeckoBundle tipizza
+        // l'array dal primo elemento e converte il resto a quel tipo, quindi una
+        // stringa accanto a un booleano diventerebbe un booleano (vedi evento() in
+        // MainActivity.java). Chi ha argomenti misti li manda come oggetto numerato,
+        // e qui tornano array: la pagina riceve sempre NovaMsg(evento, ...argomenti).
+        const a = m.argsMisti
+          ? Object.keys(m.argsMisti).sort((x, y) => x - y).map(k => m.argsMisti[k])
+          : (m.args || []);
+        window.NovaMsg(m.evento, ...a);
         console.log("[nova-bridge] consegnato alla pagina: " + m.evento);
       } else {
         console.log("[nova-bridge] NovaMsg assente: " + m.evento);
